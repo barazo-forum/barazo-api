@@ -272,6 +272,22 @@ describe("updateCategorySchema", () => {
     const result = updateCategorySchema.safeParse({ name: "" });
     expect(result.success).toBe(false);
   });
+
+  it("accepts null parentId (move to root)", () => {
+    const result = updateCategorySchema.safeParse({ parentId: null });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.parentId).toBeNull();
+    }
+  });
+
+  it("accepts null description (clear description)", () => {
+    const result = updateCategorySchema.safeParse({ description: null });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.description).toBeNull();
+    }
+  });
 });
 
 // ---------------------------------------------------------------------------

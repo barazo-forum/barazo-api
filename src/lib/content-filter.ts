@@ -5,7 +5,7 @@
 // authentication status, age declaration, and maturity preference.
 // ---------------------------------------------------------------------------
 
-import { MATURITY_ORDER } from "./maturity.js";
+import { isMaturityAtMost, ratingsAtMost } from "./maturity.js";
 import type { MaturityRating } from "./maturity.js";
 
 /** Minimal user shape needed for maturity resolution. */
@@ -43,7 +43,7 @@ export function maturityAllows(
   maxAllowed: MaturityRating,
   contentRating: MaturityRating,
 ): boolean {
-  return MATURITY_ORDER[contentRating] <= MATURITY_ORDER[maxAllowed];
+  return isMaturityAtMost(contentRating, maxAllowed);
 }
 
 /**
@@ -51,8 +51,5 @@ export function maturityAllows(
  * Useful for building SQL IN clauses.
  */
 export function allowedRatings(maxAllowed: MaturityRating): MaturityRating[] {
-  const max = MATURITY_ORDER[maxAllowed];
-  return (Object.entries(MATURITY_ORDER) as Array<[MaturityRating, number]>)
-    .filter(([, order]) => order <= max)
-    .map(([rating]) => rating);
+  return ratingsAtMost(maxAllowed);
 }

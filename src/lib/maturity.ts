@@ -21,3 +21,22 @@ export const MATURITY_ORDER: Record<MaturityRating, number> = {
 export function isMaturityLowerThan(a: MaturityRating, b: MaturityRating): boolean {
   return MATURITY_ORDER[a] < MATURITY_ORDER[b];
 }
+
+/**
+ * Check if maturity rating `a` is at most `b` in the hierarchy (a <= b).
+ * Used for content visibility: content rating must be at most user's max allowed.
+ */
+export function isMaturityAtMost(a: MaturityRating, b: MaturityRating): boolean {
+  return MATURITY_ORDER[a] <= MATURITY_ORDER[b];
+}
+
+/**
+ * Return all maturity ratings that are at most `maxLevel` in the hierarchy.
+ * Useful for building SQL IN clauses.
+ */
+export function ratingsAtMost(maxLevel: MaturityRating): MaturityRating[] {
+  const max = MATURITY_ORDER[maxLevel];
+  return (Object.entries(MATURITY_ORDER) as Array<[MaturityRating, number]>)
+    .filter(([, order]) => order <= max)
+    .map(([rating]) => rating);
+}

@@ -5,6 +5,7 @@ import type { Env } from "../../../src/config/env.js";
 import type { AuthMiddleware, RequestUser } from "../../../src/auth/middleware.js";
 import type { SessionService } from "../../../src/auth/session.js";
 import type { SetupService } from "../../../src/setup/service.js";
+import { type DbChain, createMockDb, resetDbMocks } from "../../helpers/mock-db.js";
 
 // ---------------------------------------------------------------------------
 // Mock PDS client module (must be before importing routes)
@@ -47,76 +48,14 @@ function testUser(overrides?: Partial<RequestUser>): RequestUser {
 }
 
 // ---------------------------------------------------------------------------
-// Chainable mock DB
+// Chainable mock DB (shared helper)
 // ---------------------------------------------------------------------------
 
-type MockFn = ReturnType<typeof vi.fn>;
-
-interface DbChain {
-  values: MockFn;
-  onConflictDoUpdate: MockFn;
-  onConflictDoNothing: MockFn;
-  set: MockFn;
-  from: MockFn;
-  where: MockFn;
-  orderBy: MockFn;
-  limit: MockFn;
-  returning: MockFn;
-}
-
-function createChainableProxy(terminalResult: unknown = []): DbChain {
-  const chain: DbChain = {
-    values: vi.fn(),
-    onConflictDoUpdate: vi.fn(),
-    onConflictDoNothing: vi.fn(),
-    set: vi.fn(),
-    from: vi.fn(),
-    where: vi.fn(),
-    orderBy: vi.fn(),
-    limit: vi.fn(),
-    returning: vi.fn(),
-  };
-
-  const methods: (keyof DbChain)[] = [
-    "values", "onConflictDoUpdate", "onConflictDoNothing",
-    "set", "from", "orderBy", "limit", "returning",
-  ];
-  for (const m of methods) {
-    chain[m].mockImplementation(() => chain);
-  }
-
-  // eslint-disable-next-line @typescript-eslint/no-misused-promises -- Intentionally thenable mock for Drizzle chain
-  chain.where.mockImplementation(() => ({
-    ...chain,
-    then: (resolve: (val: unknown) => void, reject?: (err: unknown) => void) =>
-      Promise.resolve(terminalResult).then(resolve, reject),
-    orderBy: chain.orderBy,
-    limit: chain.limit,
-    returning: chain.returning,
-  }));
-
-  return chain;
-}
-
+const mockDb = createMockDb();
 let selectChain: DbChain;
 
-const mockDb = {
-  insert: vi.fn(),
-  select: vi.fn(),
-  update: vi.fn(),
-  delete: vi.fn(),
-  transaction: vi.fn(),
-};
-
-function resetDbMocks(): void {
-  selectChain = createChainableProxy([]);
-  mockDb.insert.mockReturnValue(createChainableProxy());
-  mockDb.select.mockReturnValue(selectChain);
-  mockDb.update.mockReturnValue(createChainableProxy([]));
-  mockDb.delete.mockReturnValue(createChainableProxy());
-  mockDb.transaction.mockImplementation(async (fn: (tx: typeof mockDb) => Promise<void>) => {
-    await fn(mockDb);
-  });
+function resetAllDbMocks(): void {
+  selectChain = resetDbMocks(mockDb);
 }
 
 // ---------------------------------------------------------------------------
@@ -248,7 +187,7 @@ describe("maturity filtering", () => {
 
     beforeEach(() => {
       vi.clearAllMocks();
-      resetDbMocks();
+      resetAllDbMocks();
     });
 
     it("filters topics to safe-only categories for unauthenticated users", async () => {
@@ -360,7 +299,7 @@ describe("maturity filtering", () => {
 
     beforeEach(() => {
       vi.clearAllMocks();
-      resetDbMocks();
+      resetAllDbMocks();
     });
 
     it("allows replies when topic category is within user maturity level", async () => {

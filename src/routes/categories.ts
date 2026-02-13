@@ -271,11 +271,16 @@ export function categoryRoutes(): FastifyPluginCallback {
         throw notFound("Category not found");
       }
 
-      // Count topics in this category
+      // Count topics in this category within this community
       const topicCountResult = await db
         .select({ count: count() })
         .from(topics)
-        .where(eq(topics.category, slug));
+        .where(
+          and(
+            eq(topics.category, slug),
+            eq(topics.communityDid, communityDid),
+          ),
+        );
 
       const topicCount = topicCountResult[0]?.count ?? 0;
 
@@ -422,8 +427,8 @@ export function categoryRoutes(): FastifyPluginCallback {
           properties: {
             name: { type: "string", minLength: 1, maxLength: 100 },
             slug: { type: "string", minLength: 1, maxLength: 50 },
-            description: { type: "string", maxLength: 500 },
-            parentId: { type: "string" },
+            description: { type: ["string", "null"], maxLength: 500 },
+            parentId: { type: ["string", "null"] },
             sortOrder: { type: "integer", minimum: 0 },
             maturityRating: { type: "string", enum: ["safe", "mature", "adult"] },
           },
@@ -494,8 +499,8 @@ export function categoryRoutes(): FastifyPluginCallback {
         }
       }
 
-      // Validate parentId if provided
-      if (updates.parentId !== undefined) {
+      // Validate parentId if provided (null = move to root, string = set parent)
+      if (updates.parentId !== undefined && updates.parentId !== null) {
         // Check parent exists
         const parentRows = await db
           .select()
@@ -529,8 +534,8 @@ export function categoryRoutes(): FastifyPluginCallback {
       };
       if (updates.name !== undefined) dbUpdates.name = updates.name;
       if (updates.slug !== undefined) dbUpdates.slug = updates.slug;
-      if (updates.description !== undefined) dbUpdates.description = updates.description;
-      if (updates.parentId !== undefined) dbUpdates.parentId = updates.parentId;
+      if (updates.description !== undefined) dbUpdates.description = updates.description ?? null;
+      if (updates.parentId !== undefined) dbUpdates.parentId = updates.parentId ?? null;
       if (updates.sortOrder !== undefined) dbUpdates.sortOrder = updates.sortOrder;
       if (updates.maturityRating !== undefined) dbUpdates.maturityRating = updates.maturityRating;
 
@@ -592,11 +597,17 @@ export function categoryRoutes(): FastifyPluginCallback {
         throw notFound("Category not found");
       }
 
-      // Check if category has topics
+      // Check if category has topics within this community
+      const communityDid = env.COMMUNITY_DID ?? "did:plc:placeholder";
       const topicCountResult = await db
         .select({ count: count() })
         .from(topics)
-        .where(eq(topics.category, existing.slug));
+        .where(
+          and(
+            eq(topics.category, existing.slug),
+            eq(topics.communityDid, communityDid),
+          ),
+        );
 
       const topicCount = topicCountResult[0]?.count ?? 0;
       if (topicCount > 0) {

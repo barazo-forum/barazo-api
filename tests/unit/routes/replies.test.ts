@@ -5,6 +5,7 @@ import type { Env } from "../../../src/config/env.js";
 import type { AuthMiddleware, RequestUser } from "../../../src/auth/middleware.js";
 import type { SessionService } from "../../../src/auth/session.js";
 import type { SetupService } from "../../../src/setup/service.js";
+import { type DbChain, createChainableProxy, createMockDb } from "../../helpers/mock-db.js";
 
 // ---------------------------------------------------------------------------
 // Mock PDS client module (must be before importing routes)
@@ -95,83 +96,26 @@ const mockFirehose = {
 };
 
 // ---------------------------------------------------------------------------
-// Chainable mock DB
+// Chainable mock DB (shared helper)
 // ---------------------------------------------------------------------------
 
-type MockFn = ReturnType<typeof vi.fn>;
+const mockDb = createMockDb();
 
-interface DbChain {
-  values: MockFn;
-  onConflictDoUpdate: MockFn;
-  onConflictDoNothing: MockFn;
-  set: MockFn;
-  from: MockFn;
-  where: MockFn;
-  orderBy: MockFn;
-  limit: MockFn;
-  returning: MockFn;
-}
-
-function createChainableProxy(terminalResult: unknown = []): DbChain {
-  const chain: DbChain = {
-    values: vi.fn(),
-    onConflictDoUpdate: vi.fn(),
-    onConflictDoNothing: vi.fn(),
-    set: vi.fn(),
-    from: vi.fn(),
-    where: vi.fn(),
-    orderBy: vi.fn(),
-    limit: vi.fn(),
-    returning: vi.fn(),
-  };
-
-  const methods: (keyof DbChain)[] = [
-    "values", "onConflictDoUpdate", "onConflictDoNothing",
-    "set", "from", "orderBy", "limit", "returning",
-  ];
-  for (const m of methods) {
-    chain[m].mockImplementation(() => chain);
-  }
-
-  // Make `where` return a thenable chain so `await db.select().from().where()` works.
-  // eslint-disable-next-line @typescript-eslint/no-misused-promises -- Intentionally thenable mock for Drizzle chain
-  chain.where.mockImplementation(() => ({
-    ...chain,
-    then: (resolve: (val: unknown) => void, reject?: (err: unknown) => void) =>
-      Promise.resolve(terminalResult).then(resolve, reject),
-    orderBy: chain.orderBy,
-    limit: chain.limit,
-    returning: chain.returning,
-  }));
-
-  return chain;
-}
-
-// Separate chainable mocks for each operation type
 let insertChain: DbChain;
 let selectChain: DbChain;
 let updateChain: DbChain;
 let deleteChain: DbChain;
 
-const mockDb = {
-  insert: vi.fn(),
-  select: vi.fn(),
-  update: vi.fn(),
-  delete: vi.fn(),
-  transaction: vi.fn(),
-};
-
-function resetDbMocks(): void {
+function resetAllDbMocks(): void {
   insertChain = createChainableProxy();
   selectChain = createChainableProxy([]);
   updateChain = createChainableProxy([]);
   deleteChain = createChainableProxy();
-
   mockDb.insert.mockReturnValue(insertChain);
   mockDb.select.mockReturnValue(selectChain);
   mockDb.update.mockReturnValue(updateChain);
   mockDb.delete.mockReturnValue(deleteChain);
-
+  // eslint-disable-next-line @typescript-eslint/no-misused-promises -- Intentionally async mock for Drizzle transaction
   mockDb.transaction.mockImplementation(async (fn: (tx: typeof mockDb) => Promise<void>) => {
     await fn(mockDb);
   });
@@ -293,7 +237,7 @@ describe("reply routes", () => {
 
     beforeEach(() => {
       vi.clearAllMocks();
-      resetDbMocks();
+      resetAllDbMocks();
 
       // Default mocks for successful create
       createRecordFn.mockResolvedValue({ uri: TEST_REPLY_URI, cid: TEST_REPLY_CID });
@@ -545,7 +489,7 @@ describe("reply routes", () => {
 
     beforeEach(() => {
       vi.clearAllMocks();
-      resetDbMocks();
+      resetAllDbMocks();
     });
 
     it("returns empty list when no replies exist", async () => {
@@ -725,7 +669,7 @@ describe("reply routes", () => {
 
     beforeEach(() => {
       vi.clearAllMocks();
-      resetDbMocks();
+      resetAllDbMocks();
       updateRecordFn.mockResolvedValue({ uri: TEST_REPLY_URI, cid: "bafyreinewcid" });
     });
 
@@ -883,7 +827,7 @@ describe("reply routes", () => {
 
     beforeEach(() => {
       vi.clearAllMocks();
-      resetDbMocks();
+      resetAllDbMocks();
       deleteRecordFn.mockResolvedValue(undefined);
     });
 

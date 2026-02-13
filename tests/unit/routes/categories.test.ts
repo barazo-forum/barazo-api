@@ -5,6 +5,7 @@ import type { Env } from "../../../src/config/env.js";
 import type { AuthMiddleware, RequestUser } from "../../../src/auth/middleware.js";
 import type { SessionService } from "../../../src/auth/session.js";
 import type { SetupService } from "../../../src/setup/service.js";
+import { type DbChain, createChainableProxy, createMockDb } from "../../helpers/mock-db.js";
 
 // Import routes (no PDS mocking needed -- categories are local-only)
 import { categoryRoutes } from "../../../src/routes/categories.js";
@@ -52,81 +53,26 @@ function adminUser(): RequestUser {
 }
 
 // ---------------------------------------------------------------------------
-// Chainable mock DB
+// Chainable mock DB (shared helper)
 // ---------------------------------------------------------------------------
 
-type MockFn = ReturnType<typeof vi.fn>;
-
-interface DbChain {
-  values: MockFn;
-  onConflictDoUpdate: MockFn;
-  onConflictDoNothing: MockFn;
-  set: MockFn;
-  from: MockFn;
-  where: MockFn;
-  orderBy: MockFn;
-  limit: MockFn;
-  returning: MockFn;
-}
-
-function createChainableProxy(terminalResult: unknown = []): DbChain {
-  const chain: DbChain = {
-    values: vi.fn(),
-    onConflictDoUpdate: vi.fn(),
-    onConflictDoNothing: vi.fn(),
-    set: vi.fn(),
-    from: vi.fn(),
-    where: vi.fn(),
-    orderBy: vi.fn(),
-    limit: vi.fn(),
-    returning: vi.fn(),
-  };
-
-  const methods: (keyof DbChain)[] = [
-    "values", "onConflictDoUpdate", "onConflictDoNothing",
-    "set", "from", "orderBy", "limit", "returning",
-  ];
-  for (const m of methods) {
-    chain[m].mockImplementation(() => chain);
-  }
-
-  // eslint-disable-next-line @typescript-eslint/no-misused-promises -- Intentionally thenable mock for Drizzle chain
-  chain.where.mockImplementation(() => ({
-    ...chain,
-    then: (resolve: (val: unknown) => void, reject?: (err: unknown) => void) =>
-      Promise.resolve(terminalResult).then(resolve, reject),
-    orderBy: chain.orderBy,
-    limit: chain.limit,
-    returning: chain.returning,
-  }));
-
-  return chain;
-}
+const mockDb = createMockDb();
 
 let insertChain: DbChain;
 let selectChain: DbChain;
 let updateChain: DbChain;
 let deleteChain: DbChain;
 
-const mockDb = {
-  insert: vi.fn(),
-  select: vi.fn(),
-  update: vi.fn(),
-  delete: vi.fn(),
-  transaction: vi.fn(),
-};
-
-function resetDbMocks(): void {
+function resetAllDbMocks(): void {
   insertChain = createChainableProxy();
   selectChain = createChainableProxy([]);
   updateChain = createChainableProxy([]);
   deleteChain = createChainableProxy();
-
   mockDb.insert.mockReturnValue(insertChain);
   mockDb.select.mockReturnValue(selectChain);
   mockDb.update.mockReturnValue(updateChain);
   mockDb.delete.mockReturnValue(deleteChain);
-
+  // eslint-disable-next-line @typescript-eslint/no-misused-promises -- Intentionally async mock for Drizzle transaction
   mockDb.transaction.mockImplementation(async (fn: (tx: typeof mockDb) => Promise<void>) => {
     await fn(mockDb);
   });
@@ -264,7 +210,7 @@ describe("category routes", () => {
 
     beforeEach(() => {
       vi.clearAllMocks();
-      resetDbMocks();
+      resetAllDbMocks();
     });
 
     it("returns empty array when no categories exist", async () => {
@@ -396,7 +342,7 @@ describe("category routes", () => {
 
     beforeEach(() => {
       vi.clearAllMocks();
-      resetDbMocks();
+      resetAllDbMocks();
     });
 
     it("returns a single category by slug with topicCount", async () => {
@@ -461,7 +407,7 @@ describe("category routes", () => {
 
     beforeEach(() => {
       vi.clearAllMocks();
-      resetDbMocks();
+      resetAllDbMocks();
     });
 
     it("creates a category and returns 201", async () => {
@@ -705,7 +651,7 @@ describe("category routes", () => {
 
     beforeEach(() => {
       vi.clearAllMocks();
-      resetDbMocks();
+      resetAllDbMocks();
     });
 
     it("updates a category name", async () => {
@@ -912,7 +858,7 @@ describe("category routes", () => {
 
     beforeEach(() => {
       vi.clearAllMocks();
-      resetDbMocks();
+      resetAllDbMocks();
     });
 
     it("deletes a category and returns 204", async () => {
@@ -1021,7 +967,7 @@ describe("category routes", () => {
 
     beforeEach(() => {
       vi.clearAllMocks();
-      resetDbMocks();
+      resetAllDbMocks();
     });
 
     it("updates maturity rating", async () => {

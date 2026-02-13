@@ -5,6 +5,7 @@ import type { Env } from "../../../src/config/env.js";
 import type { AuthMiddleware, RequestUser } from "../../../src/auth/middleware.js";
 import type { SessionService } from "../../../src/auth/session.js";
 import type { SetupService } from "../../../src/setup/service.js";
+import { type DbChain, createChainableProxy, createMockDb } from "../../helpers/mock-db.js";
 
 // Import routes
 import { adminSettingsRoutes } from "../../../src/routes/admin-settings.js";
@@ -48,77 +49,22 @@ function adminUser(): RequestUser {
 }
 
 // ---------------------------------------------------------------------------
-// Chainable mock DB
+// Chainable mock DB (shared helper)
 // ---------------------------------------------------------------------------
 
-type MockFn = ReturnType<typeof vi.fn>;
-
-interface DbChain {
-  values: MockFn;
-  onConflictDoUpdate: MockFn;
-  onConflictDoNothing: MockFn;
-  set: MockFn;
-  from: MockFn;
-  where: MockFn;
-  orderBy: MockFn;
-  limit: MockFn;
-  returning: MockFn;
-}
-
-function createChainableProxy(terminalResult: unknown = []): DbChain {
-  const chain: DbChain = {
-    values: vi.fn(),
-    onConflictDoUpdate: vi.fn(),
-    onConflictDoNothing: vi.fn(),
-    set: vi.fn(),
-    from: vi.fn(),
-    where: vi.fn(),
-    orderBy: vi.fn(),
-    limit: vi.fn(),
-    returning: vi.fn(),
-  };
-
-  const methods: (keyof DbChain)[] = [
-    "values", "onConflictDoUpdate", "onConflictDoNothing",
-    "set", "from", "orderBy", "limit", "returning",
-  ];
-  for (const m of methods) {
-    chain[m].mockImplementation(() => chain);
-  }
-
-  // eslint-disable-next-line @typescript-eslint/no-misused-promises -- Intentionally thenable mock for Drizzle chain
-  chain.where.mockImplementation(() => ({
-    ...chain,
-    then: (resolve: (val: unknown) => void, reject?: (err: unknown) => void) =>
-      Promise.resolve(terminalResult).then(resolve, reject),
-    orderBy: chain.orderBy,
-    limit: chain.limit,
-    returning: chain.returning,
-  }));
-
-  return chain;
-}
+const mockDb = createMockDb();
 
 let selectChain: DbChain;
 let updateChain: DbChain;
 
-const mockDb = {
-  insert: vi.fn(),
-  select: vi.fn(),
-  update: vi.fn(),
-  delete: vi.fn(),
-  transaction: vi.fn(),
-};
-
-function resetDbMocks(): void {
+function resetAllDbMocks(): void {
   selectChain = createChainableProxy([]);
   updateChain = createChainableProxy([]);
-
   mockDb.insert.mockReturnValue(createChainableProxy());
   mockDb.select.mockReturnValue(selectChain);
   mockDb.update.mockReturnValue(updateChain);
   mockDb.delete.mockReturnValue(createChainableProxy());
-
+  // eslint-disable-next-line @typescript-eslint/no-misused-promises -- Intentionally async mock for Drizzle transaction
   mockDb.transaction.mockImplementation(async (fn: (tx: typeof mockDb) => Promise<void>) => {
     await fn(mockDb);
   });
@@ -247,7 +193,7 @@ describe("admin settings routes", () => {
 
     beforeEach(() => {
       vi.clearAllMocks();
-      resetDbMocks();
+      resetAllDbMocks();
     });
 
     it("returns community settings", async () => {
@@ -332,7 +278,7 @@ describe("admin settings routes", () => {
 
     beforeEach(() => {
       vi.clearAllMocks();
-      resetDbMocks();
+      resetAllDbMocks();
     });
 
     it("updates communityName", async () => {
@@ -428,11 +374,11 @@ describe("admin settings routes", () => {
       });
 
       expect(response.statusCode).toBe(409);
-      const body = response.json<{ message: string; categories: Array<{ id: string; slug: string; name: string; maturityRating: string }> }>();
+      const body = response.json<{ message: string; details: { categories: Array<{ id: string; slug: string; name: string; maturityRating: string }> } }>();
       expect(body.message).toContain("categories");
-      expect(body.categories).toHaveLength(2);
-      expect(body.categories[0]?.slug).toBe("general");
-      expect(body.categories[1]?.slug).toBe("help");
+      expect(body.details.categories).toHaveLength(2);
+      expect(body.details.categories[0]?.slug).toBe("general");
+      expect(body.details.categories[1]?.slug).toBe("help");
     });
 
     it("returns 409 with affected category details when raising to adult", async () => {
@@ -455,8 +401,8 @@ describe("admin settings routes", () => {
       });
 
       expect(response.statusCode).toBe(409);
-      const body = response.json<{ categories: Array<{ id: string; maturityRating: string }> }>();
-      expect(body.categories).toHaveLength(2);
+      const body = response.json<{ details: { categories: Array<{ id: string; maturityRating: string }> } }>();
+      expect(body.details.categories).toHaveLength(2);
     });
 
     it("updates both communityName and maturityRating", async () => {

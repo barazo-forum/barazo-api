@@ -66,8 +66,9 @@ export const updateCategorySchema = z.object({
   description: z
     .string()
     .max(500, "Description must be at most 500 characters")
+    .nullable()
     .optional(),
-  parentId: z.string().optional(),
+  parentId: z.string().nullable().optional(),
   sortOrder: z
     .number()
     .int("Sort order must be an integer")

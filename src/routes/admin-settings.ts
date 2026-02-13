@@ -38,15 +38,21 @@ const conflictJsonSchema = {
   properties: {
     error: { type: "string" as const },
     message: { type: "string" as const },
-    categories: {
-      type: "array" as const,
-      items: {
-        type: "object" as const,
-        properties: {
-          id: { type: "string" as const },
-          slug: { type: "string" as const },
-          name: { type: "string" as const },
-          maturityRating: { type: "string" as const },
+    statusCode: { type: "integer" as const },
+    details: {
+      type: "object" as const,
+      properties: {
+        categories: {
+          type: "array" as const,
+          items: {
+            type: "object" as const,
+            properties: {
+              id: { type: "string" as const },
+              slug: { type: "string" as const },
+              name: { type: "string" as const },
+              maturityRating: { type: "string" as const },
+            },
+          },
         },
       },
     },
@@ -166,7 +172,9 @@ export function adminSettingsRoutes(): FastifyPluginCallback {
         throw notFound("Community settings not found");
       }
 
-      // If maturity is being raised, check for incompatible categories
+      // If the community maturity floor is being raised, check for incompatible
+      // categories. Lowering the floor (relaxing constraints) is always allowed
+      // because existing categories remain above the new, lower threshold.
       if (
         updates.maturityRating !== undefined &&
         updates.maturityRating !== current.maturityRating
@@ -191,12 +199,15 @@ export function adminSettingsRoutes(): FastifyPluginCallback {
             return reply.status(409).send({
               error: "Conflict",
               message: `Cannot raise community maturity to "${newRating}": ${String(belowThreshold.length)} categories have a lower maturity rating. Update these categories first.`,
-              categories: belowThreshold.map((cat) => ({
-                id: cat.id,
-                slug: cat.slug,
-                name: cat.name,
-                maturityRating: cat.maturityRating,
-              })),
+              statusCode: 409,
+              details: {
+                categories: belowThreshold.map((cat) => ({
+                  id: cat.id,
+                  slug: cat.slug,
+                  name: cat.name,
+                  maturityRating: cat.maturityRating,
+                })),
+              },
             });
           }
         }

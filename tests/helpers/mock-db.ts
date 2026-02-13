@@ -1,0 +1,114 @@
+// ---------------------------------------------------------------------------
+// Shared mock DB infrastructure for route tests
+// ---------------------------------------------------------------------------
+// Provides a chainable mock that simulates Drizzle ORM's query builder API.
+// Import in any route test file to avoid duplicating this boilerplate.
+// ---------------------------------------------------------------------------
+
+import { vi } from "vitest";
+
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
+
+export type MockFn = ReturnType<typeof vi.fn>;
+
+export interface DbChain {
+  values: MockFn;
+  onConflictDoUpdate: MockFn;
+  onConflictDoNothing: MockFn;
+  set: MockFn;
+  from: MockFn;
+  where: MockFn;
+  orderBy: MockFn;
+  limit: MockFn;
+  returning: MockFn;
+}
+
+// ---------------------------------------------------------------------------
+// Factory
+// ---------------------------------------------------------------------------
+
+/**
+ * Create a chainable mock that simulates Drizzle ORM's query builder.
+ *
+ * Most methods return the chain itself for fluent chaining.
+ * `where()` returns a thenable so `await db.select().from().where()` works.
+ *
+ * @param terminalResult - The value that awaiting the chain resolves to.
+ */
+export function createChainableProxy(terminalResult: unknown = []): DbChain {
+  const chain: DbChain = {
+    values: vi.fn(),
+    onConflictDoUpdate: vi.fn(),
+    onConflictDoNothing: vi.fn(),
+    set: vi.fn(),
+    from: vi.fn(),
+    where: vi.fn(),
+    orderBy: vi.fn(),
+    limit: vi.fn(),
+    returning: vi.fn(),
+  };
+
+  const methods: (keyof DbChain)[] = [
+    "values", "onConflictDoUpdate", "onConflictDoNothing",
+    "set", "from", "orderBy", "limit", "returning",
+  ];
+  for (const m of methods) {
+    chain[m].mockImplementation(() => chain);
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-misused-promises -- Intentionally thenable mock for Drizzle chain
+  chain.where.mockImplementation(() => ({
+    ...chain,
+    then: (resolve: (val: unknown) => void, reject?: (err: unknown) => void) =>
+      Promise.resolve(terminalResult).then(resolve, reject),
+    orderBy: chain.orderBy,
+    limit: chain.limit,
+    returning: chain.returning,
+  }));
+
+  return chain;
+}
+
+// ---------------------------------------------------------------------------
+// Mock DB instance
+// ---------------------------------------------------------------------------
+
+export interface MockDb {
+  insert: MockFn;
+  select: MockFn;
+  update: MockFn;
+  delete: MockFn;
+  transaction: MockFn;
+}
+
+/**
+ * Create a fresh mock DB instance with insert/select/update/delete/transaction.
+ */
+export function createMockDb(): MockDb {
+  return {
+    insert: vi.fn(),
+    select: vi.fn(),
+    update: vi.fn(),
+    delete: vi.fn(),
+    transaction: vi.fn(),
+  };
+}
+
+/**
+ * Reset all mock DB chains to fresh state. Call this in beforeEach.
+ * Returns the new selectChain for per-test mock setup.
+ */
+export function resetDbMocks(mockDb: MockDb): DbChain {
+  const selectChain = createChainableProxy([]);
+  mockDb.insert.mockReturnValue(createChainableProxy());
+  mockDb.select.mockReturnValue(selectChain);
+  mockDb.update.mockReturnValue(createChainableProxy([]));
+  mockDb.delete.mockReturnValue(createChainableProxy());
+  // eslint-disable-next-line @typescript-eslint/no-misused-promises -- Intentionally async for Drizzle transaction mock
+  mockDb.transaction.mockImplementation(async (fn: (tx: MockDb) => Promise<void>) => {
+    await fn(mockDb);
+  });
+  return selectChain;
+}
