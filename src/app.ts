@@ -1,6 +1,7 @@
 import Fastify from "fastify";
 import helmet from "@fastify/helmet";
 import cors from "@fastify/cors";
+import cookie from "@fastify/cookie";
 import rateLimit from "@fastify/rate-limit";
 import * as Sentry from "@sentry/node";
 import type { FastifyError } from "fastify";
@@ -10,8 +11,11 @@ import { createDb } from "./db/index.js";
 import { createCache } from "./cache/index.js";
 import { FirehoseService } from "./firehose/service.js";
 import { createOAuthClient } from "./auth/oauth-client.js";
+import { createSessionService } from "./auth/session.js";
+import type { SessionService } from "./auth/session.js";
 import healthRoutes from "./routes/health.js";
 import { oauthMetadataRoutes } from "./routes/oauth-metadata.js";
+import { authRoutes } from "./routes/auth.js";
 import type { Database } from "./db/index.js";
 import type { Cache } from "./cache/index.js";
 
@@ -23,6 +27,7 @@ declare module "fastify" {
     env: Env;
     firehose: FirehoseService;
     oauthClient: NodeOAuthClient;
+    sessionService: SessionService;
   }
 }
 
@@ -96,13 +101,24 @@ export async function buildApp(env: Env) {
     timeWindow: "1 minute",
   });
 
+  // Cookies (must be registered before auth routes)
+  await app.register(cookie, { secret: env.SESSION_SECRET });
+
   // OAuth client
   const oauthClient = createOAuthClient(env, cache, app.log);
   app.decorate("oauthClient", oauthClient);
 
+  // Session service
+  const sessionService = createSessionService(cache, app.log, {
+    sessionTtl: env.OAUTH_SESSION_TTL,
+    accessTokenTtl: env.OAUTH_ACCESS_TOKEN_TTL,
+  });
+  app.decorate("sessionService", sessionService);
+
   // Routes
   await app.register(healthRoutes);
   await app.register(oauthMetadataRoutes(oauthClient));
+  await app.register(authRoutes(oauthClient));
 
   // Start firehose when app is ready
   app.addHook("onReady", async () => {
