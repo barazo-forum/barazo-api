@@ -13,6 +13,13 @@ const intFromString = (defaultVal: string) =>
     .transform((val) => Number(val))
     .pipe(z.number().int().min(0));
 
+const positiveIntFromString = (defaultVal: string) =>
+  z
+    .string()
+    .default(defaultVal)
+    .transform((val) => Number(val))
+    .pipe(z.number().int().positive());
+
 export const envSchema = z.object({
   // Required
   DATABASE_URL: z.url(),
@@ -41,9 +48,12 @@ export const envSchema = z.object({
   RATE_LIMIT_READ_ANON: intFromString("100"),
   RATE_LIMIT_READ_AUTH: intFromString("300"),
 
-  // OAuth (optional at scaffold, required at M3)
-  OAUTH_CLIENT_ID: z.string().optional(),
-  OAUTH_REDIRECT_URI: z.string().optional(),
+  // OAuth
+  OAUTH_CLIENT_ID: z.string().min(1),
+  OAUTH_REDIRECT_URI: z.string().min(1),
+  SESSION_SECRET: z.string().min(32),
+  OAUTH_SESSION_TTL: positiveIntFromString("604800"),
+  OAUTH_ACCESS_TOKEN_TTL: positiveIntFromString("900"),
 
   // Monitoring (GlitchTip - Sentry SDK compatible)
   GLITCHTIP_DSN: z.string().optional(),

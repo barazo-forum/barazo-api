@@ -28,8 +28,11 @@
     "db:studio": "drizzle-kit studio"
   },
   "dependencies": {
-    "@atgora-forum/lexicons": "^0.1.0",
+    "@atgora-forum/lexicons": "workspace:*",
+    "@atproto/api": "^0.18.21",
+    "@atproto/oauth-client-node": "^0.3.16",
     "@atproto/tap": "^0.2.3",
+    "@fastify/cookie": "^11.0.2",
     "@fastify/cors": "^11.0.0",
     "@fastify/helmet": "^13.0.0",
     "@fastify/rate-limit": "^10.2.0",
