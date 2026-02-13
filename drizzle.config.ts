@@ -9,6 +9,7 @@ export default defineConfig({
     "./src/db/schema/reactions.ts",
     "./src/db/schema/tracked-repos.ts",
     "./src/db/schema/community-settings.ts",
+    "./src/db/schema/categories.ts",
   ],
   out: "./drizzle",
   dialect: "postgresql",

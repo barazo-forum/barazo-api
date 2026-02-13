@@ -36,6 +36,27 @@
       "when": 1771000979854,
       "tag": "0004_petite_steve_rogers",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1771007702170,
+      "tag": "0005_silly_smasher",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1771008541415,
+      "tag": "0006_absent_domino",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1771020576514,
+      "tag": "0007_boring_killmonger",
+      "breakpoints": true
     }
   ]
 }

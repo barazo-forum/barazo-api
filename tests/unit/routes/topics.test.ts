@@ -246,6 +246,35 @@ async function buildTestApp(user?: RequestUser): Promise<FastifyInstance> {
   return app;
 }
 
+// ---------------------------------------------------------------------------
+// Maturity mock helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Set up mock DB responses for maturity filtering queries in GET /api/topics.
+ * The handler queries: (1) user profile, (2) allowed categories, then (3) topics.
+ * Each query goes through selectChain.where, so we queue mockResolvedValueOnce
+ * for the first two, letting the third fall through to the chainable default.
+ *
+ * @param authenticated - Whether the request user is authenticated (adds user profile query)
+ * @param allowedSlugs - Category slugs to return as allowed (default: ["general"])
+ */
+function setupMaturityMocks(
+  authenticated: boolean,
+  allowedSlugs: string[] = ["general"],
+): void {
+  if (authenticated) {
+    // User profile query: return a user with safe maturity (age not declared)
+    selectChain.where.mockResolvedValueOnce([
+      { ageDeclaredAt: null, maturityPref: "safe" },
+    ]);
+  }
+  // Categories query: return allowed category slugs
+  selectChain.where.mockResolvedValueOnce(
+    allowedSlugs.map((slug) => ({ slug })),
+  );
+}
+
 // ===========================================================================
 // Test suite
 // ===========================================================================
@@ -505,6 +534,7 @@ describe("topic routes", () => {
     });
 
     it("returns empty list when no topics exist", async () => {
+      setupMaturityMocks(true);
       // The list query ends with .limit() -- make it resolve to empty
       selectChain.limit.mockResolvedValueOnce([]);
 
@@ -520,6 +550,7 @@ describe("topic routes", () => {
     });
 
     it("returns topics with pagination cursor", async () => {
+      setupMaturityMocks(true);
       // Request limit=2 -> route fetches limit+1=3 items
       // Return 3 items to trigger "hasMore"
       const rows = [
@@ -541,6 +572,7 @@ describe("topic routes", () => {
     });
 
     it("returns null cursor when fewer items than limit", async () => {
+      setupMaturityMocks(true);
       const rows = [sampleTopicRow()];
       selectChain.limit.mockResolvedValueOnce(rows);
 
@@ -556,6 +588,7 @@ describe("topic routes", () => {
     });
 
     it("filters by category", async () => {
+      setupMaturityMocks(true, ["general", "support"]);
       selectChain.limit.mockResolvedValueOnce([]);
 
       const response = await app.inject({
@@ -568,6 +601,7 @@ describe("topic routes", () => {
     });
 
     it("filters by tag", async () => {
+      setupMaturityMocks(true);
       selectChain.limit.mockResolvedValueOnce([]);
 
       const response = await app.inject({
@@ -580,6 +614,7 @@ describe("topic routes", () => {
     });
 
     it("respects custom limit", async () => {
+      setupMaturityMocks(true);
       selectChain.limit.mockResolvedValueOnce([]);
 
       const response = await app.inject({
@@ -619,6 +654,7 @@ describe("topic routes", () => {
     });
 
     it("accepts cursor parameter", async () => {
+      setupMaturityMocks(true);
       const cursor = Buffer.from(JSON.stringify({ lastActivityAt: TEST_NOW, uri: TEST_URI })).toString("base64");
       selectChain.limit.mockResolvedValueOnce([]);
 
@@ -632,6 +668,7 @@ describe("topic routes", () => {
 
     it("works without authentication (public endpoint)", async () => {
       const noAuthApp = await buildTestApp(undefined);
+      setupMaturityMocks(false); // no user profile query when unauthenticated
       selectChain.limit.mockResolvedValueOnce([]);
 
       const response = await noAuthApp.inject({

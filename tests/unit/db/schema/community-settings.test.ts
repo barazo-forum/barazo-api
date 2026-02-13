@@ -22,6 +22,7 @@ describe("communitySettings schema", () => {
       "communityDid",
       "adminDid",
       "communityName",
+      "maturityRating",
       "createdAt",
       "updatedAt",
     ];
@@ -60,7 +61,12 @@ describe("communitySettings schema", () => {
     expect(columns.id.notNull).toBe(true);
     expect(columns.initialized.notNull).toBe(true);
     expect(columns.communityName.notNull).toBe(true);
+    expect(columns.maturityRating.notNull).toBe(true);
     expect(columns.createdAt.notNull).toBe(true);
     expect(columns.updatedAt.notNull).toBe(true);
+  });
+
+  it("has default value for maturityRating", () => {
+    expect(columns.maturityRating.hasDefault).toBe(true);
   });
 });

@@ -1,11 +1,14 @@
-import { eq, and, desc, sql } from "drizzle-orm";
+import { eq, and, desc, sql, inArray } from "drizzle-orm";
 import type { FastifyPluginCallback } from "fastify";
 import { createPdsClient } from "../lib/pds-client.js";
 import { notFound, forbidden, badRequest } from "../lib/api-errors.js";
+import { resolveMaxMaturity, allowedRatings, maturityAllows } from "../lib/content-filter.js";
+import type { MaturityUser } from "../lib/content-filter.js";
 import { createTopicSchema, updateTopicSchema, topicQuerySchema } from "../validation/topics.js";
 import { topics } from "../db/schema/topics.js";
 import { replies } from "../db/schema/replies.js";
 import { users } from "../db/schema/users.js";
+import { categories } from "../db/schema/categories.js";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -164,6 +167,7 @@ export function topicRoutes(): FastifyPluginCallback {
           },
           400: errorJsonSchema,
           401: errorJsonSchema,
+          403: errorJsonSchema,
           502: errorJsonSchema,
         },
       },
@@ -181,6 +185,30 @@ export function topicRoutes(): FastifyPluginCallback {
       const { title, content, category, tags } = parsed.data;
       const now = new Date().toISOString();
       const communityDid = env.COMMUNITY_DID ?? "did:plc:placeholder";
+
+      // Maturity check: verify user can post in this category
+      const catRows = await db
+        .select({ maturityRating: categories.maturityRating })
+        .from(categories)
+        .where(
+          and(
+            eq(categories.slug, category),
+            eq(categories.communityDid, communityDid),
+          ),
+        );
+
+      const categoryRating = catRows[0]?.maturityRating ?? "safe";
+
+      const userRows = await db
+        .select({ ageDeclaredAt: users.ageDeclaredAt, maturityPref: users.maturityPref })
+        .from(users)
+        .where(eq(users.did, user.did));
+      const userProfile: MaturityUser | undefined = userRows[0] ?? undefined;
+
+      const maxMaturity = resolveMaxMaturity(userProfile);
+      if (!maturityAllows(maxMaturity, categoryRating)) {
+        throw forbidden("Content restricted by maturity settings");
+      }
 
       // Build AT Protocol record
       const record: Record<string, unknown> = {
@@ -287,7 +315,45 @@ export function topicRoutes(): FastifyPluginCallback {
       const { cursor, limit, category, tag } = parsed.data;
       const conditions = [];
 
-      // Category filter
+      // Maturity filtering: resolve user's max allowed maturity level
+      let userProfile: MaturityUser | undefined;
+      if (request.user) {
+        const userRows = await db
+          .select({ ageDeclaredAt: users.ageDeclaredAt, maturityPref: users.maturityPref })
+          .from(users)
+          .where(eq(users.did, request.user.did));
+        const row = userRows[0];
+        if (row) {
+          userProfile = row;
+        }
+      }
+
+      const maxMaturity = resolveMaxMaturity(userProfile);
+      const allowed = allowedRatings(maxMaturity);
+      const communityDid = env.COMMUNITY_DID ?? "did:plc:placeholder";
+
+      // Get category slugs matching allowed maturity levels
+      const allowedCategories = await db
+        .select({ slug: categories.slug })
+        .from(categories)
+        .where(
+          and(
+            eq(categories.communityDid, communityDid),
+            inArray(categories.maturityRating, allowed),
+          ),
+        );
+
+      const allowedSlugs = allowedCategories.map((c) => c.slug);
+
+      // If no categories are allowed, return empty result
+      if (allowedSlugs.length === 0) {
+        return reply.status(200).send({ topics: [], cursor: null });
+      }
+
+      // Filter topics to only those in allowed categories
+      conditions.push(inArray(topics.category, allowedSlugs));
+
+      // Category filter (explicit user filter, further narrows results)
       if (category) {
         conditions.push(eq(topics.category, category));
       }
@@ -354,6 +420,7 @@ export function topicRoutes(): FastifyPluginCallback {
         },
         response: {
           200: topicJsonSchema,
+          403: errorJsonSchema,
           404: errorJsonSchema,
         },
       },
@@ -369,6 +436,37 @@ export function topicRoutes(): FastifyPluginCallback {
       const row = rows[0];
       if (!row) {
         throw notFound("Topic not found");
+      }
+
+      // Maturity check: verify the topic's category is within the user's allowed level
+      const communityDid = env.COMMUNITY_DID ?? "did:plc:placeholder";
+      const catRows = await db
+        .select({ maturityRating: categories.maturityRating })
+        .from(categories)
+        .where(
+          and(
+            eq(categories.slug, row.category),
+            eq(categories.communityDid, communityDid),
+          ),
+        );
+
+      if (catRows.length === 0) {
+        app.log.warn({ category: row.category, communityDid }, "Category not found for maturity check, defaulting to safe");
+      }
+      const categoryRating = catRows[0]?.maturityRating ?? "safe";
+
+      let userProfile: MaturityUser | undefined;
+      if (request.user) {
+        const userRows = await db
+          .select({ ageDeclaredAt: users.ageDeclaredAt, maturityPref: users.maturityPref })
+          .from(users)
+          .where(eq(users.did, request.user.did));
+        userProfile = userRows[0] ?? undefined;
+      }
+
+      const maxMaturity = resolveMaxMaturity(userProfile);
+      if (!maturityAllows(maxMaturity, categoryRating)) {
+        throw forbidden("Content restricted by maturity settings");
       }
 
       return reply.status(200).send(serializeTopic(row));

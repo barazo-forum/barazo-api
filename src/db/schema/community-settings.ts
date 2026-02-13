@@ -6,6 +6,11 @@ export const communitySettings = pgTable("community_settings", {
   communityDid: text("community_did"),
   adminDid: text("admin_did"),
   communityName: text("community_name").notNull().default("Barazo Community"),
+  maturityRating: text("maturity_rating", {
+    enum: ["safe", "mature", "adult"],
+  })
+    .notNull()
+    .default("safe"),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),

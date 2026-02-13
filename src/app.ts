@@ -23,6 +23,9 @@ import { authRoutes } from "./routes/auth.js";
 import { setupRoutes } from "./routes/setup.js";
 import { topicRoutes } from "./routes/topics.js";
 import { replyRoutes } from "./routes/replies.js";
+import { categoryRoutes } from "./routes/categories.js";
+import { adminSettingsRoutes } from "./routes/admin-settings.js";
+import { createRequireAdmin } from "./auth/require-admin.js";
 import { createSetupService } from "./setup/service.js";
 import type { SetupService } from "./setup/service.js";
 import type { Database } from "./db/index.js";
@@ -39,6 +42,7 @@ declare module "fastify" {
     sessionService: SessionService;
     authMiddleware: AuthMiddleware;
     setupService: SetupService;
+    requireAdmin: ReturnType<typeof createRequireAdmin>;
   }
 }
 
@@ -135,6 +139,10 @@ export async function buildApp(env: Env) {
   const setupService = createSetupService(db, app.log);
   app.decorate("setupService", setupService);
 
+  // Admin middleware
+  const requireAdmin = createRequireAdmin(db, authMiddleware, app.log);
+  app.decorate("requireAdmin", requireAdmin);
+
   // OpenAPI documentation (register before routes so schemas are collected)
   await app.register(swagger, {
     openapi: {
@@ -177,6 +185,8 @@ export async function buildApp(env: Env) {
   await app.register(setupRoutes());
   await app.register(topicRoutes());
   await app.register(replyRoutes());
+  await app.register(categoryRoutes());
+  await app.register(adminSettingsRoutes());
 
   // OpenAPI spec endpoint (after routes so all schemas are registered)
   app.get("/api/openapi.json", { schema: { hide: true } }, async (_request, reply) => {

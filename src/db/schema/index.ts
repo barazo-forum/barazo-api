@@ -5,3 +5,4 @@ export { replies } from "./replies.js";
 export { reactions } from "./reactions.js";
 export { trackedRepos } from "./tracked-repos.js";
 export { communitySettings } from "./community-settings.js";
+export { categories } from "./categories.js";

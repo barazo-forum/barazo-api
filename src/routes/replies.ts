@@ -2,10 +2,13 @@ import { eq, and, sql, asc } from "drizzle-orm";
 import type { FastifyPluginCallback } from "fastify";
 import { createPdsClient } from "../lib/pds-client.js";
 import { notFound, forbidden, badRequest } from "../lib/api-errors.js";
+import { resolveMaxMaturity, maturityAllows } from "../lib/content-filter.js";
+import type { MaturityUser } from "../lib/content-filter.js";
 import { createReplySchema, updateReplySchema, replyQuerySchema } from "../validation/replies.js";
 import { replies } from "../db/schema/replies.js";
 import { topics } from "../db/schema/topics.js";
 import { users } from "../db/schema/users.js";
+import { categories } from "../db/schema/categories.js";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -127,7 +130,7 @@ function extractRkey(uri: string): string {
  */
 export function replyRoutes(): FastifyPluginCallback {
   return (app, _opts, done) => {
-    const { db, authMiddleware, firehose } = app;
+    const { db, env, authMiddleware, firehose } = app;
     const pdsClient = createPdsClient(app.oauthClient, app.log);
 
     // -------------------------------------------------------------------
@@ -345,6 +348,40 @@ export function replyRoutes(): FastifyPluginCallback {
       const topic = topicRows[0];
       if (!topic) {
         throw notFound("Topic not found");
+      }
+
+      // Maturity check: verify the topic's category is within the user's allowed level
+      const communityDid = env.COMMUNITY_DID ?? "did:plc:placeholder";
+      const catRows = await db
+        .select({ maturityRating: categories.maturityRating })
+        .from(categories)
+        .where(
+          and(
+            eq(categories.slug, topic.category),
+            eq(categories.communityDid, communityDid),
+          ),
+        );
+
+      if (catRows.length === 0) {
+        app.log.warn({ category: topic.category, communityDid }, "Category not found for maturity check, defaulting to safe");
+      }
+      const categoryRating = catRows[0]?.maturityRating ?? "safe";
+
+      let userProfile: MaturityUser | undefined;
+      if (request.user) {
+        const userRows = await db
+          .select({ ageDeclaredAt: users.ageDeclaredAt, maturityPref: users.maturityPref })
+          .from(users)
+          .where(eq(users.did, request.user.did));
+        const row = userRows[0];
+        if (row) {
+          userProfile = row;
+        }
+      }
+
+      const maxMaturity = resolveMaxMaturity(userProfile);
+      if (!maturityAllows(maxMaturity, categoryRating)) {
+        throw forbidden("Content restricted by maturity settings");
       }
 
       const { cursor, limit } = parsedQuery.data;
