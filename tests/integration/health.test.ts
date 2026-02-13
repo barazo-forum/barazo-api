@@ -39,6 +39,12 @@ describe("health routes (integration)", () => {
       RATE_LIMIT_WRITE: 10,
       RATE_LIMIT_READ_ANON: 100,
       RATE_LIMIT_READ_AUTH: 300,
+      OAUTH_CLIENT_ID:
+        "http://localhost?redirect_uri=http%3A%2F%2F127.0.0.1%3A3000%2Fapi%2Fauth%2Fcallback",
+      OAUTH_REDIRECT_URI: "http://127.0.0.1:3000/api/auth/callback",
+      SESSION_SECRET: "integration-test-secret-minimum-32-chars",
+      OAUTH_SESSION_TTL: 604800,
+      OAUTH_ACCESS_TOKEN_TTL: 900,
     });
 
     await app.cache.connect();
