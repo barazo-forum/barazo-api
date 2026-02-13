@@ -1,38 +1,16 @@
 import { eq, and, count } from "drizzle-orm";
 import type { FastifyPluginCallback } from "fastify";
 import { notFound, badRequest, conflict } from "../lib/api-errors.js";
+import { isMaturityLowerThan } from "../lib/maturity.js";
 import {
   createCategorySchema,
   updateCategorySchema,
   updateMaturitySchema,
   categoryQuerySchema,
 } from "../validation/categories.js";
-import type { MaturityRating } from "../validation/categories.js";
 import { categories } from "../db/schema/categories.js";
 import { communitySettings } from "../db/schema/community-settings.js";
 import { topics } from "../db/schema/topics.js";
-
-// ---------------------------------------------------------------------------
-// Constants
-// ---------------------------------------------------------------------------
-
-const MATURITY_ORDER: Record<MaturityRating, number> = {
-  safe: 0,
-  mature: 1,
-  adult: 2,
-};
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-/**
- * Check if maturity rating `a` is lower than `b` in the hierarchy.
- * Hierarchy: safe < mature < adult
- */
-function isMaturityLowerThan(a: MaturityRating, b: MaturityRating): boolean {
-  return MATURITY_ORDER[a] < MATURITY_ORDER[b];
-}
 
 /**
  * Serialize a category row from the DB into a JSON-safe response object.
