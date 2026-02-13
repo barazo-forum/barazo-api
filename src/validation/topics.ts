@@ -14,14 +14,14 @@ export const createTopicSchema = z.object({
   content: z
     .string()
     .min(1, "Content is required")
-    .max(50000, "Content must be at most 50,000 characters"),
+    .max(100000, "Content must be at most 100,000 characters"),
   category: z
     .string()
     .trim()
     .min(1, "Category is required"),
   tags: z
     .array(
-      z.string().trim().min(1).max(50, "Tag must be at most 50 characters"),
+      z.string().trim().min(1).max(30, "Tag must be at most 30 characters"),
     )
     .max(5, "At most 5 tags allowed")
     .optional(),
@@ -40,7 +40,7 @@ export const updateTopicSchema = z.object({
   content: z
     .string()
     .min(1, "Content must not be empty")
-    .max(50000, "Content must be at most 50,000 characters")
+    .max(100000, "Content must be at most 100,000 characters")
     .optional(),
   category: z
     .string()
@@ -49,7 +49,7 @@ export const updateTopicSchema = z.object({
     .optional(),
   tags: z
     .array(
-      z.string().trim().min(1).max(50, "Tag must be at most 50 characters"),
+      z.string().trim().min(1).max(30, "Tag must be at most 30 characters"),
     )
     .max(5, "At most 5 tags allowed")
     .optional(),
