@@ -28,7 +28,7 @@
     "db:studio": "drizzle-kit studio"
   },
   "dependencies": {
-    "@atgora-forum/lexicons": "workspace:*",
+    "@atgora-forum/lexicons": "^0.1.0",
     "@atproto/api": "^0.18.21",
     "@atproto/oauth-client-node": "^0.3.16",
     "@atproto/tap": "^0.2.3",
