@@ -2,6 +2,17 @@ import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 import { buildApp } from "../../../src/app.js";
 import type { FastifyInstance } from "fastify";
 
+// Mock @atproto/oauth-client-node to avoid crypto operations
+vi.mock("@atproto/oauth-client-node", () => {
+  return {
+    NodeOAuthClient: class MockNodeOAuthClient {
+      clientMetadata = {};
+      jwks = { keys: [] };
+      addEventListener = vi.fn();
+    },
+  };
+});
+
 // Mock @atproto/tap to avoid real network connections
 vi.mock("@atproto/tap", () => {
   const mockChannel = {
@@ -57,6 +68,11 @@ describe("health routes", () => {
       RATE_LIMIT_WRITE: 10,
       RATE_LIMIT_READ_ANON: 100,
       RATE_LIMIT_READ_AUTH: 300,
+      OAUTH_CLIENT_ID: "http://localhost",
+      OAUTH_REDIRECT_URI: "http://127.0.0.1:3000/api/auth/callback",
+      SESSION_SECRET: "a".repeat(32),
+      OAUTH_SESSION_TTL: 604800,
+      OAUTH_ACCESS_TOKEN_TTL: 900,
     });
     await app.ready();
   });

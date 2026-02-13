@@ -4,11 +4,14 @@ import cors from "@fastify/cors";
 import rateLimit from "@fastify/rate-limit";
 import * as Sentry from "@sentry/node";
 import type { FastifyError } from "fastify";
+import type { NodeOAuthClient } from "@atproto/oauth-client-node";
 import type { Env } from "./config/env.js";
 import { createDb } from "./db/index.js";
 import { createCache } from "./cache/index.js";
 import { FirehoseService } from "./firehose/service.js";
+import { createOAuthClient } from "./auth/oauth-client.js";
 import healthRoutes from "./routes/health.js";
+import { oauthMetadataRoutes } from "./routes/oauth-metadata.js";
 import type { Database } from "./db/index.js";
 import type { Cache } from "./cache/index.js";
 
@@ -19,6 +22,7 @@ declare module "fastify" {
     cache: Cache;
     env: Env;
     firehose: FirehoseService;
+    oauthClient: NodeOAuthClient;
   }
 }
 
@@ -92,8 +96,13 @@ export async function buildApp(env: Env) {
     timeWindow: "1 minute",
   });
 
+  // OAuth client
+  const oauthClient = createOAuthClient(env, cache, app.log);
+  app.decorate("oauthClient", oauthClient);
+
   // Routes
   await app.register(healthRoutes);
+  await app.register(oauthMetadataRoutes(oauthClient));
 
   // Start firehose when app is ready
   app.addHook("onReady", async () => {
