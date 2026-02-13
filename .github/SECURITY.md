@@ -18,7 +18,7 @@ Instead, use GitHub's private vulnerability reporting:
 3. Click "Report a vulnerability"
 4. Fill in the details
 
-Or email: security@atgora.forum (TBD - will be set up in Phase 2)
+Or email: security@barazo.forum (TBD - will be set up in Phase 2)
 
 We will respond within 72 hours with next steps.
 

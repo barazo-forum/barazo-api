@@ -1,4 +1,4 @@
-import type { LEXICON_IDS } from "@atgora-forum/lexicons";
+import type { LEXICON_IDS } from "@barazo-forum/lexicons";
 
 /** Record actions from the firehose. */
 export type RecordAction = "create" | "update" | "delete";
@@ -49,11 +49,11 @@ export interface TapClient {
   removeRepos(dids: string[]): Promise<void>;
 }
 
-/** Collections supported by ATgora. */
+/** Collections supported by Barazo. */
 export const SUPPORTED_COLLECTIONS = [
-  "forum.atgora.topic.post",
-  "forum.atgora.topic.reply",
-  "forum.atgora.interaction.reaction",
+  "forum.barazo.topic.post",
+  "forum.barazo.topic.reply",
+  "forum.barazo.interaction.reaction",
 ] as const satisfies ReadonlyArray<
   (typeof LEXICON_IDS)[keyof typeof LEXICON_IDS]
 >;
@@ -62,7 +62,7 @@ export type SupportedCollection = (typeof SUPPORTED_COLLECTIONS)[number];
 
 /** Maps collection NSIDs to short indexer names. */
 export const COLLECTION_MAP: Record<SupportedCollection, string> = {
-  "forum.atgora.topic.post": "topic",
-  "forum.atgora.topic.reply": "reply",
-  "forum.atgora.interaction.reaction": "reaction",
+  "forum.barazo.topic.post": "topic",
+  "forum.barazo.topic.reply": "reply",
+  "forum.barazo.interaction.reaction": "reaction",
 } as const;

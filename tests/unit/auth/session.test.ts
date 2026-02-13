@@ -173,7 +173,7 @@ describe("SessionService", () => {
       };
 
       expect(setFn).toHaveBeenCalledWith(
-        `atgora:session:data:${session.sid}`,
+        `barazo:session:data:${session.sid}`,
         JSON.stringify(persisted),
         "EX",
         604800,
@@ -185,7 +185,7 @@ describe("SessionService", () => {
       const tokenHash = sha256(session.accessToken);
 
       expect(setFn).toHaveBeenCalledWith(
-        `atgora:session:access:${tokenHash}`,
+        `barazo:session:access:${tokenHash}`,
         session.sid,
         "EX",
         900,
@@ -196,7 +196,7 @@ describe("SessionService", () => {
       const session = await service.createSession(testDid, testHandle);
 
       expect(saddFn).toHaveBeenCalledWith(
-        `atgora:session:did:${testDid}`,
+        `barazo:session:did:${testDid}`,
         session.sid,
       );
     });
@@ -205,7 +205,7 @@ describe("SessionService", () => {
       await service.createSession(testDid, testHandle);
 
       expect(expireFn).toHaveBeenCalledWith(
-        `atgora:session:did:${testDid}`,
+        `barazo:session:did:${testDid}`,
         604800,
       );
     });
@@ -294,8 +294,8 @@ describe("SessionService", () => {
       const result = await service.validateAccessToken(rawToken);
 
       expect(result).toEqual(persisted);
-      expect(getFn).toHaveBeenCalledWith(`atgora:session:access:${tokenHash}`);
-      expect(getFn).toHaveBeenCalledWith(`atgora:session:data:${persisted.sid}`);
+      expect(getFn).toHaveBeenCalledWith(`barazo:session:access:${tokenHash}`);
+      expect(getFn).toHaveBeenCalledWith(`barazo:session:data:${persisted.sid}`);
     });
 
     it("returns undefined when access token not found", async () => {
@@ -381,7 +381,7 @@ describe("SessionService", () => {
 
       await service.refreshSession(persisted.sid);
 
-      expect(delFn).toHaveBeenCalledWith(`atgora:session:access:${oldTokenHash}`);
+      expect(delFn).toHaveBeenCalledWith(`barazo:session:access:${oldTokenHash}`);
     });
 
     it("creates new access token lookup", async () => {
@@ -396,7 +396,7 @@ describe("SessionService", () => {
       }
       const newTokenHash = sha256(result.accessToken);
       expect(setFn).toHaveBeenCalledWith(
-        `atgora:session:access:${newTokenHash}`,
+        `barazo:session:access:${newTokenHash}`,
         persisted.sid,
         "EX",
         900,
@@ -425,7 +425,7 @@ describe("SessionService", () => {
       };
 
       expect(setFn).toHaveBeenCalledWith(
-        `atgora:session:data:${persisted.sid}`,
+        `barazo:session:data:${persisted.sid}`,
         JSON.stringify(expectedPersisted),
         "EX",
         604800,
@@ -477,7 +477,7 @@ describe("SessionService", () => {
 
       await service.deleteSession(persisted.sid);
 
-      expect(delFn).toHaveBeenCalledWith(`atgora:session:data:${persisted.sid}`);
+      expect(delFn).toHaveBeenCalledWith(`barazo:session:data:${persisted.sid}`);
     });
 
     it("deletes access token lookup using stored hash", async () => {
@@ -488,7 +488,7 @@ describe("SessionService", () => {
 
       await service.deleteSession(persisted.sid);
 
-      expect(delFn).toHaveBeenCalledWith(`atgora:session:access:${tokenHash}`);
+      expect(delFn).toHaveBeenCalledWith(`barazo:session:access:${tokenHash}`);
     });
 
     it("removes session ID from DID index set", async () => {
@@ -499,7 +499,7 @@ describe("SessionService", () => {
       await service.deleteSession(persisted.sid);
 
       expect(sremFn).toHaveBeenCalledWith(
-        `atgora:session:did:${testDid}`,
+        `barazo:session:did:${testDid}`,
         persisted.sid,
       );
     });
@@ -558,7 +558,7 @@ describe("SessionService", () => {
       const count = await service.deleteAllSessionsForDid(testDid);
 
       expect(count).toBe(2);
-      expect(smembersFn).toHaveBeenCalledWith(`atgora:session:did:${testDid}`);
+      expect(smembersFn).toHaveBeenCalledWith(`barazo:session:did:${testDid}`);
     });
 
     it("returns count of deleted sessions", async () => {
@@ -588,7 +588,7 @@ describe("SessionService", () => {
 
       await service.deleteAllSessionsForDid(testDid);
 
-      expect(delFn).toHaveBeenCalledWith(`atgora:session:did:${testDid}`);
+      expect(delFn).toHaveBeenCalledWith(`barazo:session:did:${testDid}`);
     });
 
     it("returns 0 when DID has no sessions", async () => {

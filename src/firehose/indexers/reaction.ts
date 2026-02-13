@@ -5,8 +5,8 @@ import { replies } from "../../db/schema/replies.js";
 import type { Database } from "../../db/index.js";
 import type { Logger } from "../../lib/logger.js";
 
-const TOPIC_COLLECTION = "forum.atgora.topic.post";
-const REPLY_COLLECTION = "forum.atgora.topic.reply";
+const TOPIC_COLLECTION = "forum.barazo.topic.post";
+const REPLY_COLLECTION = "forum.barazo.topic.reply";
 
 interface CreateParams {
   uri: string;

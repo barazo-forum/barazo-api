@@ -1,14 +1,14 @@
 <div align="center">
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/atgora-forum/.github/main/assets/logo-dark.svg">
-  <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/atgora-forum/.github/main/assets/logo-light.svg">
-  <img alt="ATgora Logo" src="https://raw.githubusercontent.com/atgora-forum/.github/main/assets/logo-dark.svg" width="120">
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/barazo-forum/.github/main/assets/logo-dark.svg">
+  <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/barazo-forum/.github/main/assets/logo-light.svg">
+  <img alt="Barazo Logo" src="https://raw.githubusercontent.com/barazo-forum/.github/main/assets/logo-dark.svg" width="120">
 </picture>
 
-# atgora-api
+# barazo-api
 
-**AppView backend for ATgora forums**
+**AppView backend for Barazo forums**
 
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL%203.0-blue.svg)](https://opensource.org/licenses/AGPL-3.0)
 [![Node.js](https://img.shields.io/badge/node-24%20LTS-brightgreen)](https://nodejs.org/)
@@ -20,7 +20,7 @@
 
 ## 🚧 Status: Pre-Alpha Development
 
-This is the AppView backend for ATgora - community forums built on the AT Protocol.
+This is the AppView backend for Barazo - community forums built on the AT Protocol.
 
 **Current phase:** Planning complete, implementation starting Q1 2026
 
@@ -28,7 +28,7 @@ This is the AppView backend for ATgora - community forums built on the AT Protoc
 
 ## What is this?
 
-The atgora-api is the core engine that powers every ATgora forum. It:
+The barazo-api is the core engine that powers every Barazo forum. It:
 
 - **Subscribes to the AT Protocol firehose** - Indexes forum records in real-time
 - **Exposes a REST API** - All forum operations (topics, replies, reactions, search, moderation)
@@ -38,7 +38,7 @@ The atgora-api is the core engine that powers every ATgora forum. It:
 
 **Two operating modes:**
 - **Single-forum mode** - Indexes one community
-- **Global mode** - Aggregates ALL ATgora forums (like atgora.forum)
+- **Global mode** - Aggregates ALL Barazo forums (like barazo.forum)
 
 ---
 
@@ -61,7 +61,7 @@ The atgora-api is the core engine that powers every ATgora forum. It:
 
 ## Key Features (Planned MVP)
 
-- **Firehose subscription** - Tap-based subscription to Bluesky relay, filtered for `forum.atgora.*` records
+- **Firehose subscription** - Tap-based subscription to Bluesky relay, filtered for `forum.barazo.*` records
 - **Real-time indexing** - Topics, replies, reactions indexed to PostgreSQL
 - **OAuth authentication** - Works with any AT Protocol PDS (Bluesky, self-hosted, etc.)
 - **Full-text + semantic search** - PostgreSQL tsvector + pgvector hybrid search
@@ -85,8 +85,8 @@ The atgora-api is the core engine that powers every ATgora forum. It:
 
 **Clone and install:**
 ```bash
-git clone https://github.com/atgora-forum/atgora-api.git
-cd atgora-api
+git clone https://github.com/barazo-forum/barazo-api.git
+cd barazo-api
 pnpm install
 ```
 
@@ -120,7 +120,7 @@ pnpm typecheck
 When running, interactive API docs are available at:
 
 **Local:** `http://localhost:3000/docs`  
-**Production:** `https://api.atgora.forum/docs`
+**Production:** `https://api.barazo.forum/docs`
 
 OpenAPI spec: `GET /api/openapi.json`
 
@@ -147,18 +147,18 @@ See [CONTRIBUTING.md](../CONTRIBUTING.md) for:
 
 **Production deployment via Docker:**
 ```bash
-docker pull ghcr.io/atgora-forum/atgora-api:latest
+docker pull ghcr.io/barazo-forum/barazo-api:latest
 ```
 
-See [atgora-deploy](https://github.com/atgora-forum/atgora-deploy) for full deployment templates.
+See [barazo-deploy](https://github.com/barazo-forum/barazo-deploy) for full deployment templates.
 
 ---
 
 ## Documentation
 
 - **API Reference:** Served at `/docs` (auto-generated from code)
-- **User Guides:** [atgora.forum/docs](https://atgora.forum/docs) (coming soon)
-- **Architecture:** [PRD](https://github.com/atgora-forum/atgora-api/blob/main/docs/prd.md)
+- **User Guides:** [barazo.forum/docs](https://barazo.forum/docs) (coming soon)
+- **Architecture:** [PRD](https://github.com/barazo-forum/barazo-api/blob/main/docs/prd.md)
 
 ---
 
@@ -172,19 +172,19 @@ See [LICENSE](LICENSE) for full terms.
 
 ## Related Repositories
 
-- **[atgora-web](https://github.com/atgora-forum/atgora-web)** - Forum frontend (Next.js)
-- **[atgora-lexicons](https://github.com/atgora-forum/atgora-lexicons)** - AT Protocol schemas
-- **[atgora-deploy](https://github.com/atgora-forum/atgora-deploy)** - Deployment templates
-- **[Organization](https://github.com/atgora-forum)** - All repos
+- **[barazo-web](https://github.com/barazo-forum/barazo-web)** - Forum frontend (Next.js)
+- **[barazo-lexicons](https://github.com/barazo-forum/barazo-lexicons)** - AT Protocol schemas
+- **[barazo-deploy](https://github.com/barazo-forum/barazo-deploy)** - Deployment templates
+- **[Organization](https://github.com/barazo-forum)** - All repos
 
 ---
 
 ## Community
 
-- 🌐 **Website:** [atgora.forum](https://atgora.forum) (coming soon)
-- 💬 **Discussions:** [GitHub Discussions](https://github.com/orgs/atgora-forum/discussions)
-- 🐛 **Issues:** [Report bugs](https://github.com/atgora-forum/atgora-api/issues)
+- 🌐 **Website:** [barazo.forum](https://barazo.forum) (coming soon)
+- 💬 **Discussions:** [GitHub Discussions](https://github.com/orgs/barazo-forum/discussions)
+- 🐛 **Issues:** [Report bugs](https://github.com/barazo-forum/barazo-api/issues)
 
 ---
 
-© 2026 ATgora. Licensed under AGPL-3.0.
+© 2026 Barazo. Licensed under AGPL-3.0.

@@ -225,7 +225,7 @@ describe("auth routes", () => {
       // Verify cookie was set
       const cookies = response.cookies;
       const refreshCookie = cookies.find(
-        (c: { name: string }) => c.name === "atgora_refresh",
+        (c: { name: string }) => c.name === "barazo_refresh",
       );
       expect(refreshCookie).toBeDefined();
       expect(refreshCookie?.value).toBe(TEST_SID);
@@ -293,7 +293,7 @@ describe("auth routes", () => {
       const response = await app.inject({
         method: "POST",
         url: "/api/auth/refresh",
-        cookies: { atgora_refresh: TEST_SID },
+        cookies: { barazo_refresh: TEST_SID },
       });
 
       expect(response.statusCode).toBe(200);
@@ -307,7 +307,7 @@ describe("auth routes", () => {
       // Verify refresh cookie was re-set
       const cookies = response.cookies;
       const refreshCookie = cookies.find(
-        (c: { name: string }) => c.name === "atgora_refresh",
+        (c: { name: string }) => c.name === "barazo_refresh",
       );
       expect(refreshCookie).toBeDefined();
       expect(refreshCookie?.value).toBe(TEST_SID);
@@ -330,7 +330,7 @@ describe("auth routes", () => {
       const response = await app.inject({
         method: "POST",
         url: "/api/auth/refresh",
-        cookies: { atgora_refresh: TEST_SID },
+        cookies: { barazo_refresh: TEST_SID },
       });
 
       expect(response.statusCode).toBe(401);
@@ -340,7 +340,7 @@ describe("auth routes", () => {
       // Verify cookie was cleared
       const cookies = response.cookies;
       const refreshCookie = cookies.find(
-        (c: { name: string }) => c.name === "atgora_refresh",
+        (c: { name: string }) => c.name === "barazo_refresh",
       );
       expect(refreshCookie).toBeDefined();
       expect(refreshCookie?.value).toBe("");
@@ -358,7 +358,7 @@ describe("auth routes", () => {
       const response = await app.inject({
         method: "DELETE",
         url: "/api/auth/session",
-        cookies: { atgora_refresh: TEST_SID },
+        cookies: { barazo_refresh: TEST_SID },
       });
 
       expect(response.statusCode).toBe(204);
@@ -369,7 +369,7 @@ describe("auth routes", () => {
       // Verify cookie was cleared
       const cookies = response.cookies;
       const refreshCookie = cookies.find(
-        (c: { name: string }) => c.name === "atgora_refresh",
+        (c: { name: string }) => c.name === "barazo_refresh",
       );
       expect(refreshCookie).toBeDefined();
       expect(refreshCookie?.value).toBe("");
@@ -481,7 +481,7 @@ describe("auth routes", () => {
       const response = await app.inject({
         method: "POST",
         url: "/api/auth/refresh",
-        cookies: { atgora_refresh: TEST_SID },
+        cookies: { barazo_refresh: TEST_SID },
       });
 
       expect(response.statusCode).toBe(502);
@@ -495,7 +495,7 @@ describe("auth routes", () => {
       const response = await app.inject({
         method: "DELETE",
         url: "/api/auth/session",
-        cookies: { atgora_refresh: TEST_SID },
+        cookies: { barazo_refresh: TEST_SID },
       });
 
       expect(response.statusCode).toBe(502);
@@ -513,7 +513,7 @@ describe("auth routes (production mode)", () => {
   let prodApp: FastifyInstance;
 
   const prodEnv = {
-    OAUTH_CLIENT_ID: "https://forum.atgora.forum/oauth-client-metadata.json",
+    OAUTH_CLIENT_ID: "https://forum.barazo.forum/oauth-client-metadata.json",
     OAUTH_SESSION_TTL: 604800,
     OAUTH_ACCESS_TOKEN_TTL: 900,
     RATE_LIMIT_AUTH: 10,
@@ -557,7 +557,7 @@ describe("auth routes (production mode)", () => {
 
     const cookies = response.cookies;
     const refreshCookie = cookies.find(
-      (c: { name: string }) => c.name === "atgora_refresh",
+      (c: { name: string }) => c.name === "barazo_refresh",
     );
     expect(refreshCookie).toBeDefined();
     expect(refreshCookie?.secure).toBe(true);

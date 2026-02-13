@@ -63,13 +63,13 @@ jobs:
       postgres:
         image: pgvector/pgvector:pg16
         env:
-          POSTGRES_USER: atgora
-          POSTGRES_PASSWORD: atgora_dev
-          POSTGRES_DB: atgora
+          POSTGRES_USER: barazo
+          POSTGRES_PASSWORD: barazo_dev
+          POSTGRES_DB: barazo
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U atgora"
+          --health-cmd "pg_isready -U barazo"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
@@ -94,10 +94,10 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - run: pnpm db:migrate
         env:
-          DATABASE_URL: postgresql://atgora:atgora_dev@localhost:5432/atgora
+          DATABASE_URL: postgresql://barazo:barazo_dev@localhost:5432/barazo
       - run: pnpm test:integration
         env:
-          DATABASE_URL: postgresql://atgora:atgora_dev@localhost:5432/atgora
+          DATABASE_URL: postgresql://barazo:barazo_dev@localhost:5432/barazo
           VALKEY_URL: redis://localhost:6379
           TAP_URL: http://localhost:2480
           TAP_ADMIN_PASSWORD: tap_dev_secret

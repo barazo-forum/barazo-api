@@ -1,13 +1,13 @@
 {
-  "name": "atgora-api",
+  "name": "barazo-api",
   "version": "0.1.0",
-  "description": "ATgora AppView backend — AT Protocol forum API",
+  "description": "Barazo AppView backend — AT Protocol forum API",
   "type": "module",
   "packageManager": "pnpm@10.29.2",
   "license": "AGPL-3.0-only",
   "repository": {
     "type": "git",
-    "url": "https://github.com/atgora-forum/atgora-api.git"
+    "url": "https://github.com/barazo-forum/barazo-api.git"
   },
   "engines": {
     "node": ">=24.0.0"
@@ -28,7 +28,7 @@
     "db:studio": "drizzle-kit studio"
   },
   "dependencies": {
-    "@atgora-forum/lexicons": "^0.1.0",
+    "@barazo-forum/lexicons": "^0.1.0",
     "@atproto/api": "^0.18.21",
     "@atproto/oauth-client-node": "^0.3.16",
     "@atproto/tap": "^0.2.3",

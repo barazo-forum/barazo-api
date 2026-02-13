@@ -62,7 +62,7 @@ function createMockLogger(): Logger {
 // ---------------------------------------------------------------------------
 
 const TEST_DID = "did:plc:test123456789";
-const DEFAULT_COMMUNITY_NAME = "ATgora Community";
+const DEFAULT_COMMUNITY_NAME = "Barazo Community";
 
 // ---------------------------------------------------------------------------
 // Test suite

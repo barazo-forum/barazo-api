@@ -7,16 +7,16 @@ import {
 describe("firehose types", () => {
   describe("SUPPORTED_COLLECTIONS", () => {
     it("contains topic post collection", () => {
-      expect(SUPPORTED_COLLECTIONS).toContain("forum.atgora.topic.post");
+      expect(SUPPORTED_COLLECTIONS).toContain("forum.barazo.topic.post");
     });
 
     it("contains topic reply collection", () => {
-      expect(SUPPORTED_COLLECTIONS).toContain("forum.atgora.topic.reply");
+      expect(SUPPORTED_COLLECTIONS).toContain("forum.barazo.topic.reply");
     });
 
     it("contains reaction collection", () => {
       expect(SUPPORTED_COLLECTIONS).toContain(
-        "forum.atgora.interaction.reaction",
+        "forum.barazo.interaction.reaction",
       );
     });
 
@@ -27,15 +27,15 @@ describe("firehose types", () => {
 
   describe("COLLECTION_MAP", () => {
     it("maps topic post to 'topic'", () => {
-      expect(COLLECTION_MAP["forum.atgora.topic.post"]).toBe("topic");
+      expect(COLLECTION_MAP["forum.barazo.topic.post"]).toBe("topic");
     });
 
     it("maps topic reply to 'reply'", () => {
-      expect(COLLECTION_MAP["forum.atgora.topic.reply"]).toBe("reply");
+      expect(COLLECTION_MAP["forum.barazo.topic.reply"]).toBe("reply");
     });
 
     it("maps reaction to 'reaction'", () => {
-      expect(COLLECTION_MAP["forum.atgora.interaction.reaction"]).toBe(
+      expect(COLLECTION_MAP["forum.barazo.interaction.reaction"]).toBe(
         "reaction",
       );
     });

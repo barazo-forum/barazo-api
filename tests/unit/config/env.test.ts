@@ -3,7 +3,7 @@ import { envSchema, parseEnv } from "../../../src/config/env.js";
 
 describe("envSchema", () => {
   const validEnv = {
-    DATABASE_URL: "postgresql://atgora:atgora_dev@localhost:5432/atgora",
+    DATABASE_URL: "postgresql://barazo:barazo_dev@localhost:5432/barazo",
     VALKEY_URL: "redis://localhost:6379",
     TAP_URL: "http://localhost:2480",
     TAP_ADMIN_PASSWORD: "tap_dev_secret",

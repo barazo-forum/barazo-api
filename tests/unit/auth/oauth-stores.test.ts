@@ -84,7 +84,7 @@ describe("ValkeyStateStore", () => {
       await store.set("abc123", mockState);
 
       expect(setFn).toHaveBeenCalledWith(
-        "atgora:oauth:state:abc123",
+        "barazo:oauth:state:abc123",
         JSON.stringify(mockState),
         "EX",
         300,
@@ -95,7 +95,7 @@ describe("ValkeyStateStore", () => {
       await store.set("abc123", mockState);
 
       expect(debugFn).toHaveBeenCalledWith(
-        { key: "atgora:oauth:state:abc123" },
+        { key: "barazo:oauth:state:abc123" },
         "OAuth state stored",
       );
     });
@@ -108,7 +108,7 @@ describe("ValkeyStateStore", () => {
         "Valkey connection refused",
       );
       expect(errorFn).toHaveBeenCalledWith(
-        { err: error, key: "atgora:oauth:state:abc123" },
+        { err: error, key: "barazo:oauth:state:abc123" },
         "Failed to store OAuth state",
       );
     });
@@ -121,7 +121,7 @@ describe("ValkeyStateStore", () => {
       const result = await store.get("nonexistent");
 
       expect(result).toBeUndefined();
-      expect(getFn).toHaveBeenCalledWith("atgora:oauth:state:nonexistent");
+      expect(getFn).toHaveBeenCalledWith("barazo:oauth:state:nonexistent");
     });
 
     it("returns deserialized state when found", async () => {
@@ -138,7 +138,7 @@ describe("ValkeyStateStore", () => {
 
       await expect(store.get("abc123")).rejects.toThrow("Valkey timeout");
       expect(errorFn).toHaveBeenCalledWith(
-        { err: error, key: "atgora:oauth:state:abc123" },
+        { err: error, key: "barazo:oauth:state:abc123" },
         "Failed to retrieve OAuth state",
       );
     });
@@ -148,14 +148,14 @@ describe("ValkeyStateStore", () => {
     it("deletes with correct key prefix", async () => {
       await store.del("abc123");
 
-      expect(delFn).toHaveBeenCalledWith("atgora:oauth:state:abc123");
+      expect(delFn).toHaveBeenCalledWith("barazo:oauth:state:abc123");
     });
 
     it("logs debug on success", async () => {
       await store.del("abc123");
 
       expect(debugFn).toHaveBeenCalledWith(
-        { key: "atgora:oauth:state:abc123" },
+        { key: "barazo:oauth:state:abc123" },
         "OAuth state deleted",
       );
     });
@@ -166,7 +166,7 @@ describe("ValkeyStateStore", () => {
 
       await expect(store.del("abc123")).rejects.toThrow("Valkey error");
       expect(errorFn).toHaveBeenCalledWith(
-        { err: error, key: "atgora:oauth:state:abc123" },
+        { err: error, key: "barazo:oauth:state:abc123" },
         "Failed to delete OAuth state",
       );
     });
@@ -199,7 +199,7 @@ describe("ValkeySessionStore", () => {
       await store.set(sub, mockSession);
 
       expect(setFn).toHaveBeenCalledWith(
-        "atgora:oauth:session:did:plc:test-user-123",
+        "barazo:oauth:session:did:plc:test-user-123",
         JSON.stringify(mockSession),
         "EX",
         604800,
@@ -212,7 +212,7 @@ describe("ValkeySessionStore", () => {
       await customStore.set("did:plc:test", mockSession);
 
       expect(setFn).toHaveBeenCalledWith(
-        "atgora:oauth:session:did:plc:test",
+        "barazo:oauth:session:did:plc:test",
         JSON.stringify(mockSession),
         "EX",
         3600,
@@ -227,7 +227,7 @@ describe("ValkeySessionStore", () => {
         store.set("did:plc:test", mockSession),
       ).rejects.toThrow("Valkey write error");
       expect(errorFn).toHaveBeenCalledWith(
-        { err: error, key: "atgora:oauth:session:did:plc:test" },
+        { err: error, key: "barazo:oauth:session:did:plc:test" },
         "Failed to store OAuth session",
       );
     });
@@ -249,7 +249,7 @@ describe("ValkeySessionStore", () => {
 
       expect(result).toEqual(mockSession);
       expect(getFn).toHaveBeenCalledWith(
-        "atgora:oauth:session:did:plc:test-user-123",
+        "barazo:oauth:session:did:plc:test-user-123",
       );
     });
 
@@ -268,7 +268,7 @@ describe("ValkeySessionStore", () => {
       await store.del("did:plc:test-user-123");
 
       expect(delFn).toHaveBeenCalledWith(
-        "atgora:oauth:session:did:plc:test-user-123",
+        "barazo:oauth:session:did:plc:test-user-123",
       );
     });
 

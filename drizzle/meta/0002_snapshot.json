@@ -661,7 +661,7 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true,
-          "default": "'ATgora Community'"
+          "default": "'Barazo Community'"
         },
         "created_at": {
           "name": "created_at",

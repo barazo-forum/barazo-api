@@ -59,7 +59,7 @@ function createMockLogger() {
 
 function createMockEnv(overrides: Partial<Env> = {}): Env {
   return {
-    DATABASE_URL: "postgresql://localhost/atgora",
+    DATABASE_URL: "postgresql://localhost/barazo",
     VALKEY_URL: "redis://localhost:6379",
     TAP_URL: "https://tap.example.com",
     TAP_ADMIN_PASSWORD: "test-password",
@@ -68,7 +68,7 @@ function createMockEnv(overrides: Partial<Env> = {}): Env {
     LOG_LEVEL: "info",
     CORS_ORIGINS: "http://localhost:3001",
     COMMUNITY_MODE: "single",
-    COMMUNITY_NAME: "ATgora Community",
+    COMMUNITY_NAME: "Barazo Community",
     RATE_LIMIT_AUTH: 10,
     RATE_LIMIT_WRITE: 10,
     RATE_LIMIT_READ_ANON: 100,
@@ -122,8 +122,8 @@ describe("createOAuthClient", () => {
 
     it("uses production client_id when not starting with http://localhost", () => {
       const env = createMockEnv({
-        OAUTH_CLIENT_ID: "https://forum.atgora.forum/oauth-client-metadata.json",
-        OAUTH_REDIRECT_URI: "https://forum.atgora.forum/api/auth/callback",
+        OAUTH_CLIENT_ID: "https://forum.barazo.forum/oauth-client-metadata.json",
+        OAUTH_REDIRECT_URI: "https://forum.barazo.forum/api/auth/callback",
       });
 
       createOAuthClient(env, cacheMocks.cache, logMocks.logger);
@@ -131,7 +131,7 @@ describe("createOAuthClient", () => {
       const options = getLastConstructorOptions();
       const metadata = options.clientMetadata as { client_id: string };
       expect(metadata.client_id).toBe(
-        "https://forum.atgora.forum/oauth-client-metadata.json",
+        "https://forum.barazo.forum/oauth-client-metadata.json",
       );
     });
   });
@@ -153,7 +153,7 @@ describe("createOAuthClient", () => {
         dpop_bound_access_tokens: boolean;
       };
 
-      expect(metadata.client_name).toBe("ATgora Forum");
+      expect(metadata.client_name).toBe("Barazo Forum");
       expect(metadata.scope).toBe("atproto transition:generic");
       expect(metadata.grant_types).toEqual(["authorization_code", "refresh_token"]);
       expect(metadata.response_types).toEqual(["code"]);
@@ -178,14 +178,14 @@ describe("createOAuthClient", () => {
 
     it("derives client_uri from OAUTH_CLIENT_ID in production mode", () => {
       const env = createMockEnv({
-        OAUTH_CLIENT_ID: "https://forum.atgora.forum/oauth-client-metadata.json",
+        OAUTH_CLIENT_ID: "https://forum.barazo.forum/oauth-client-metadata.json",
       });
 
       createOAuthClient(env, cacheMocks.cache, logMocks.logger);
 
       const options = getLastConstructorOptions();
       const metadata = options.clientMetadata as { client_uri: string };
-      expect(metadata.client_uri).toBe("https://forum.atgora.forum");
+      expect(metadata.client_uri).toBe("https://forum.barazo.forum");
     });
 
     it("uses http://localhost as client_uri in loopback mode", () => {
@@ -249,7 +249,7 @@ describe("createOAuthClient", () => {
 
     it("logs creation info in production mode", () => {
       const env = createMockEnv({
-        OAUTH_CLIENT_ID: "https://forum.atgora.forum/oauth-client-metadata.json",
+        OAUTH_CLIENT_ID: "https://forum.barazo.forum/oauth-client-metadata.json",
       });
 
       createOAuthClient(env, cacheMocks.cache, logMocks.logger);
@@ -257,7 +257,7 @@ describe("createOAuthClient", () => {
       expect(logMocks.infoFn).toHaveBeenCalledWith(
         {
           loopback: false,
-          clientId: "https://forum.atgora.forum/oauth-client-metadata.json",
+          clientId: "https://forum.barazo.forum/oauth-client-metadata.json",
         },
         "Creating OAuth client",
       );
@@ -299,14 +299,14 @@ describe("requestLock (via createOAuthClient internals)", () => {
 
     expect(result).toBe("test-result");
     expect(cacheMocks.setFn).toHaveBeenCalledWith(
-      "atgora:oauth:lock:test-lock",
+      "barazo:oauth:lock:test-lock",
       "1",
       "EX",
       10,
       "NX",
     );
     // Lock released after function execution
-    expect(cacheMocks.delFn).toHaveBeenCalledWith("atgora:oauth:lock:test-lock");
+    expect(cacheMocks.delFn).toHaveBeenCalledWith("barazo:oauth:lock:test-lock");
   });
 
   it("releases lock even when function throws", async () => {
@@ -329,7 +329,7 @@ describe("requestLock (via createOAuthClient internals)", () => {
     ).rejects.toThrow("function error");
 
     // Lock was still released
-    expect(cacheMocks.delFn).toHaveBeenCalledWith("atgora:oauth:lock:test-lock");
+    expect(cacheMocks.delFn).toHaveBeenCalledWith("barazo:oauth:lock:test-lock");
   });
 
   it("retries once when lock is not acquired", async () => {

@@ -184,7 +184,7 @@ describe("setup routes", () => {
       initializeFn.mockResolvedValueOnce({
         initialized: true,
         adminDid: TEST_DID,
-        communityName: "ATgora Community",
+        communityName: "Barazo Community",
       });
 
       const response = await app.inject({
@@ -200,7 +200,7 @@ describe("setup routes", () => {
       expect(response.json()).toStrictEqual({
         initialized: true,
         adminDid: TEST_DID,
-        communityName: "ATgora Community",
+        communityName: "Barazo Community",
       });
       expect(initializeFn).toHaveBeenCalledWith(TEST_DID, undefined);
     });

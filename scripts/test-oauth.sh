@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ---------------------------------------------------------------------------
-# test-oauth.sh -- Manual OAuth verification for ATgora API (M3 Checkpoint)
+# test-oauth.sh -- Manual OAuth verification for Barazo API (M3 Checkpoint)
 #
 # This script starts the API (with dependencies) and walks you through
 # testing the full AT Protocol OAuth flow against bsky.social.
@@ -22,8 +22,8 @@ set -euo pipefail
 API_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 API_PORT="${PORT:-3000}"
 API_BASE="http://localhost:${API_PORT}"
-PG_CONTAINER="atgora-test-pg"
-VK_CONTAINER="atgora-test-valkey"
+PG_CONTAINER="barazo-test-pg"
+VK_CONTAINER="barazo-test-valkey"
 
 # Colors (if terminal supports them)
 if [ -t 1 ]; then
@@ -50,7 +50,7 @@ cleanup() {
     wait "$API_PID" 2>/dev/null || true
   fi
   # Leave Docker containers running so you can re-run quickly.
-  # To stop them: docker stop atgora-test-pg atgora-test-valkey
+  # To stop them: docker stop barazo-test-pg barazo-test-valkey
   info "Docker containers left running for quick re-runs."
   info "To stop: docker stop $PG_CONTAINER $VK_CONTAINER"
 }
@@ -82,9 +82,9 @@ if docker ps --format '{{.Names}}' | grep -q "^${PG_CONTAINER}$"; then
 else
   info "Starting PostgreSQL 16 + pgvector..."
   docker run -d --name "$PG_CONTAINER" \
-    -e POSTGRES_USER=atgora \
-    -e POSTGRES_PASSWORD=atgora_dev \
-    -e POSTGRES_DB=atgora \
+    -e POSTGRES_USER=barazo \
+    -e POSTGRES_PASSWORD=barazo_dev \
+    -e POSTGRES_DB=barazo \
     -p 5432:5432 \
     pgvector/pgvector:pg16 >/dev/null 2>&1 || {
       # Container might exist but be stopped
@@ -106,7 +106,7 @@ fi
 # Wait for PostgreSQL to accept connections
 info "Waiting for PostgreSQL to be ready..."
 for i in $(seq 1 30); do
-  if docker exec "$PG_CONTAINER" pg_isready -U atgora >/dev/null 2>&1; then
+  if docker exec "$PG_CONTAINER" pg_isready -U barazo >/dev/null 2>&1; then
     break
   fi
   if [ "$i" -eq 30 ]; then
@@ -131,9 +131,9 @@ if [ ! -f .env ]; then
   cp .env.example .env
   # Set a real session secret for testing
   if [[ "$OSTYPE" == "darwin"* ]]; then
-    sed -i '' 's/your-session-secret-minimum-32-characters-long/atgora-dev-session-secret-for-local-testing-only/' .env
+    sed -i '' 's/your-session-secret-minimum-32-characters-long/barazo-dev-session-secret-for-local-testing-only/' .env
   else
-    sed -i 's/your-session-secret-minimum-32-characters-long/atgora-dev-session-secret-for-local-testing-only/' .env
+    sed -i 's/your-session-secret-minimum-32-characters-long/barazo-dev-session-secret-for-local-testing-only/' .env
   fi
 fi
 
@@ -145,7 +145,7 @@ pnpm db:migrate 2>&1 || {
 # ---------------------------------------------------------------------------
 # 4. Start the API
 # ---------------------------------------------------------------------------
-step "Starting ATgora API on port ${API_PORT}"
+step "Starting Barazo API on port ${API_PORT}"
 
 # Source .env for the API process
 set -a
@@ -238,7 +238,7 @@ echo -e "${BOLD}================================================================
 echo ""
 echo -e "  ${BOLD}Step 1: Authorize in browser${RESET}"
 echo "    - Your browser should show the Bluesky authorization page."
-echo "    - Log in / authorize the ATgora application."
+echo "    - Log in / authorize the Barazo application."
 echo "    - After authorizing, you'll be redirected to the callback URL."
 echo ""
 echo -e "  ${BOLD}Step 2: Check the callback response${RESET}"
@@ -264,7 +264,7 @@ echo -e "  ${BOLD}Step 4: Verify POST /api/auth/refresh${RESET}"
 echo "    - The callback set an HTTP-only cookie. Use the cookie jar:"
 echo ""
 echo -e "    ${CYAN}curl -s -X POST ${API_BASE}/api/auth/refresh \\\\${RESET}"
-echo -e "    ${CYAN}  -b 'atgora_refresh=SESSION_ID' | python3 -m json.tool${RESET}"
+echo -e "    ${CYAN}  -b 'barazo_refresh=SESSION_ID' | python3 -m json.tool${RESET}"
 echo ""
 echo "    - Expected: { \"accessToken\": \"...\", \"expiresAt\": ... }"
 echo "    - (You'll need to capture the cookie from the callback response"
@@ -301,7 +301,7 @@ echo ""
 echo -e "  ${BOLD}Step 6: Verify logout${RESET}"
 echo ""
 echo -e "    ${CYAN}curl -s -X DELETE ${API_BASE}/api/auth/session \\\\${RESET}"
-echo -e "    ${CYAN}  -b 'atgora_refresh=SESSION_ID' -w '\\nHTTP %{http_code}\\n'${RESET}"
+echo -e "    ${CYAN}  -b 'barazo_refresh=SESSION_ID' -w '\\nHTTP %{http_code}\\n'${RESET}"
 echo ""
 echo "    - Expected: HTTP 204 (no content)"
 echo ""

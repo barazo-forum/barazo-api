@@ -5,10 +5,10 @@ import type { NodeOAuthClient } from "@atproto/oauth-client-node";
 import { oauthMetadataRoutes } from "../../../src/routes/oauth-metadata.js";
 
 const mockClientMetadata = {
-  client_id: "https://forum.atgora.forum/oauth-client-metadata.json",
-  client_name: "ATgora Forum",
-  client_uri: "https://forum.atgora.forum",
-  redirect_uris: ["https://forum.atgora.forum/api/auth/callback"],
+  client_id: "https://forum.barazo.forum/oauth-client-metadata.json",
+  client_name: "Barazo Forum",
+  client_uri: "https://forum.barazo.forum",
+  redirect_uris: ["https://forum.barazo.forum/api/auth/callback"],
   scope: "atproto transition:generic",
   grant_types: ["authorization_code", "refresh_token"],
   response_types: ["code"],

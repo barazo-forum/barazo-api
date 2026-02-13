@@ -50,7 +50,7 @@ function createMockLogger() {
 
 describe("ReplyIndexer", () => {
   const baseParams = {
-    uri: "at://did:plc:test/forum.atgora.topic.reply/reply1",
+    uri: "at://did:plc:test/forum.barazo.topic.reply/reply1",
     rkey: "reply1",
     did: "did:plc:test",
     cid: "bafyreply",
@@ -67,8 +67,8 @@ describe("ReplyIndexer", () => {
         ...baseParams,
         record: {
           content: "A reply",
-          root: { uri: "at://did:plc:test/forum.atgora.topic.post/topic1", cid: "bafytopic" },
-          parent: { uri: "at://did:plc:test/forum.atgora.topic.post/topic1", cid: "bafytopic" },
+          root: { uri: "at://did:plc:test/forum.barazo.topic.post/topic1", cid: "bafytopic" },
+          parent: { uri: "at://did:plc:test/forum.barazo.topic.post/topic1", cid: "bafytopic" },
           community: "did:plc:community",
           createdAt: "2026-01-01T00:00:00.000Z",
         },
@@ -88,8 +88,8 @@ describe("ReplyIndexer", () => {
         ...baseParams,
         record: {
           content: "Updated reply",
-          root: { uri: "at://did:plc:test/forum.atgora.topic.post/topic1", cid: "bafytopic" },
-          parent: { uri: "at://did:plc:test/forum.atgora.topic.post/topic1", cid: "bafytopic" },
+          root: { uri: "at://did:plc:test/forum.barazo.topic.post/topic1", cid: "bafytopic" },
+          parent: { uri: "at://did:plc:test/forum.barazo.topic.post/topic1", cid: "bafytopic" },
           community: "did:plc:community",
           createdAt: "2026-01-01T00:00:00.000Z",
         },
@@ -109,7 +109,7 @@ describe("ReplyIndexer", () => {
         uri: baseParams.uri,
         rkey: baseParams.rkey,
         did: baseParams.did,
-        rootUri: "at://did:plc:test/forum.atgora.topic.post/topic1",
+        rootUri: "at://did:plc:test/forum.barazo.topic.post/topic1",
       });
 
       expect(db.transaction).toHaveBeenCalledTimes(1);

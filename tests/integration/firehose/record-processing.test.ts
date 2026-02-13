@@ -15,7 +15,7 @@ import type postgres from "postgres";
 
 const DATABASE_URL =
   process.env["DATABASE_URL"] ??
-  "postgresql://atgora:atgora_dev@localhost:5432/atgora";
+  "postgresql://barazo:barazo_dev@localhost:5432/barazo";
 
 function createLogger() {
   return {
@@ -72,7 +72,7 @@ describe("firehose record processing (integration)", () => {
       action: "create",
       did: "did:plc:integ-user1",
       rev: "rev1",
-      collection: "forum.atgora.topic.post",
+      collection: "forum.barazo.topic.post",
       rkey: "topic1",
       record: {
         title: "Integration Test Topic",
@@ -95,7 +95,7 @@ describe("firehose record processing (integration)", () => {
           .where(
             eq(
               topics.uri,
-              "at://did:plc:integ-user1/forum.atgora.topic.post/topic1",
+              "at://did:plc:integ-user1/forum.barazo.topic.post/topic1",
             ),
           ),
       );
@@ -126,7 +126,7 @@ describe("firehose record processing (integration)", () => {
         action: "update",
         did: "did:plc:integ-user1",
         rev: "rev2",
-        collection: "forum.atgora.topic.post",
+        collection: "forum.barazo.topic.post",
         rkey: "topic1",
         record: {
           title: "Updated Topic Title",
@@ -148,7 +148,7 @@ describe("firehose record processing (integration)", () => {
           .where(
             eq(
               topics.uri,
-              "at://did:plc:integ-user1/forum.atgora.topic.post/topic1",
+              "at://did:plc:integ-user1/forum.barazo.topic.post/topic1",
             ),
           ),
       );
@@ -167,7 +167,7 @@ describe("firehose record processing (integration)", () => {
         action: "delete",
         did: "did:plc:integ-user1",
         rev: "rev3",
-        collection: "forum.atgora.topic.post",
+        collection: "forum.barazo.topic.post",
         rkey: "topic1",
         live: true,
       };
@@ -180,7 +180,7 @@ describe("firehose record processing (integration)", () => {
         .where(
           eq(
             topics.uri,
-            "at://did:plc:integ-user1/forum.atgora.topic.post/topic1",
+            "at://did:plc:integ-user1/forum.barazo.topic.post/topic1",
           ),
         );
 
@@ -190,7 +190,7 @@ describe("firehose record processing (integration)", () => {
 
   describe("reply with count updates", () => {
     const topicUri =
-      "at://did:plc:integ-user1/forum.atgora.topic.post/topic1";
+      "at://did:plc:integ-user1/forum.barazo.topic.post/topic1";
 
     beforeEach(async () => {
       // Create a topic first for replies to attach to
@@ -199,7 +199,7 @@ describe("firehose record processing (integration)", () => {
         action: "create",
         did: "did:plc:integ-user1",
         rev: "rev1",
-        collection: "forum.atgora.topic.post",
+        collection: "forum.barazo.topic.post",
         rkey: "topic1",
         record: {
           title: "Parent Topic",
@@ -219,7 +219,7 @@ describe("firehose record processing (integration)", () => {
         action: "create",
         did: "did:plc:integ-user2",
         rev: "rev1",
-        collection: "forum.atgora.topic.reply",
+        collection: "forum.barazo.topic.reply",
         rkey: "reply1",
         record: {
           content: "This is a reply",
@@ -240,7 +240,7 @@ describe("firehose record processing (integration)", () => {
           .where(
             eq(
               replies.uri,
-              "at://did:plc:integ-user2/forum.atgora.topic.reply/reply1",
+              "at://did:plc:integ-user2/forum.barazo.topic.reply/reply1",
             ),
           ),
       );
@@ -264,7 +264,7 @@ describe("firehose record processing (integration)", () => {
           action: "create",
           did: `did:plc:integ-user${String(i + 1)}`,
           rev: "rev1",
-          collection: "forum.atgora.topic.reply",
+          collection: "forum.barazo.topic.reply",
           rkey: `reply${String(i)}`,
           record: {
             content: `Reply ${String(i)}`,
@@ -288,7 +288,7 @@ describe("firehose record processing (integration)", () => {
 
   describe("reaction with count updates", () => {
     const topicUri =
-      "at://did:plc:integ-user1/forum.atgora.topic.post/topic1";
+      "at://did:plc:integ-user1/forum.barazo.topic.post/topic1";
 
     beforeEach(async () => {
       await handler.handle({
@@ -296,7 +296,7 @@ describe("firehose record processing (integration)", () => {
         action: "create",
         did: "did:plc:integ-user1",
         rev: "rev1",
-        collection: "forum.atgora.topic.post",
+        collection: "forum.barazo.topic.post",
         rkey: "topic1",
         record: {
           title: "Reactable Topic",
@@ -316,7 +316,7 @@ describe("firehose record processing (integration)", () => {
         action: "create",
         did: "did:plc:integ-user2",
         rev: "rev1",
-        collection: "forum.atgora.interaction.reaction",
+        collection: "forum.barazo.interaction.reaction",
         rkey: "react1",
         record: {
           subject: { uri: topicUri, cid: "bafytopic1" },
@@ -336,7 +336,7 @@ describe("firehose record processing (integration)", () => {
           .where(
             eq(
               reactions.uri,
-              "at://did:plc:integ-user2/forum.atgora.interaction.reaction/react1",
+              "at://did:plc:integ-user2/forum.barazo.interaction.reaction/react1",
             ),
           ),
       );
@@ -360,7 +360,7 @@ describe("firehose record processing (integration)", () => {
         action: "create",
         did: "did:plc:integ-user1",
         rev: "rev1",
-        collection: "forum.atgora.topic.post",
+        collection: "forum.barazo.topic.post",
         rkey: "idem-topic1",
         record: {
           title: "Idempotent Topic",
@@ -383,7 +383,7 @@ describe("firehose record processing (integration)", () => {
         .where(
           eq(
             topics.uri,
-            "at://did:plc:integ-user1/forum.atgora.topic.post/idem-topic1",
+            "at://did:plc:integ-user1/forum.barazo.topic.post/idem-topic1",
           ),
         );
 
@@ -395,7 +395,7 @@ describe("firehose record processing (integration)", () => {
 
     it("replaying a reply create does not duplicate rows", async () => {
       const topicUri =
-        "at://did:plc:integ-user1/forum.atgora.topic.post/idem-topic2";
+        "at://did:plc:integ-user1/forum.barazo.topic.post/idem-topic2";
 
       // Create topic
       await handler.handle({
@@ -403,7 +403,7 @@ describe("firehose record processing (integration)", () => {
         action: "create",
         did: "did:plc:integ-user1",
         rev: "rev1",
-        collection: "forum.atgora.topic.post",
+        collection: "forum.barazo.topic.post",
         rkey: "idem-topic2",
         record: {
           title: "Topic for replay test",
@@ -421,7 +421,7 @@ describe("firehose record processing (integration)", () => {
         action: "create",
         did: "did:plc:integ-user2",
         rev: "rev1",
-        collection: "forum.atgora.topic.reply",
+        collection: "forum.barazo.topic.reply",
         rkey: "idem-reply1",
         record: {
           content: "Replay test reply",
@@ -445,7 +445,7 @@ describe("firehose record processing (integration)", () => {
         .where(
           eq(
             replies.uri,
-            "at://did:plc:integ-user2/forum.atgora.topic.reply/idem-reply1",
+            "at://did:plc:integ-user2/forum.barazo.topic.reply/idem-reply1",
           ),
         );
 
@@ -482,7 +482,7 @@ describe("firehose record processing (integration)", () => {
         action: "create",
         did: "did:plc:integ-user1",
         rev: "rev1",
-        collection: "forum.atgora.topic.post",
+        collection: "forum.barazo.topic.post",
         rkey: "bad1",
         record: { invalid: "data" },
         cid: "bafybad1",

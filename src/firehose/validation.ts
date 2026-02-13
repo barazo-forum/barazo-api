@@ -2,7 +2,7 @@ import {
   topicPostSchema,
   topicReplySchema,
   reactionSchema,
-} from "@atgora-forum/lexicons";
+} from "@barazo-forum/lexicons";
 import type { SupportedCollection } from "./types.js";
 import { SUPPORTED_COLLECTIONS } from "./types.js";
 
@@ -16,9 +16,9 @@ const schemaMap: Record<
   SupportedCollection,
   { safeParse: (data: unknown) => { success: boolean; error?: unknown } }
 > = {
-  "forum.atgora.topic.post": topicPostSchema,
-  "forum.atgora.topic.reply": topicReplySchema,
-  "forum.atgora.interaction.reaction": reactionSchema,
+  "forum.barazo.topic.post": topicPostSchema,
+  "forum.barazo.topic.reply": topicReplySchema,
+  "forum.barazo.interaction.reaction": reactionSchema,
 };
 
 function isSupportedCollection(

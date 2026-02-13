@@ -6,9 +6,9 @@ import type { Logger } from "../lib/logger.js";
 // Key prefixes
 // ---------------------------------------------------------------------------
 
-const SESSION_DATA_PREFIX = "atgora:session:data:";
-const ACCESS_TOKEN_PREFIX = "atgora:session:access:";
-const DID_INDEX_PREFIX = "atgora:session:did:";
+const SESSION_DATA_PREFIX = "barazo:session:data:";
+const ACCESS_TOKEN_PREFIX = "barazo:session:access:";
+const DID_INDEX_PREFIX = "barazo:session:did:";
 
 // ---------------------------------------------------------------------------
 // Types

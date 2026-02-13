@@ -27,7 +27,7 @@ export interface SetupService {
 // Constants
 // ---------------------------------------------------------------------------
 
-const DEFAULT_COMMUNITY_NAME = "ATgora Community";
+const DEFAULT_COMMUNITY_NAME = "Barazo Community";
 
 // ---------------------------------------------------------------------------
 // Factory

@@ -20,7 +20,7 @@ const callbackQuerySchema = z.object({
 // Constants
 // ---------------------------------------------------------------------------
 
-const COOKIE_NAME = "atgora_refresh";
+const COOKIE_NAME = "barazo_refresh";
 const COOKIE_PATH = "/api/auth";
 
 function isDevMode(clientId: string): boolean {

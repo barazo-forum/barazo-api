@@ -13,6 +13,6 @@ export default defineConfig({
   out: "./drizzle",
   dialect: "postgresql",
   dbCredentials: {
-    url: process.env["DATABASE_URL"] ?? "postgresql://atgora:atgora_dev@localhost:5432/atgora",
+    url: process.env["DATABASE_URL"] ?? "postgresql://barazo:barazo_dev@localhost:5432/barazo",
   },
 });

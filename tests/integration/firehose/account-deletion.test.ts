@@ -17,7 +17,7 @@ import type postgres from "postgres";
 
 const DATABASE_URL =
   process.env["DATABASE_URL"] ??
-  "postgresql://atgora:atgora_dev@localhost:5432/atgora";
+  "postgresql://barazo:barazo_dev@localhost:5432/barazo";
 
 function createLogger() {
   return {
@@ -82,7 +82,7 @@ describe("firehose account deletion (integration)", () => {
       action: "create",
       did: deletedUserDid,
       rev: "rev1",
-      collection: "forum.atgora.topic.post",
+      collection: "forum.barazo.topic.post",
       rkey: "del-topic1",
       record: {
         title: "Deleted user topic",
@@ -96,13 +96,13 @@ describe("firehose account deletion (integration)", () => {
     });
 
     // Deleted user's reply on their own topic
-    const deletedTopicUri = `at://${deletedUserDid}/forum.atgora.topic.post/del-topic1`;
+    const deletedTopicUri = `at://${deletedUserDid}/forum.barazo.topic.post/del-topic1`;
     await recordHandler.handle({
       id: 101,
       action: "create",
       did: deletedUserDid,
       rev: "rev1",
-      collection: "forum.atgora.topic.reply",
+      collection: "forum.barazo.topic.reply",
       rkey: "del-reply1",
       record: {
         content: "Deleted user reply",
@@ -121,7 +121,7 @@ describe("firehose account deletion (integration)", () => {
       action: "create",
       did: survivingUserDid,
       rev: "rev1",
-      collection: "forum.atgora.topic.post",
+      collection: "forum.barazo.topic.post",
       rkey: "surv-topic1",
       record: {
         title: "Surviving user topic",
@@ -140,7 +140,7 @@ describe("firehose account deletion (integration)", () => {
       action: "create",
       did: survivingUserDid,
       rev: "rev1",
-      collection: "forum.atgora.interaction.reaction",
+      collection: "forum.barazo.interaction.reaction",
       rkey: "surv-react1",
       record: {
         subject: { uri: deletedTopicUri, cid: "bafydeltopic1" },
@@ -153,13 +153,13 @@ describe("firehose account deletion (integration)", () => {
     });
 
     // Deleted user's reaction on surviving user's topic
-    const survivingTopicUri = `at://${survivingUserDid}/forum.atgora.topic.post/surv-topic1`;
+    const survivingTopicUri = `at://${survivingUserDid}/forum.barazo.topic.post/surv-topic1`;
     await recordHandler.handle({
       id: 102,
       action: "create",
       did: deletedUserDid,
       rev: "rev1",
-      collection: "forum.atgora.interaction.reaction",
+      collection: "forum.barazo.interaction.reaction",
       rkey: "del-react1",
       record: {
         subject: { uri: survivingTopicUri, cid: "bafysurvtopic1" },
@@ -305,7 +305,7 @@ describe("firehose account deletion (integration)", () => {
       action: "create",
       did: "did:plc:handle-test",
       rev: "rev1",
-      collection: "forum.atgora.topic.post",
+      collection: "forum.barazo.topic.post",
       rkey: "ht-topic1",
       record: {
         title: "Handle test",

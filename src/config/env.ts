@@ -40,7 +40,7 @@ export const envSchema = z.object({
   // Community
   COMMUNITY_MODE: z.enum(["single", "global"]).default("single"),
   COMMUNITY_DID: z.string().optional(),
-  COMMUNITY_NAME: z.string().default("ATgora Community"),
+  COMMUNITY_NAME: z.string().default("Barazo Community"),
 
   // Rate Limiting (requests per minute)
   RATE_LIMIT_AUTH: intFromString("10"),

@@ -30,7 +30,7 @@ function createMockLogger() {
 
 describe("TopicIndexer", () => {
   const baseParams = {
-    uri: "at://did:plc:test/forum.atgora.topic.post/abc123",
+    uri: "at://did:plc:test/forum.barazo.topic.post/abc123",
     rkey: "abc123",
     did: "did:plc:test",
     cid: "bafyabc",

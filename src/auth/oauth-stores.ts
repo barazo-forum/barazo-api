@@ -2,8 +2,8 @@ import type { NodeSavedSession, NodeSavedState } from "@atproto/oauth-client-nod
 import type { Cache } from "../cache/index.js";
 import type { Logger } from "../lib/logger.js";
 
-const STATE_KEY_PREFIX = "atgora:oauth:state:";
-const SESSION_KEY_PREFIX = "atgora:oauth:session:";
+const STATE_KEY_PREFIX = "barazo:oauth:state:";
+const SESSION_KEY_PREFIX = "barazo:oauth:session:";
 
 /** Default state TTL: 5 minutes (OAuth state is short-lived) */
 const DEFAULT_STATE_TTL = 300;

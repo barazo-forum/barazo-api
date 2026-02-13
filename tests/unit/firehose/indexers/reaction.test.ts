@@ -50,7 +50,7 @@ function createMockLogger() {
 
 describe("ReactionIndexer", () => {
   const baseParams = {
-    uri: "at://did:plc:test/forum.atgora.interaction.reaction/react1",
+    uri: "at://did:plc:test/forum.barazo.interaction.reaction/react1",
     rkey: "react1",
     did: "did:plc:test",
     cid: "bafyreact",
@@ -67,7 +67,7 @@ describe("ReactionIndexer", () => {
         ...baseParams,
         record: {
           subject: {
-            uri: "at://did:plc:test/forum.atgora.topic.post/topic1",
+            uri: "at://did:plc:test/forum.barazo.topic.post/topic1",
             cid: "bafytopic",
           },
           type: "like",
@@ -90,7 +90,7 @@ describe("ReactionIndexer", () => {
         uri: baseParams.uri,
         rkey: baseParams.rkey,
         did: baseParams.did,
-        subjectUri: "at://did:plc:test/forum.atgora.topic.post/topic1",
+        subjectUri: "at://did:plc:test/forum.barazo.topic.post/topic1",
       });
 
       expect(db.transaction).toHaveBeenCalledTimes(1);

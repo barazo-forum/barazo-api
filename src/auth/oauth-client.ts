@@ -5,7 +5,7 @@ import type { Cache } from "../cache/index.js";
 import type { Logger } from "../lib/logger.js";
 import { ValkeyStateStore, ValkeySessionStore } from "./oauth-stores.js";
 
-const LOCK_KEY_PREFIX = "atgora:oauth:lock:";
+const LOCK_KEY_PREFIX = "barazo:oauth:lock:";
 const LOCK_TTL_SECONDS = 10;
 const LOCK_RETRY_DELAY_MS = 1000;
 
@@ -95,7 +95,7 @@ export function createOAuthClient(
 
   const client = new NodeOAuthClient({
     clientMetadata: {
-      client_name: "ATgora Forum",
+      client_name: "Barazo Forum",
       client_id: clientId,
       client_uri: loopback ? "http://localhost" : env.OAUTH_CLIENT_ID.replace(/\/oauth-client-metadata\.json$/, ""),
       redirect_uris: [env.OAUTH_REDIRECT_URI],
