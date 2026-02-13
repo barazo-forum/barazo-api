@@ -159,7 +159,7 @@ API_PID=$!
 # Wait for API to be healthy
 info "Waiting for API to respond..."
 for i in $(seq 1 30); do
-  if curl -sf "${API_BASE}/health" >/dev/null 2>&1; then
+  if curl -sf "${API_BASE}/api/health" >/dev/null 2>&1; then
     break
   fi
   if ! kill -0 "$API_PID" 2>/dev/null; then
