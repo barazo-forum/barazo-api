@@ -74,20 +74,20 @@ function serializeTopic(row: typeof topics.$inferSelect) {
 }
 
 /**
- * Encode a pagination cursor from createdAt + uri.
+ * Encode a pagination cursor from lastActivityAt + uri.
  */
-function encodeCursor(createdAt: string, uri: string): string {
-  return Buffer.from(JSON.stringify({ createdAt, uri })).toString("base64");
+function encodeCursor(lastActivityAt: string, uri: string): string {
+  return Buffer.from(JSON.stringify({ lastActivityAt, uri })).toString("base64");
 }
 
 /**
  * Decode a pagination cursor. Returns null if invalid.
  */
-function decodeCursor(cursor: string): { createdAt: string; uri: string } | null {
+function decodeCursor(cursor: string): { lastActivityAt: string; uri: string } | null {
   try {
     const decoded = JSON.parse(Buffer.from(cursor, "base64").toString("utf-8")) as Record<string, unknown>;
-    if (typeof decoded.createdAt === "string" && typeof decoded.uri === "string") {
-      return { createdAt: decoded.createdAt, uri: decoded.uri };
+    if (typeof decoded.lastActivityAt === "string" && typeof decoded.uri === "string") {
+      return { lastActivityAt: decoded.lastActivityAt, uri: decoded.uri };
     }
     return null;
   } catch {
@@ -302,7 +302,7 @@ export function topicRoutes(): FastifyPluginCallback {
         const decoded = decodeCursor(cursor);
         if (decoded) {
           conditions.push(
-            sql`(${topics.lastActivityAt}, ${topics.uri}) < (${decoded.createdAt}::timestamptz, ${decoded.uri})`,
+            sql`(${topics.lastActivityAt}, ${topics.uri}) < (${decoded.lastActivityAt}::timestamptz, ${decoded.uri})`,
           );
         }
       }
@@ -561,11 +561,11 @@ export function topicRoutes(): FastifyPluginCallback {
           await pdsClient.deleteRecord(user.did, COLLECTION, rkey);
         }
 
-        // Cascade: delete all replies for this topic
-        await db.delete(replies).where(eq(replies.rootUri, decodedUri));
-
-        // Delete topic from DB
-        await db.delete(topics).where(eq(topics.uri, decodedUri));
+        // Cascade delete in a transaction for consistency
+        await db.transaction(async (tx) => {
+          await tx.delete(replies).where(eq(replies.rootUri, decodedUri));
+          await tx.delete(topics).where(eq(topics.uri, decodedUri));
+        });
 
         return await reply.status(204).send();
       } catch (err: unknown) {

@@ -36,6 +36,7 @@ export const topics = pgTable(
     index("topics_author_did_idx").on(table.authorDid),
     index("topics_category_idx").on(table.category),
     index("topics_created_at_idx").on(table.createdAt),
+    index("topics_last_activity_at_idx").on(table.lastActivityAt),
     index("topics_community_did_idx").on(table.communityDid),
   ],
 );

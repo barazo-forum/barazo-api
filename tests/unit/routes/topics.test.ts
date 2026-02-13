@@ -151,6 +151,7 @@ const mockDb = {
   select: vi.fn(),
   update: vi.fn(),
   delete: vi.fn(),
+  transaction: vi.fn(),
 };
 
 /**
@@ -166,6 +167,11 @@ function resetDbMocks(): void {
   mockDb.select.mockReturnValue(selectChain);
   mockDb.update.mockReturnValue(updateChain);
   mockDb.delete.mockReturnValue(deleteChain);
+
+  // Transaction mock: invoke callback with a tx object that delegates to mockDb
+  mockDb.transaction.mockImplementation(async (fn: (tx: typeof mockDb) => Promise<void>) => {
+    await fn(mockDb);
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -613,7 +619,7 @@ describe("topic routes", () => {
     });
 
     it("accepts cursor parameter", async () => {
-      const cursor = Buffer.from(JSON.stringify({ createdAt: TEST_NOW, uri: TEST_URI })).toString("base64");
+      const cursor = Buffer.from(JSON.stringify({ lastActivityAt: TEST_NOW, uri: TEST_URI })).toString("base64");
       selectChain.limit.mockResolvedValueOnce([]);
 
       const response = await app.inject({
