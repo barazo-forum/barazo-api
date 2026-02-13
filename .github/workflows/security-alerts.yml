@@ -1,0 +1,134 @@
+name: Security Alert Check
+
+on:
+  schedule:
+    # Run daily at 9 AM UTC
+    - cron: '0 9 * * *'
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/security-alerts.yml'
+
+permissions:
+  contents: read
+  issues: write
+  security-events: read
+
+jobs:
+  check-dependabot-alerts:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check for open Dependabot alerts
+        id: check_alerts
+        run: |
+          # Fetch open Dependabot alerts
+          ALERTS=$(gh api "/repos/${{ github.repository }}/dependabot/alerts" \
+            --jq '.[] | select(.state=="open") | {number: .number, severity: .security_vulnerability.severity, package: .dependency.package.name, current: .security_vulnerability.vulnerable_version_range, patched: .security_vulnerability.first_patched_version.identifier, summary: .security_advisory.summary, cvss: .security_advisory.cvss.score}')
+
+          # Count alerts by severity
+          CRITICAL=$(echo "$ALERTS" | jq -s '[.[] | select(.severity=="CRITICAL")] | length')
+          HIGH=$(echo "$ALERTS" | jq -s '[.[] | select(.severity=="HIGH")] | length')
+          MODERATE=$(echo "$ALERTS" | jq -s '[.[] | select(.severity=="MODERATE")] | length')
+          LOW=$(echo "$ALERTS" | jq -s '[.[] | select(.severity=="LOW")] | length')
+
+          TOTAL=$((CRITICAL + HIGH + MODERATE + LOW))
+
+          echo "total=$TOTAL" >> $GITHUB_OUTPUT
+          echo "critical=$CRITICAL" >> $GITHUB_OUTPUT
+          echo "high=$HIGH" >> $GITHUB_OUTPUT
+          echo "moderate=$MODERATE" >> $GITHUB_OUTPUT
+          echo "low=$LOW" >> $GITHUB_OUTPUT
+
+          # Save alert details for issue creation
+          echo "$ALERTS" | jq -s '.' > alerts.json
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create GitHub issue for alerts
+        if: steps.check_alerts.outputs.total > 0
+        run: |
+          # Read alerts
+          ALERTS=$(cat alerts.json)
+
+          # Build issue body
+          BODY="## 🔒 Security Alert Summary
+
+          Found **${{ steps.check_alerts.outputs.total }}** open Dependabot alerts:
+
+          "
+
+          if [ "${{ steps.check_alerts.outputs.critical }}" -gt 0 ]; then
+            BODY+="- 🔴 **Critical**: ${{ steps.check_alerts.outputs.critical }}
+          "
+          fi
+
+          if [ "${{ steps.check_alerts.outputs.high }}" -gt 0 ]; then
+            BODY+="- 🟠 **High**: ${{ steps.check_alerts.outputs.high }}
+          "
+          fi
+
+          if [ "${{ steps.check_alerts.outputs.moderate }}" -gt 0 ]; then
+            BODY+="- 🟡 **Moderate**: ${{ steps.check_alerts.outputs.moderate }}
+          "
+          fi
+
+          if [ "${{ steps.check_alerts.outputs.low }}" -gt 0 ]; then
+            BODY+="- 🟢 **Low**: ${{ steps.check_alerts.outputs.low }}
+          "
+          fi
+
+          BODY+="
+          ### Alert Details
+
+          "
+
+          # Add each alert as a row in the table
+          BODY+="| Severity | Package | Vulnerability | Current | Fixed |
+          |----------|---------|---------------|---------|-------|
+          "
+
+          echo "$ALERTS" | jq -r '.[] | "| \(.severity) | \(.package) | \(.summary) | \(.current) | \(.patched // "N/A") |"' >> body.txt
+
+          BODY+="$(cat body.txt)
+
+          ### Next Steps
+
+          1. Review Dependabot security PRs (if auto-created)
+          2. Manually update dependencies if needed
+          3. Close this issue once all alerts are resolved
+
+          **Automated by:** [Security Alert Check workflow](https://github.com/${{ github.repository }}/actions/workflows/security-alerts.yml)
+          **View all alerts:** https://github.com/${{ github.repository }}/security/dependabot
+          "
+
+          # Check if similar issue exists
+          EXISTING=$(gh issue list \
+            --repo "${{ github.repository }}" \
+            --label "security,dependabot" \
+            --state open \
+            --search "Security Alert Summary" \
+            --json number \
+            --jq '.[0].number // empty')
+
+          if [ -n "$EXISTING" ]; then
+            echo "Updating existing issue #$EXISTING"
+            gh issue comment "$EXISTING" \
+              --repo "${{ github.repository }}" \
+              --body "$(cat <<EOF
+          ## 🔄 Alert Status Update - $(date +%Y-%m-%d)
+
+          ${BODY}
+          EOF
+          )"
+          else
+            echo "Creating new issue"
+            gh issue create \
+              --repo "${{ github.repository }}" \
+              --title "🔒 Security Alerts - $(date +%Y-%m-%d)" \
+              --label "security,dependabot" \
+              --body "$BODY"
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

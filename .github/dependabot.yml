@@ -1,0 +1,25 @@
+version: 2
+updates:
+  # Enable security updates for npm dependencies
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    # Automatically create PRs for security updates
+    open-pull-requests-limit: 10
+    # Group minor and patch updates
+    groups:
+      dependencies:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+    # Keep major updates separate for review
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+    # Auto-label PRs
+    labels:
+      - "dependencies"
+      - "security"
