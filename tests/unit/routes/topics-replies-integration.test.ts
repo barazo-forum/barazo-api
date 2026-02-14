@@ -433,10 +433,10 @@ describe("topics + replies cross-endpoint integration", () => {
       // Transaction should have been used
       expect(mockDb.transaction).toHaveBeenCalledOnce();
 
-      // Inside the transaction, both replies and topic should be deleted
-      // The transaction mock calls fn(mockDb), so mockDb.delete should be called twice:
-      // once for replies (cascade) and once for the topic itself
-      expect(mockDb.delete).toHaveBeenCalledTimes(2);
+      // Inside the transaction, both replies and topic should be deleted.
+      // The transaction mock calls fn(mockDb), so mockDb.delete is called for:
+      //   1. replies (cascade), 2. topic itself, 3. cross-posts cleanup (fire-and-forget)
+      expect(mockDb.delete).toHaveBeenCalledTimes(3);
     });
 
     it("topic cascade delete uses rootUri to find related replies", async () => {
@@ -452,11 +452,11 @@ describe("topics + replies cross-endpoint integration", () => {
 
       expect(response.statusCode).toBe(204);
 
-      // Verify delete was called (replies first, then topic)
-      expect(mockDb.delete).toHaveBeenCalledTimes(2);
+      // Verify delete was called (replies, topic, and cross-posts cleanup)
+      expect(mockDb.delete).toHaveBeenCalledTimes(3);
 
-      // Both delete calls should have used .where()
-      expect(deleteChain.where).toHaveBeenCalledTimes(2);
+      // All delete calls should have used .where()
+      expect(deleteChain.where).toHaveBeenCalledTimes(3);
     });
   });
 
@@ -717,8 +717,9 @@ describe("topics + replies cross-endpoint integration", () => {
       expect(deleteResponse.statusCode).toBe(204);
 
       // Should have cascade-deleted replies via transaction
+      // Delete count: 1. replies (cascade), 2. topic, 3. cross-posts cleanup
       expect(mockDb.transaction).toHaveBeenCalledOnce();
-      expect(mockDb.delete).toHaveBeenCalledTimes(2);
+      expect(mockDb.delete).toHaveBeenCalledTimes(3);
     });
   });
 });

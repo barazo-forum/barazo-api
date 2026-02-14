@@ -65,6 +65,17 @@ export const envSchema = z.object({
     .default("768")
     .transform((val) => Number(val))
     .pipe(z.number().int().min(384).max(1536)),
+
+  // Cross-posting
+  FEATURE_CROSSPOST_BLUESKY: z
+    .enum(["true", "false"])
+    .default("true")
+    .transform((v) => v === "true"),
+  FEATURE_CROSSPOST_FRONTPAGE: z
+    .enum(["true", "false"])
+    .default("false")
+    .transform((v) => v === "true"),
+  PUBLIC_URL: z.string().default("http://localhost:3001"),
 });
 
 export type Env = z.infer<typeof envSchema>;

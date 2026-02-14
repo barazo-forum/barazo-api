@@ -5,6 +5,7 @@ import { notFound, forbidden, badRequest } from "../lib/api-errors.js";
 import { resolveMaxMaturity, allowedRatings, maturityAllows } from "../lib/content-filter.js";
 import type { MaturityUser } from "../lib/content-filter.js";
 import { createTopicSchema, updateTopicSchema, topicQuerySchema } from "../validation/topics.js";
+import { createCrossPostService } from "../services/cross-post.js";
 import { topics } from "../db/schema/topics.js";
 import { replies } from "../db/schema/replies.js";
 import { users } from "../db/schema/users.js";
@@ -128,6 +129,11 @@ export function topicRoutes(): FastifyPluginCallback {
   return (app, _opts, done) => {
     const { db, env, authMiddleware, firehose } = app;
     const pdsClient = createPdsClient(app.oauthClient, app.log);
+    const crossPostService = createCrossPostService(pdsClient, db, app.log, {
+      blueskyEnabled: env.FEATURE_CROSSPOST_BLUESKY,
+      frontpageEnabled: env.FEATURE_CROSSPOST_FRONTPAGE,
+      publicUrl: env.PUBLIC_URL,
+    });
 
     // -------------------------------------------------------------------
     // POST /api/topics (auth required)
@@ -262,6 +268,19 @@ export function topicRoutes(): FastifyPluginCallback {
               indexedAt: new Date(),
             },
           });
+
+        // Fire cross-posting in background (fire-and-forget, does not block response)
+        if (env.FEATURE_CROSSPOST_BLUESKY || env.FEATURE_CROSSPOST_FRONTPAGE) {
+          crossPostService.crossPostTopic({
+            did: user.did,
+            topicUri: result.uri,
+            title,
+            content,
+            category,
+          }).catch((err: unknown) => {
+            app.log.error({ err, topicUri: result.uri }, "Cross-posting failed");
+          });
+        }
 
         return await reply.status(201).send({
           uri: result.uri,
@@ -658,6 +677,11 @@ export function topicRoutes(): FastifyPluginCallback {
           const rkey = extractRkey(decodedUri);
           await pdsClient.deleteRecord(user.did, COLLECTION, rkey);
         }
+
+        // Best-effort cross-post deletion (fire-and-forget)
+        crossPostService.deleteCrossPosts(decodedUri, user.did).catch((err: unknown) => {
+          app.log.warn({ err, topicUri: decodedUri }, "Failed to delete cross-posts");
+        });
 
         // Cascade delete in a transaction for consistency
         await db.transaction(async (tx) => {
