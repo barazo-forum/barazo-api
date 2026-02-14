@@ -57,6 +57,13 @@
       "when": 1771020576514,
       "tag": "0007_boring_killmonger",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1771032569622,
+      "tag": "0008_exotic_korg",
+      "breakpoints": true
     }
   ]
 }

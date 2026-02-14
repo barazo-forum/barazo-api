@@ -19,6 +19,7 @@ const settingsJsonSchema = {
     adminDid: { type: ["string", "null"] as const },
     communityName: { type: "string" as const },
     maturityRating: { type: "string" as const, enum: ["safe", "mature", "adult"] },
+    reactionSet: { type: "array" as const, items: { type: "string" as const } },
     createdAt: { type: "string" as const, format: "date-time" as const },
     updatedAt: { type: "string" as const, format: "date-time" as const },
   },
@@ -71,6 +72,7 @@ function serializeSettings(row: typeof communitySettings.$inferSelect) {
     adminDid: row.adminDid ?? null,
     communityName: row.communityName,
     maturityRating: row.maturityRating,
+    reactionSet: row.reactionSet,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };
@@ -137,6 +139,11 @@ export function adminSettingsRoutes(): FastifyPluginCallback {
           properties: {
             communityName: { type: "string", minLength: 1, maxLength: 100 },
             maturityRating: { type: "string", enum: ["safe", "mature", "adult"] },
+            reactionSet: {
+              type: "array",
+              items: { type: "string", minLength: 1, maxLength: 30 },
+              minItems: 1,
+            },
           },
         },
         response: {
@@ -157,7 +164,11 @@ export function adminSettingsRoutes(): FastifyPluginCallback {
       const updates = parsed.data;
 
       // Require at least one field to update
-      if (updates.communityName === undefined && updates.maturityRating === undefined) {
+      if (
+        updates.communityName === undefined &&
+        updates.maturityRating === undefined &&
+        updates.reactionSet === undefined
+      ) {
         throw badRequest("At least one field must be provided");
       }
 
@@ -222,6 +233,9 @@ export function adminSettingsRoutes(): FastifyPluginCallback {
       }
       if (updates.maturityRating !== undefined) {
         dbUpdates.maturityRating = updates.maturityRating;
+      }
+      if (updates.reactionSet !== undefined) {
+        dbUpdates.reactionSet = updates.reactionSet;
       }
 
       const updated = await db

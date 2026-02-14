@@ -1,4 +1,4 @@
-import { pgTable, text, boolean, timestamp } from "drizzle-orm/pg-core";
+import { pgTable, text, boolean, timestamp, jsonb } from "drizzle-orm/pg-core";
 
 export const communitySettings = pgTable("community_settings", {
   id: text("id").primaryKey().default("default"),
@@ -11,6 +11,10 @@ export const communitySettings = pgTable("community_settings", {
   })
     .notNull()
     .default("safe"),
+  reactionSet: jsonb("reaction_set")
+    .$type<string[]>()
+    .notNull()
+    .default(["like"]),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),

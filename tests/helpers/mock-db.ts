@@ -107,8 +107,8 @@ export function resetDbMocks(mockDb: MockDb): DbChain {
   mockDb.update.mockReturnValue(createChainableProxy([]));
   mockDb.delete.mockReturnValue(createChainableProxy());
   // eslint-disable-next-line @typescript-eslint/no-misused-promises -- Intentionally async for Drizzle transaction mock
-  mockDb.transaction.mockImplementation(async (fn: (tx: MockDb) => Promise<void>) => {
-    await fn(mockDb);
+  mockDb.transaction.mockImplementation(async (fn: (tx: MockDb) => Promise<unknown>) => {
+    return await fn(mockDb);
   });
   return selectChain;
 }

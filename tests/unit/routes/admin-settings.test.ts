@@ -122,6 +122,7 @@ function sampleCommunitySettings(overrides?: Record<string, unknown>) {
     adminDid: ADMIN_DID,
     communityName: "Test Community",
     maturityRating: "safe",
+    reactionSet: ["like"],
     createdAt: new Date(TEST_NOW),
     updatedAt: new Date(TEST_NOW),
     ...overrides,

@@ -25,6 +25,7 @@ import { topicRoutes } from "./routes/topics.js";
 import { replyRoutes } from "./routes/replies.js";
 import { categoryRoutes } from "./routes/categories.js";
 import { adminSettingsRoutes } from "./routes/admin-settings.js";
+import { reactionRoutes } from "./routes/reactions.js";
 import { createRequireAdmin } from "./auth/require-admin.js";
 import { createSetupService } from "./setup/service.js";
 import type { SetupService } from "./setup/service.js";
@@ -187,6 +188,7 @@ export async function buildApp(env: Env) {
   await app.register(replyRoutes());
   await app.register(categoryRoutes());
   await app.register(adminSettingsRoutes());
+  await app.register(reactionRoutes());
 
   // OpenAPI spec endpoint (after routes so all schemas are registered)
   app.get("/api/openapi.json", { schema: { hide: true } }, async (_request, reply) => {

@@ -1,5 +1,6 @@
 import { z } from "zod/v4";
 import { maturityRatingSchema } from "./categories.js";
+import { reactionSetSchema } from "./reactions.js";
 
 // ---------------------------------------------------------------------------
 // Request schemas
@@ -14,6 +15,7 @@ export const updateSettingsSchema = z.object({
     .max(100, "Community name must be at most 100 characters")
     .optional(),
   maturityRating: maturityRatingSchema.optional(),
+  reactionSet: reactionSetSchema.optional(),
 });
 
 export type UpdateSettingsInput = z.infer<typeof updateSettingsSchema>;
@@ -30,6 +32,7 @@ export const settingsResponseSchema = z.object({
   adminDid: z.string().nullable(),
   communityName: z.string(),
   maturityRating: maturityRatingSchema,
+  reactionSet: z.array(z.string()),
   createdAt: z.string(),
   updatedAt: z.string(),
 });
