@@ -10,6 +10,8 @@ export default defineConfig({
     "./src/db/schema/tracked-repos.ts",
     "./src/db/schema/community-settings.ts",
     "./src/db/schema/categories.ts",
+    "./src/db/schema/moderation-actions.ts",
+    "./src/db/schema/reports.ts",
   ],
   out: "./drizzle",
   dialect: "postgresql",
