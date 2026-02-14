@@ -63,6 +63,7 @@ const reputationJsonSchema = {
         reactionsReceived: { type: "number" as const },
       },
     },
+    communityCount: { type: "number" as const },
   },
 };
 
@@ -329,6 +330,28 @@ export function profileRoutes(): FastifyPluginCallback {
         const reputation =
           topicCount * 5 + replyCount * 2 + reactionsReceived * 1;
 
+        // Count distinct communities the user has contributed to
+        const topicCommResult = await db
+          .selectDistinct({ communityDid: topics.communityDid })
+          .from(topics)
+          .where(eq(topics.authorDid, user.did));
+
+        const replyCommResult = await db
+          .selectDistinct({ communityDid: replies.communityDid })
+          .from(replies)
+          .where(eq(replies.authorDid, user.did));
+
+        const allCommunities = new Set([
+          ...topicCommResult.map(
+            (r: { communityDid: string }) => r.communityDid,
+          ),
+          ...replyCommResult.map(
+            (r: { communityDid: string }) => r.communityDid,
+          ),
+        ]);
+
+        const communityCount = allCommunities.size;
+
         return reply.status(200).send({
           did: user.did,
           handle: user.handle,
@@ -338,6 +361,7 @@ export function profileRoutes(): FastifyPluginCallback {
             replyCount,
             reactionsReceived,
           },
+          communityCount,
         });
       },
     );
