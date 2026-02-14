@@ -81,10 +81,11 @@ export interface MockDb {
   update: MockFn;
   delete: MockFn;
   transaction: MockFn;
+  execute: MockFn;
 }
 
 /**
- * Create a fresh mock DB instance with insert/select/update/delete/transaction.
+ * Create a fresh mock DB instance with insert/select/update/delete/transaction/execute.
  */
 export function createMockDb(): MockDb {
   return {
@@ -93,6 +94,7 @@ export function createMockDb(): MockDb {
     update: vi.fn(),
     delete: vi.fn(),
     transaction: vi.fn(),
+    execute: vi.fn(),
   };
 }
 
@@ -110,5 +112,6 @@ export function resetDbMocks(mockDb: MockDb): DbChain {
   mockDb.transaction.mockImplementation(async (fn: (tx: MockDb) => Promise<unknown>) => {
     return await fn(mockDb);
   });
+  mockDb.execute.mockReset();
   return selectChain;
 }

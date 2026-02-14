@@ -23,6 +23,10 @@ export const communitySettings = pgTable("community_settings", {
     .$type<string[]>()
     .notNull()
     .default([]),
+  communityDescription: text("community_description"),
+  communityLogoUrl: text("community_logo_url"),
+  primaryColor: text("primary_color"),
+  accentColor: text("accent_color"),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),

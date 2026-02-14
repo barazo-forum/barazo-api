@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import type { FastifyPluginCallback } from "fastify";
 import { notFound, badRequest } from "../lib/api-errors.js";
 import { isMaturityLowerThan } from "../lib/maturity.js";
@@ -20,6 +20,10 @@ const settingsJsonSchema = {
     communityName: { type: "string" as const },
     maturityRating: { type: "string" as const, enum: ["safe", "mature", "adult"] },
     reactionSet: { type: "array" as const, items: { type: "string" as const } },
+    communityDescription: { type: ["string", "null"] as const },
+    communityLogoUrl: { type: ["string", "null"] as const },
+    primaryColor: { type: ["string", "null"] as const },
+    accentColor: { type: ["string", "null"] as const },
     createdAt: { type: "string" as const, format: "date-time" as const },
     updatedAt: { type: "string" as const, format: "date-time" as const },
   },
@@ -60,6 +64,20 @@ const conflictJsonSchema = {
   },
 };
 
+const statsJsonSchema = {
+  type: "object" as const,
+  properties: {
+    topicCount: { type: "integer" as const },
+    replyCount: { type: "integer" as const },
+    userCount: { type: "integer" as const },
+    categoryCount: { type: "integer" as const },
+    reportCount: { type: "integer" as const },
+    recentTopics: { type: "integer" as const },
+    recentReplies: { type: "integer" as const },
+    recentUsers: { type: "integer" as const },
+  },
+};
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -73,6 +91,10 @@ function serializeSettings(row: typeof communitySettings.$inferSelect) {
     communityName: row.communityName,
     maturityRating: row.maturityRating,
     reactionSet: row.reactionSet,
+    communityDescription: row.communityDescription ?? null,
+    communityLogoUrl: row.communityLogoUrl ?? null,
+    primaryColor: row.primaryColor ?? null,
+    accentColor: row.accentColor ?? null,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };
@@ -87,6 +109,7 @@ function serializeSettings(row: typeof communitySettings.$inferSelect) {
  *
  * - GET  /api/admin/settings  -- Get community settings
  * - PUT  /api/admin/settings  -- Update community settings
+ * - GET  /api/admin/stats     -- Get community statistics
  */
 export function adminSettingsRoutes(): FastifyPluginCallback {
   return (app, _opts, done) => {
@@ -144,6 +167,10 @@ export function adminSettingsRoutes(): FastifyPluginCallback {
               items: { type: "string", minLength: 1, maxLength: 30 },
               minItems: 1,
             },
+            communityDescription: { type: "string", maxLength: 500 },
+            communityLogoUrl: { type: "string", format: "uri" },
+            primaryColor: { type: "string", pattern: "^#(?:[0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$" },
+            accentColor: { type: "string", pattern: "^#(?:[0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$" },
           },
         },
         response: {
@@ -167,7 +194,11 @@ export function adminSettingsRoutes(): FastifyPluginCallback {
       if (
         updates.communityName === undefined &&
         updates.maturityRating === undefined &&
-        updates.reactionSet === undefined
+        updates.reactionSet === undefined &&
+        updates.communityDescription === undefined &&
+        updates.communityLogoUrl === undefined &&
+        updates.primaryColor === undefined &&
+        updates.accentColor === undefined
       ) {
         throw badRequest("At least one field must be provided");
       }
@@ -237,6 +268,18 @@ export function adminSettingsRoutes(): FastifyPluginCallback {
       if (updates.reactionSet !== undefined) {
         dbUpdates.reactionSet = updates.reactionSet;
       }
+      if (updates.communityDescription !== undefined) {
+        dbUpdates.communityDescription = updates.communityDescription;
+      }
+      if (updates.communityLogoUrl !== undefined) {
+        dbUpdates.communityLogoUrl = updates.communityLogoUrl;
+      }
+      if (updates.primaryColor !== undefined) {
+        dbUpdates.primaryColor = updates.primaryColor;
+      }
+      if (updates.accentColor !== undefined) {
+        dbUpdates.accentColor = updates.accentColor;
+      }
 
       const updated = await db
         .update(communitySettings)
@@ -260,6 +303,74 @@ export function adminSettingsRoutes(): FastifyPluginCallback {
       );
 
       return reply.status(200).send(serializeSettings(updatedRow));
+    });
+
+    // -------------------------------------------------------------------
+    // GET /api/admin/stats (admin only)
+    // -------------------------------------------------------------------
+
+    app.get("/api/admin/stats", {
+      preHandler: [requireAdmin],
+      schema: {
+        tags: ["Admin"],
+        summary: "Get community statistics",
+        security: [{ bearerAuth: [] }],
+        response: {
+          200: statsJsonSchema,
+          401: errorJsonSchema,
+          403: errorJsonSchema,
+        },
+      },
+    }, async (_request, reply) => {
+      const result = await db.execute(sql`
+        SELECT
+          (SELECT COUNT(*) FROM topics WHERE is_mod_deleted = false) AS topic_count,
+          (SELECT COUNT(*) FROM replies) AS reply_count,
+          (SELECT COUNT(*) FROM users) AS user_count,
+          (SELECT COUNT(*) FROM categories) AS category_count,
+          (SELECT COUNT(*) FROM reports WHERE status = 'pending') AS report_count,
+          (SELECT COUNT(*) FROM topics WHERE is_mod_deleted = false AND created_at > NOW() - INTERVAL '7 days') AS recent_topics,
+          (SELECT COUNT(*) FROM replies WHERE created_at > NOW() - INTERVAL '7 days') AS recent_replies,
+          (SELECT COUNT(*) FROM users WHERE first_seen_at > NOW() - INTERVAL '7 days') AS recent_users
+      `);
+
+      interface StatsRow {
+        topic_count: string;
+        reply_count: string;
+        user_count: string;
+        category_count: string;
+        report_count: string;
+        recent_topics: string;
+        recent_replies: string;
+        recent_users: string;
+      }
+
+      const rows = result as unknown as StatsRow[];
+      const row = rows[0];
+      if (!row) {
+        // Should never happen -- subquery always returns one row
+        return reply.status(200).send({
+          topicCount: 0,
+          replyCount: 0,
+          userCount: 0,
+          categoryCount: 0,
+          reportCount: 0,
+          recentTopics: 0,
+          recentReplies: 0,
+          recentUsers: 0,
+        });
+      }
+
+      return reply.status(200).send({
+        topicCount: Number(row.topic_count),
+        replyCount: Number(row.reply_count),
+        userCount: Number(row.user_count),
+        categoryCount: Number(row.category_count),
+        reportCount: Number(row.report_count),
+        recentTopics: Number(row.recent_topics),
+        recentReplies: Number(row.recent_replies),
+        recentUsers: Number(row.recent_users),
+      });
     });
 
     done();

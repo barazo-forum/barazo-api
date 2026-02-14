@@ -68,6 +68,7 @@ function resetAllDbMocks(): void {
   mockDb.transaction.mockImplementation(async (fn: (tx: typeof mockDb) => Promise<void>) => {
     await fn(mockDb);
   });
+  mockDb.execute.mockReset();
 }
 
 // ---------------------------------------------------------------------------
@@ -123,6 +124,12 @@ function sampleCommunitySettings(overrides?: Record<string, unknown>) {
     communityName: "Test Community",
     maturityRating: "safe",
     reactionSet: ["like"],
+    moderationThresholds: { autoBlockReportCount: 5, warnThreshold: 3 },
+    wordFilter: [],
+    communityDescription: null,
+    communityLogoUrl: null,
+    primaryColor: null,
+    accentColor: null,
     createdAt: new Date(TEST_NOW),
     updatedAt: new Date(TEST_NOW),
     ...overrides,
@@ -584,6 +591,208 @@ describe("admin settings routes", () => {
       expect(response.statusCode).toBe(200);
       // Only one select call: fetch current settings. No category check.
       expect(mockDb.select).toHaveBeenCalledTimes(1);
+    });
+
+    it("updates branding fields", async () => {
+      const settings = sampleCommunitySettings();
+      selectChain.where.mockResolvedValueOnce([settings]);
+      const updatedRow = {
+        ...settings,
+        communityDescription: "A great community",
+        communityLogoUrl: "https://example.com/logo.png",
+        primaryColor: "#ff0000",
+        accentColor: "#00ff00",
+        updatedAt: new Date(),
+      };
+      updateChain.returning.mockResolvedValueOnce([updatedRow]);
+
+      const response = await app.inject({
+        method: "PUT",
+        url: "/api/admin/settings",
+        headers: { authorization: "Bearer admin-token" },
+        payload: {
+          communityDescription: "A great community",
+          communityLogoUrl: "https://example.com/logo.png",
+          primaryColor: "#ff0000",
+          accentColor: "#00ff00",
+        },
+      });
+
+      expect(response.statusCode).toBe(200);
+      const body = response.json<{
+        communityDescription: string;
+        communityLogoUrl: string;
+        primaryColor: string;
+        accentColor: string;
+      }>();
+      expect(body.communityDescription).toBe("A great community");
+      expect(body.communityLogoUrl).toBe("https://example.com/logo.png");
+      expect(body.primaryColor).toBe("#ff0000");
+      expect(body.accentColor).toBe("#00ff00");
+    });
+
+    it("returns 400 for communityDescription too long", async () => {
+      const response = await app.inject({
+        method: "PUT",
+        url: "/api/admin/settings",
+        headers: { authorization: "Bearer admin-token" },
+        payload: {
+          communityDescription: "A".repeat(501),
+        },
+      });
+
+      expect(response.statusCode).toBe(400);
+    });
+
+    it("returns 400 for invalid communityLogoUrl", async () => {
+      const response = await app.inject({
+        method: "PUT",
+        url: "/api/admin/settings",
+        headers: { authorization: "Bearer admin-token" },
+        payload: {
+          communityLogoUrl: "not-a-url",
+        },
+      });
+
+      expect(response.statusCode).toBe(400);
+    });
+
+    it("returns 400 for invalid primaryColor", async () => {
+      const response = await app.inject({
+        method: "PUT",
+        url: "/api/admin/settings",
+        headers: { authorization: "Bearer admin-token" },
+        payload: {
+          primaryColor: "red",
+        },
+      });
+
+      expect(response.statusCode).toBe(400);
+    });
+
+    it("returns 400 for invalid accentColor", async () => {
+      const response = await app.inject({
+        method: "PUT",
+        url: "/api/admin/settings",
+        headers: { authorization: "Bearer admin-token" },
+        payload: {
+          accentColor: "#xyz",
+        },
+      });
+
+      expect(response.statusCode).toBe(400);
+    });
+  });
+
+  // =========================================================================
+  // GET /api/admin/stats
+  // =========================================================================
+
+  describe("GET /api/admin/stats", () => {
+    let app: FastifyInstance;
+
+    beforeAll(async () => {
+      app = await buildTestApp(adminUser());
+    });
+
+    afterAll(async () => {
+      await app.close();
+    });
+
+    beforeEach(() => {
+      vi.clearAllMocks();
+      resetAllDbMocks();
+    });
+
+    it("returns community statistics", async () => {
+      mockDb.execute.mockResolvedValueOnce([{
+        topic_count: "42",
+        reply_count: "100",
+        user_count: "15",
+        category_count: "5",
+        report_count: "3",
+        recent_topics: "10",
+        recent_replies: "25",
+        recent_users: "5",
+      }]);
+
+      const response = await app.inject({
+        method: "GET",
+        url: "/api/admin/stats",
+        headers: { authorization: "Bearer admin-token" },
+      });
+
+      expect(response.statusCode).toBe(200);
+      const body = response.json<{
+        topicCount: number;
+        replyCount: number;
+        userCount: number;
+        categoryCount: number;
+        reportCount: number;
+        recentTopics: number;
+        recentReplies: number;
+        recentUsers: number;
+      }>();
+      expect(body.topicCount).toBe(42);
+      expect(body.replyCount).toBe(100);
+      expect(body.userCount).toBe(15);
+      expect(body.categoryCount).toBe(5);
+      expect(body.reportCount).toBe(3);
+      expect(body.recentTopics).toBe(10);
+      expect(body.recentReplies).toBe(25);
+      expect(body.recentUsers).toBe(5);
+    });
+
+    it("returns zeros when no data exists", async () => {
+      mockDb.execute.mockResolvedValueOnce([{
+        topic_count: "0",
+        reply_count: "0",
+        user_count: "0",
+        category_count: "0",
+        report_count: "0",
+        recent_topics: "0",
+        recent_replies: "0",
+        recent_users: "0",
+      }]);
+
+      const response = await app.inject({
+        method: "GET",
+        url: "/api/admin/stats",
+        headers: { authorization: "Bearer admin-token" },
+      });
+
+      expect(response.statusCode).toBe(200);
+      const body = response.json<{
+        topicCount: number;
+        replyCount: number;
+      }>();
+      expect(body.topicCount).toBe(0);
+      expect(body.replyCount).toBe(0);
+    });
+
+    it("returns 401 when unauthenticated", async () => {
+      const noAuthApp = await buildTestApp(undefined);
+
+      const response = await noAuthApp.inject({
+        method: "GET",
+        url: "/api/admin/stats",
+      });
+
+      expect(response.statusCode).toBe(401);
+      await noAuthApp.close();
+    });
+
+    it("returns 403 when non-admin user", async () => {
+      const regularApp = await buildTestApp(testUser());
+
+      const response = await regularApp.inject({
+        method: "GET",
+        url: "/api/admin/stats",
+        headers: { authorization: "Bearer user-token" },
+      });
+
+      expect(response.statusCode).toBe(403);
+      await regularApp.close();
     });
   });
 });
