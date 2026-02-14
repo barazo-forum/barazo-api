@@ -32,6 +32,18 @@ const replyJsonSchema = {
     rootCid: { type: "string" as const },
     parentUri: { type: "string" as const },
     parentCid: { type: "string" as const },
+    labels: {
+      type: ["object", "null"] as const,
+      properties: {
+        values: {
+          type: "array" as const,
+          items: {
+            type: "object" as const,
+            properties: { val: { type: "string" as const } },
+          },
+        },
+      },
+    },
     communityDid: { type: "string" as const },
     cid: { type: "string" as const },
     depth: { type: "integer" as const },
@@ -72,6 +84,7 @@ function serializeReply(row: typeof replies.$inferSelect) {
     rootCid: row.rootCid,
     parentUri: row.parentUri,
     parentCid: row.parentCid,
+    labels: row.labels ?? null,
     communityDid: row.communityDid,
     cid: row.cid,
     depth,
@@ -156,6 +169,19 @@ export function replyRoutes(): FastifyPluginCallback {
           properties: {
             content: { type: "string", minLength: 1, maxLength: 50000 },
             parentUri: { type: "string", minLength: 1 },
+            labels: {
+              type: "object",
+              properties: {
+                values: {
+                  type: "array",
+                  items: {
+                    type: "object",
+                    required: ["val"],
+                    properties: { val: { type: "string" } },
+                  },
+                },
+              },
+            },
           },
         },
         response: {
@@ -188,7 +214,7 @@ export function replyRoutes(): FastifyPluginCallback {
 
       const { topicUri } = request.params as { topicUri: string };
       const decodedTopicUri = decodeURIComponent(topicUri);
-      const { content, parentUri } = parsed.data;
+      const { content, parentUri, labels } = parsed.data;
 
       // Look up the parent topic
       const topicRows = await db
@@ -229,6 +255,7 @@ export function replyRoutes(): FastifyPluginCallback {
         root: { uri: topic.uri, cid: topic.cid },
         parent: { uri: parentRefUri, cid: parentRefCid },
         createdAt: now,
+        ...(labels ? { labels } : {}),
       };
 
       try {
@@ -257,6 +284,7 @@ export function replyRoutes(): FastifyPluginCallback {
             parentCid: parentRefCid,
             communityDid: topic.communityDid,
             cid: result.cid,
+            labels: labels ?? null,
             reactionCount: 0,
             createdAt: new Date(now),
             indexedAt: new Date(),
@@ -265,6 +293,7 @@ export function replyRoutes(): FastifyPluginCallback {
             target: replies.uri,
             set: {
               content,
+              labels: labels ?? null,
               cid: result.cid,
               indexedAt: new Date(),
             },

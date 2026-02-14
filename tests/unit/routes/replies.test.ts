@@ -445,6 +445,58 @@ describe("reply routes", () => {
 
       expect(response.statusCode).toBe(502);
     });
+
+    it("creates a reply with self-labels and includes them in PDS record and DB insert", async () => {
+      const labels = { values: [{ val: "nsfw" }, { val: "spoiler" }] };
+      selectChain.where.mockResolvedValueOnce([sampleTopicRow()]);
+
+      const encodedTopicUri = encodeURIComponent(TEST_TOPIC_URI);
+      const response = await app.inject({
+        method: "POST",
+        url: `/api/topics/${encodedTopicUri}/replies`,
+        headers: { authorization: "Bearer test-token" },
+        payload: {
+          content: "This reply has self-labels.",
+          labels,
+        },
+      });
+
+      expect(response.statusCode).toBe(201);
+
+      // Verify PDS record includes labels
+      expect(createRecordFn).toHaveBeenCalledOnce();
+      const pdsRecord = createRecordFn.mock.calls[0]?.[2] as Record<string, unknown>;
+      expect(pdsRecord.labels).toEqual(labels);
+
+      // Verify DB insert includes labels
+      expect(mockDb.insert).toHaveBeenCalledOnce();
+      const insertValues = insertChain.values.mock.calls[0]?.[0] as Record<string, unknown>;
+      expect(insertValues.labels).toEqual(labels);
+    });
+
+    it("creates a reply without labels (backwards compatible)", async () => {
+      selectChain.where.mockResolvedValueOnce([sampleTopicRow()]);
+
+      const encodedTopicUri = encodeURIComponent(TEST_TOPIC_URI);
+      const response = await app.inject({
+        method: "POST",
+        url: `/api/topics/${encodedTopicUri}/replies`,
+        headers: { authorization: "Bearer test-token" },
+        payload: {
+          content: "This reply has no labels.",
+        },
+      });
+
+      expect(response.statusCode).toBe(201);
+
+      // Verify PDS record does NOT include labels key
+      const pdsRecord = createRecordFn.mock.calls[0]?.[2] as Record<string, unknown>;
+      expect(pdsRecord).not.toHaveProperty("labels");
+
+      // Verify DB insert has labels: null
+      const insertValues = insertChain.values.mock.calls[0]?.[0] as Record<string, unknown>;
+      expect(insertValues.labels).toBeNull();
+    });
   });
 
   describe("POST /api/topics/:topicUri/replies (unauthenticated)", () => {
@@ -649,6 +701,32 @@ describe("reply routes", () => {
 
       expect(response.statusCode).toBe(200);
       await noAuthApp.close();
+    });
+
+    it("includes labels in reply list response", async () => {
+      selectChain.where.mockResolvedValueOnce([sampleTopicRow()]);
+      const labels = { values: [{ val: "nsfw" }] };
+      const rows = [
+        sampleReplyRow({ labels }),
+        sampleReplyRow({
+          uri: `at://${TEST_DID}/forum.barazo.topic.reply/nolabel`,
+          rkey: "nolabel",
+          labels: null,
+        }),
+      ];
+      selectChain.limit.mockResolvedValueOnce(rows);
+
+      const encodedTopicUri = encodeURIComponent(TEST_TOPIC_URI);
+      const response = await app.inject({
+        method: "GET",
+        url: `/api/topics/${encodedTopicUri}/replies`,
+      });
+
+      expect(response.statusCode).toBe(200);
+      const body = response.json<{ replies: Array<{ uri: string; labels: { values: Array<{ val: string }> } | null }> }>();
+      expect(body.replies).toHaveLength(2);
+      expect(body.replies[0]?.labels).toEqual(labels);
+      expect(body.replies[1]?.labels).toBeNull();
     });
   });
 
