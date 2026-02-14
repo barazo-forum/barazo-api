@@ -728,6 +728,107 @@ describe("reply routes", () => {
       expect(body.replies[0]?.labels).toEqual(labels);
       expect(body.replies[1]?.labels).toBeNull();
     });
+
+    it("excludes replies by blocked users from list", async () => {
+      const blockedDid = "did:plc:blockeduser";
+
+      // Query order for authenticated GET /api/topics/:topicUri/replies:
+      // 1. Topic lookup (where)
+      // 2. Category maturity (where)
+      // 3. User profile (where) -- if authenticated
+      // 4. Block/mute preferences (where)
+      // 5. Replies query (limit)
+      selectChain.where.mockResolvedValueOnce([sampleTopicRow()]);
+      // Category maturity
+      selectChain.where.mockResolvedValueOnce([{ maturityRating: "safe" }]);
+      // User profile
+      selectChain.where.mockResolvedValueOnce([{ ageDeclaredAt: null, maturityPref: "safe" }]);
+      // Block/mute preferences
+      selectChain.where.mockResolvedValueOnce([{
+        blockedDids: [blockedDid],
+        mutedDids: [],
+      }]);
+
+      // Return only non-blocked replies
+      const rows = [
+        sampleReplyRow({ authorDid: TEST_DID }),
+      ];
+      selectChain.limit.mockResolvedValueOnce(rows);
+
+      const encodedTopicUri = encodeURIComponent(TEST_TOPIC_URI);
+      const response = await app.inject({
+        method: "GET",
+        url: `/api/topics/${encodedTopicUri}/replies`,
+      });
+
+      expect(response.statusCode).toBe(200);
+      const body = response.json<{ replies: Array<{ authorDid: string; isMuted: boolean }> }>();
+      expect(body.replies.every((r) => r.authorDid !== blockedDid)).toBe(true);
+    });
+
+    it("annotates replies by muted users with isMuted: true", async () => {
+      const mutedDid = "did:plc:muteduser";
+
+      selectChain.where.mockResolvedValueOnce([sampleTopicRow()]);
+      // Category maturity
+      selectChain.where.mockResolvedValueOnce([{ maturityRating: "safe" }]);
+      // User profile
+      selectChain.where.mockResolvedValueOnce([{ ageDeclaredAt: null, maturityPref: "safe" }]);
+      // Block/mute preferences
+      selectChain.where.mockResolvedValueOnce([{
+        blockedDids: [],
+        mutedDids: [mutedDid],
+      }]);
+
+      const rows = [
+        sampleReplyRow({ authorDid: mutedDid, uri: `at://${mutedDid}/forum.barazo.topic.reply/m1`, rkey: "m1" }),
+        sampleReplyRow({ authorDid: TEST_DID }),
+      ];
+      selectChain.limit.mockResolvedValueOnce(rows);
+
+      const encodedTopicUri = encodeURIComponent(TEST_TOPIC_URI);
+      const response = await app.inject({
+        method: "GET",
+        url: `/api/topics/${encodedTopicUri}/replies`,
+      });
+
+      expect(response.statusCode).toBe(200);
+      const body = response.json<{ replies: Array<{ authorDid: string; isMuted: boolean }> }>();
+      expect(body.replies).toHaveLength(2);
+
+      const mutedReply = body.replies.find((r) => r.authorDid === mutedDid);
+      const normalReply = body.replies.find((r) => r.authorDid === TEST_DID);
+      expect(mutedReply?.isMuted).toBe(true);
+      expect(normalReply?.isMuted).toBe(false);
+    });
+
+    it("returns isMuted: false for all replies when unauthenticated", async () => {
+      const noAuthApp = await buildTestApp(undefined);
+      // For unauthenticated users, no user profile query
+      selectChain.where.mockResolvedValueOnce([sampleTopicRow()]);
+      // Category maturity
+      selectChain.where.mockResolvedValueOnce([{ maturityRating: "safe" }]);
+      // No user profile or block/mute query for unauthenticated
+      // Replies query
+      const rows = [
+        sampleReplyRow({ authorDid: TEST_DID }),
+        sampleReplyRow({ authorDid: OTHER_DID, uri: `at://${OTHER_DID}/forum.barazo.topic.reply/o1`, rkey: "o1" }),
+      ];
+      selectChain.limit.mockResolvedValueOnce(rows);
+
+      const encodedTopicUri = encodeURIComponent(TEST_TOPIC_URI);
+      const response = await noAuthApp.inject({
+        method: "GET",
+        url: `/api/topics/${encodedTopicUri}/replies`,
+      });
+
+      expect(response.statusCode).toBe(200);
+      const body = response.json<{ replies: Array<{ authorDid: string; isMuted: boolean }> }>();
+      expect(body.replies).toHaveLength(2);
+      expect(body.replies.every((r) => r.isMuted === false)).toBe(true);
+
+      await noAuthApp.close();
+    });
   });
 
   // =========================================================================

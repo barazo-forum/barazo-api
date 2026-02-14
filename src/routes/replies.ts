@@ -1,9 +1,10 @@
-import { eq, and, sql, asc } from "drizzle-orm";
+import { eq, and, sql, asc, notInArray } from "drizzle-orm";
 import type { FastifyPluginCallback } from "fastify";
 import { createPdsClient } from "../lib/pds-client.js";
 import { notFound, forbidden, badRequest } from "../lib/api-errors.js";
 import { resolveMaxMaturity, maturityAllows } from "../lib/content-filter.js";
 import type { MaturityUser } from "../lib/content-filter.js";
+import { loadBlockMuteLists } from "../lib/block-mute.js";
 import { createReplySchema, updateReplySchema, replyQuerySchema } from "../validation/replies.js";
 import { replies } from "../db/schema/replies.js";
 import { topics } from "../db/schema/topics.js";
@@ -48,6 +49,7 @@ const replyJsonSchema = {
     cid: { type: "string" as const },
     depth: { type: "integer" as const },
     reactionCount: { type: "integer" as const },
+    isMuted: { type: "boolean" as const },
     createdAt: { type: "string" as const, format: "date-time" as const },
     indexedAt: { type: "string" as const, format: "date-time" as const },
   },
@@ -413,8 +415,16 @@ export function replyRoutes(): FastifyPluginCallback {
         throw forbidden("Content restricted by maturity settings");
       }
 
+      // Block/mute filtering: load the authenticated user's preferences
+      const { blockedDids, mutedDids } = await loadBlockMuteLists(request.user?.did, db);
+
       const { cursor, limit } = parsedQuery.data;
       const conditions = [eq(replies.rootUri, decodedTopicUri)];
+
+      // Exclude replies by blocked authors
+      if (blockedDids.length > 0) {
+        conditions.push(notInArray(replies.authorDid, blockedDids));
+      }
 
       // Cursor-based pagination (ASC order for conversation flow)
       if (cursor) {
@@ -441,6 +451,13 @@ export function replyRoutes(): FastifyPluginCallback {
       const resultRows = hasMore ? rows.slice(0, limit) : rows;
       const serialized = resultRows.map(serializeReply);
 
+      // Annotate muted authors (content is still returned, just flagged)
+      const mutedSet = new Set(mutedDids);
+      const annotatedReplies = serialized.map((r) => ({
+        ...r,
+        isMuted: mutedSet.has(r.authorDid),
+      }));
+
       let nextCursor: string | null = null;
       if (hasMore) {
         const lastRow = resultRows[resultRows.length - 1];
@@ -450,7 +467,7 @@ export function replyRoutes(): FastifyPluginCallback {
       }
 
       return reply.status(200).send({
-        replies: serialized,
+        replies: annotatedReplies,
         cursor: nextCursor,
       });
     });
