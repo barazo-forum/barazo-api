@@ -552,7 +552,7 @@ export function replyRoutes(): FastifyPluginCallback {
       const rkey = extractRkey(decodedUri);
 
       // Resolve labels for PDS record: use provided value, or fall back to existing
-      const resolvedLabels = labels !== undefined ? (labels ?? null) : (replyRow.labels ?? null);
+      const resolvedLabels = labels !== undefined ? labels : (replyRow.labels ?? null);
 
       // Build updated record for PDS
       const updatedRecord: Record<string, unknown> = {
@@ -573,7 +573,7 @@ export function replyRoutes(): FastifyPluginCallback {
           cid: result.cid,
           indexedAt: new Date(),
         };
-        if (labels !== undefined) dbUpdates.labels = labels ?? null;
+        if (labels !== undefined) dbUpdates.labels = labels;
 
         const updated = await db
           .update(replies)

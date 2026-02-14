@@ -404,7 +404,7 @@ export function topicRoutes(): FastifyPluginCallback {
             if (c.maturityRating === "adult") return false;
             return maturityAllows(maxMaturity, c.maturityRating);
           })
-          .map((c) => c.communityDid!);
+          .map((c) => c.communityDid as string);
 
         if (allowedCommunityDids.length === 0) {
           return reply.status(200).send({ topics: [], cursor: null });

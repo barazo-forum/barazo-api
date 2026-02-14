@@ -776,7 +776,7 @@ describe("topic routes", () => {
       expect(response.statusCode).toBe(200);
       const body = response.json<{ topics: Array<{ authorDid: string; isMuted: boolean }> }>();
       expect(body.topics).toHaveLength(2);
-      expect(body.topics.every((t) => t.isMuted === false)).toBe(true);
+      expect(body.topics.every((t) => !t.isMuted)).toBe(true);
 
       await noAuthApp.close();
     });

@@ -825,7 +825,7 @@ describe("reply routes", () => {
       expect(response.statusCode).toBe(200);
       const body = response.json<{ replies: Array<{ authorDid: string; isMuted: boolean }> }>();
       expect(body.replies).toHaveLength(2);
-      expect(body.replies.every((r) => r.isMuted === false)).toBe(true);
+      expect(body.replies.every((r) => !r.isMuted)).toBe(true);
 
       await noAuthApp.close();
     });
