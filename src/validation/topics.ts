@@ -66,6 +66,7 @@ export const updateTopicSchema = z.object({
     )
     .max(5, "At most 5 tags allowed")
     .optional(),
+  labels: selfLabelsSchema.optional(),
 });
 
 export type UpdateTopicInput = z.infer<typeof updateTopicSchema>;

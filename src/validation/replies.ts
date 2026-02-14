@@ -31,12 +31,13 @@ export const createReplySchema = z.object({
 
 export type CreateReplyInput = z.infer<typeof createReplySchema>;
 
-/** Schema for updating an existing reply (content only). */
+/** Schema for updating an existing reply (content and optional labels). */
 export const updateReplySchema = z.object({
   content: z
     .string()
     .min(1, "Content must not be empty")
     .max(50000, "Content must be at most 50,000 characters"),
+  labels: selfLabelsSchema.optional(),
 });
 
 export type UpdateReplyInput = z.infer<typeof updateReplySchema>;

@@ -548,6 +548,19 @@ export function topicRoutes(): FastifyPluginCallback {
               items: { type: "string", minLength: 1, maxLength: 30 },
               maxItems: 5,
             },
+            labels: {
+              type: "object",
+              properties: {
+                values: {
+                  type: "array",
+                  items: {
+                    type: "object",
+                    required: ["val"],
+                    properties: { val: { type: "string" } },
+                  },
+                },
+              },
+            },
           },
         },
         response: {
@@ -592,6 +605,9 @@ export function topicRoutes(): FastifyPluginCallback {
       const updates = parsed.data;
       const rkey = extractRkey(decodedUri);
 
+      // Resolve labels for PDS record: use provided value, or fall back to existing
+      const resolvedLabels = updates.labels !== undefined ? (updates.labels ?? null) : (topic.labels ?? null);
+
       // Build updated record for PDS
       const updatedRecord: Record<string, unknown> = {
         title: updates.title ?? topic.title,
@@ -600,6 +616,7 @@ export function topicRoutes(): FastifyPluginCallback {
         tags: updates.tags ?? topic.tags ?? [],
         community: topic.communityDid,
         createdAt: topic.createdAt.toISOString(),
+        ...(resolvedLabels ? { labels: resolvedLabels } : {}),
       };
 
       try {
@@ -614,6 +631,7 @@ export function topicRoutes(): FastifyPluginCallback {
         if (updates.content !== undefined) dbUpdates.content = updates.content;
         if (updates.category !== undefined) dbUpdates.category = updates.category;
         if (updates.tags !== undefined) dbUpdates.tags = updates.tags;
+        if (updates.labels !== undefined) dbUpdates.labels = updates.labels ?? null;
 
         const updated = await db
           .update(topics)

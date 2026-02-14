@@ -477,6 +477,19 @@ export function replyRoutes(): FastifyPluginCallback {
           required: ["content"],
           properties: {
             content: { type: "string", minLength: 1, maxLength: 50000 },
+            labels: {
+              type: "object",
+              properties: {
+                values: {
+                  type: "array",
+                  items: {
+                    type: "object",
+                    required: ["val"],
+                    properties: { val: { type: "string" } },
+                  },
+                },
+              },
+            },
           },
         },
         response: {
@@ -518,8 +531,11 @@ export function replyRoutes(): FastifyPluginCallback {
         throw forbidden("Not authorized to edit this reply");
       }
 
-      const { content } = parsed.data;
+      const { content, labels } = parsed.data;
       const rkey = extractRkey(decodedUri);
+
+      // Resolve labels for PDS record: use provided value, or fall back to existing
+      const resolvedLabels = labels !== undefined ? (labels ?? null) : (replyRow.labels ?? null);
 
       // Build updated record for PDS
       const updatedRecord: Record<string, unknown> = {
@@ -528,18 +544,23 @@ export function replyRoutes(): FastifyPluginCallback {
         root: { uri: replyRow.rootUri, cid: replyRow.rootCid },
         parent: { uri: replyRow.parentUri, cid: replyRow.parentCid },
         createdAt: replyRow.createdAt.toISOString(),
+        ...(resolvedLabels ? { labels: resolvedLabels } : {}),
       };
 
       try {
         const result = await pdsClient.updateRecord(user.did, COLLECTION, rkey, updatedRecord);
 
+        // Build DB update set
+        const dbUpdates: Record<string, unknown> = {
+          content,
+          cid: result.cid,
+          indexedAt: new Date(),
+        };
+        if (labels !== undefined) dbUpdates.labels = labels ?? null;
+
         const updated = await db
           .update(replies)
-          .set({
-            content,
-            cid: result.cid,
-            indexedAt: new Date(),
-          })
+          .set(dbUpdates)
           .where(eq(replies.uri, decodedUri))
           .returning();
 

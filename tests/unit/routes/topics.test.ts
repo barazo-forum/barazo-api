@@ -914,6 +914,61 @@ describe("topic routes", () => {
 
       expect(response.statusCode).toBe(200);
     });
+
+    it("updates a topic with self-labels (PDS record + DB)", async () => {
+      const existingRow = sampleTopicRow();
+      selectChain.where.mockResolvedValueOnce([existingRow]);
+      const labels = { values: [{ val: "nsfw" }, { val: "spoiler" }] };
+      const updatedRow = { ...existingRow, labels, cid: "bafyreinewcid" };
+      updateChain.returning.mockResolvedValueOnce([updatedRow]);
+
+      const encodedUri = encodeURIComponent(TEST_URI);
+      const response = await app.inject({
+        method: "PUT",
+        url: `/api/topics/${encodedUri}`,
+        headers: { authorization: "Bearer test-token" },
+        payload: { labels },
+      });
+
+      expect(response.statusCode).toBe(200);
+      const body = response.json<{ labels: { values: Array<{ val: string }> } }>();
+      expect(body.labels).toEqual(labels);
+
+      // Verify PDS record includes labels
+      expect(updateRecordFn).toHaveBeenCalledOnce();
+      const pdsRecord = updateRecordFn.mock.calls[0]?.[3] as Record<string, unknown>;
+      expect(pdsRecord.labels).toEqual(labels);
+
+      // Verify DB update includes labels
+      const dbUpdateSet = updateChain.set.mock.calls[0]?.[0] as Record<string, unknown>;
+      expect(dbUpdateSet.labels).toEqual(labels);
+    });
+
+    it("does not change existing labels when labels field is omitted from update", async () => {
+      const existingLabels = { values: [{ val: "nsfw" }] };
+      const existingRow = sampleTopicRow({ labels: existingLabels });
+      selectChain.where.mockResolvedValueOnce([existingRow]);
+      const updatedRow = { ...existingRow, title: "New Title", cid: "bafyreinewcid" };
+      updateChain.returning.mockResolvedValueOnce([updatedRow]);
+
+      const encodedUri = encodeURIComponent(TEST_URI);
+      const response = await app.inject({
+        method: "PUT",
+        url: `/api/topics/${encodedUri}`,
+        headers: { authorization: "Bearer test-token" },
+        payload: { title: "New Title" },
+      });
+
+      expect(response.statusCode).toBe(200);
+
+      // PDS record should preserve existing labels
+      const pdsRecord = updateRecordFn.mock.calls[0]?.[3] as Record<string, unknown>;
+      expect(pdsRecord.labels).toEqual(existingLabels);
+
+      // DB update should NOT include labels key (partial update)
+      const dbUpdateSet = updateChain.set.mock.calls[0]?.[0] as Record<string, unknown>;
+      expect(dbUpdateSet).not.toHaveProperty("labels");
+    });
   });
 
   describe("PUT /api/topics/:uri (unauthenticated)", () => {
