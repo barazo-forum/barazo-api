@@ -445,6 +445,58 @@ describe("reply routes", () => {
 
       expect(response.statusCode).toBe(502);
     });
+
+    it("creates a reply with self-labels and includes them in PDS record and DB insert", async () => {
+      const labels = { values: [{ val: "nsfw" }, { val: "spoiler" }] };
+      selectChain.where.mockResolvedValueOnce([sampleTopicRow()]);
+
+      const encodedTopicUri = encodeURIComponent(TEST_TOPIC_URI);
+      const response = await app.inject({
+        method: "POST",
+        url: `/api/topics/${encodedTopicUri}/replies`,
+        headers: { authorization: "Bearer test-token" },
+        payload: {
+          content: "This reply has self-labels.",
+          labels,
+        },
+      });
+
+      expect(response.statusCode).toBe(201);
+
+      // Verify PDS record includes labels
+      expect(createRecordFn).toHaveBeenCalledOnce();
+      const pdsRecord = createRecordFn.mock.calls[0]?.[2] as Record<string, unknown>;
+      expect(pdsRecord.labels).toEqual(labels);
+
+      // Verify DB insert includes labels
+      expect(mockDb.insert).toHaveBeenCalledOnce();
+      const insertValues = insertChain.values.mock.calls[0]?.[0] as Record<string, unknown>;
+      expect(insertValues.labels).toEqual(labels);
+    });
+
+    it("creates a reply without labels (backwards compatible)", async () => {
+      selectChain.where.mockResolvedValueOnce([sampleTopicRow()]);
+
+      const encodedTopicUri = encodeURIComponent(TEST_TOPIC_URI);
+      const response = await app.inject({
+        method: "POST",
+        url: `/api/topics/${encodedTopicUri}/replies`,
+        headers: { authorization: "Bearer test-token" },
+        payload: {
+          content: "This reply has no labels.",
+        },
+      });
+
+      expect(response.statusCode).toBe(201);
+
+      // Verify PDS record does NOT include labels key
+      const pdsRecord = createRecordFn.mock.calls[0]?.[2] as Record<string, unknown>;
+      expect(pdsRecord).not.toHaveProperty("labels");
+
+      // Verify DB insert has labels: null
+      const insertValues = insertChain.values.mock.calls[0]?.[0] as Record<string, unknown>;
+      expect(insertValues.labels).toBeNull();
+    });
   });
 
   describe("POST /api/topics/:topicUri/replies (unauthenticated)", () => {
@@ -650,6 +702,133 @@ describe("reply routes", () => {
       expect(response.statusCode).toBe(200);
       await noAuthApp.close();
     });
+
+    it("includes labels in reply list response", async () => {
+      selectChain.where.mockResolvedValueOnce([sampleTopicRow()]);
+      const labels = { values: [{ val: "nsfw" }] };
+      const rows = [
+        sampleReplyRow({ labels }),
+        sampleReplyRow({
+          uri: `at://${TEST_DID}/forum.barazo.topic.reply/nolabel`,
+          rkey: "nolabel",
+          labels: null,
+        }),
+      ];
+      selectChain.limit.mockResolvedValueOnce(rows);
+
+      const encodedTopicUri = encodeURIComponent(TEST_TOPIC_URI);
+      const response = await app.inject({
+        method: "GET",
+        url: `/api/topics/${encodedTopicUri}/replies`,
+      });
+
+      expect(response.statusCode).toBe(200);
+      const body = response.json<{ replies: Array<{ uri: string; labels: { values: Array<{ val: string }> } | null }> }>();
+      expect(body.replies).toHaveLength(2);
+      expect(body.replies[0]?.labels).toEqual(labels);
+      expect(body.replies[1]?.labels).toBeNull();
+    });
+
+    it("excludes replies by blocked users from list", async () => {
+      const blockedDid = "did:plc:blockeduser";
+
+      // Query order for authenticated GET /api/topics/:topicUri/replies:
+      // 1. Topic lookup (where)
+      // 2. Category maturity (where)
+      // 3. User profile (where) -- if authenticated
+      // 4. Block/mute preferences (where)
+      // 5. Replies query (limit)
+      selectChain.where.mockResolvedValueOnce([sampleTopicRow()]);
+      // Category maturity
+      selectChain.where.mockResolvedValueOnce([{ maturityRating: "safe" }]);
+      // User profile
+      selectChain.where.mockResolvedValueOnce([{ ageDeclaredAt: null, maturityPref: "safe" }]);
+      // Block/mute preferences
+      selectChain.where.mockResolvedValueOnce([{
+        blockedDids: [blockedDid],
+        mutedDids: [],
+      }]);
+
+      // Return only non-blocked replies
+      const rows = [
+        sampleReplyRow({ authorDid: TEST_DID }),
+      ];
+      selectChain.limit.mockResolvedValueOnce(rows);
+
+      const encodedTopicUri = encodeURIComponent(TEST_TOPIC_URI);
+      const response = await app.inject({
+        method: "GET",
+        url: `/api/topics/${encodedTopicUri}/replies`,
+      });
+
+      expect(response.statusCode).toBe(200);
+      const body = response.json<{ replies: Array<{ authorDid: string; isMuted: boolean }> }>();
+      expect(body.replies.every((r) => r.authorDid !== blockedDid)).toBe(true);
+    });
+
+    it("annotates replies by muted users with isMuted: true", async () => {
+      const mutedDid = "did:plc:muteduser";
+
+      selectChain.where.mockResolvedValueOnce([sampleTopicRow()]);
+      // Category maturity
+      selectChain.where.mockResolvedValueOnce([{ maturityRating: "safe" }]);
+      // User profile
+      selectChain.where.mockResolvedValueOnce([{ ageDeclaredAt: null, maturityPref: "safe" }]);
+      // Block/mute preferences
+      selectChain.where.mockResolvedValueOnce([{
+        blockedDids: [],
+        mutedDids: [mutedDid],
+      }]);
+
+      const rows = [
+        sampleReplyRow({ authorDid: mutedDid, uri: `at://${mutedDid}/forum.barazo.topic.reply/m1`, rkey: "m1" }),
+        sampleReplyRow({ authorDid: TEST_DID }),
+      ];
+      selectChain.limit.mockResolvedValueOnce(rows);
+
+      const encodedTopicUri = encodeURIComponent(TEST_TOPIC_URI);
+      const response = await app.inject({
+        method: "GET",
+        url: `/api/topics/${encodedTopicUri}/replies`,
+      });
+
+      expect(response.statusCode).toBe(200);
+      const body = response.json<{ replies: Array<{ authorDid: string; isMuted: boolean }> }>();
+      expect(body.replies).toHaveLength(2);
+
+      const mutedReply = body.replies.find((r) => r.authorDid === mutedDid);
+      const normalReply = body.replies.find((r) => r.authorDid === TEST_DID);
+      expect(mutedReply?.isMuted).toBe(true);
+      expect(normalReply?.isMuted).toBe(false);
+    });
+
+    it("returns isMuted: false for all replies when unauthenticated", async () => {
+      const noAuthApp = await buildTestApp(undefined);
+      // For unauthenticated users, no user profile query
+      selectChain.where.mockResolvedValueOnce([sampleTopicRow()]);
+      // Category maturity
+      selectChain.where.mockResolvedValueOnce([{ maturityRating: "safe" }]);
+      // No user profile or block/mute query for unauthenticated
+      // Replies query
+      const rows = [
+        sampleReplyRow({ authorDid: TEST_DID }),
+        sampleReplyRow({ authorDid: OTHER_DID, uri: `at://${OTHER_DID}/forum.barazo.topic.reply/o1`, rkey: "o1" }),
+      ];
+      selectChain.limit.mockResolvedValueOnce(rows);
+
+      const encodedTopicUri = encodeURIComponent(TEST_TOPIC_URI);
+      const response = await noAuthApp.inject({
+        method: "GET",
+        url: `/api/topics/${encodedTopicUri}/replies`,
+      });
+
+      expect(response.statusCode).toBe(200);
+      const body = response.json<{ replies: Array<{ authorDid: string; isMuted: boolean }> }>();
+      expect(body.replies).toHaveLength(2);
+      expect(body.replies.every((r) => !r.isMuted)).toBe(true);
+
+      await noAuthApp.close();
+    });
   });
 
   // =========================================================================
@@ -784,6 +963,61 @@ describe("reply routes", () => {
       });
 
       expect(response.statusCode).toBe(502);
+    });
+
+    it("updates a reply with self-labels (PDS record + DB)", async () => {
+      const existingRow = sampleReplyRow();
+      selectChain.where.mockResolvedValueOnce([existingRow]);
+      const labels = { values: [{ val: "nsfw" }, { val: "spoiler" }] };
+      const updatedRow = { ...existingRow, content: "Updated with labels", labels, cid: "bafyreinewcid" };
+      updateChain.returning.mockResolvedValueOnce([updatedRow]);
+
+      const encodedUri = encodeURIComponent(TEST_REPLY_URI);
+      const response = await app.inject({
+        method: "PUT",
+        url: `/api/replies/${encodedUri}`,
+        headers: { authorization: "Bearer test-token" },
+        payload: { content: "Updated with labels", labels },
+      });
+
+      expect(response.statusCode).toBe(200);
+      const body = response.json<{ labels: { values: Array<{ val: string }> } }>();
+      expect(body.labels).toEqual(labels);
+
+      // Verify PDS record includes labels
+      expect(updateRecordFn).toHaveBeenCalledOnce();
+      const pdsRecord = updateRecordFn.mock.calls[0]?.[3] as Record<string, unknown>;
+      expect(pdsRecord.labels).toEqual(labels);
+
+      // Verify DB update includes labels
+      const dbUpdateSet = updateChain.set.mock.calls[0]?.[0] as Record<string, unknown>;
+      expect(dbUpdateSet.labels).toEqual(labels);
+    });
+
+    it("does not change existing labels when labels field is omitted from update", async () => {
+      const existingLabels = { values: [{ val: "nsfw" }] };
+      const existingRow = sampleReplyRow({ labels: existingLabels });
+      selectChain.where.mockResolvedValueOnce([existingRow]);
+      const updatedRow = { ...existingRow, content: "New content", cid: "bafyreinewcid" };
+      updateChain.returning.mockResolvedValueOnce([updatedRow]);
+
+      const encodedUri = encodeURIComponent(TEST_REPLY_URI);
+      const response = await app.inject({
+        method: "PUT",
+        url: `/api/replies/${encodedUri}`,
+        headers: { authorization: "Bearer test-token" },
+        payload: { content: "New content" },
+      });
+
+      expect(response.statusCode).toBe(200);
+
+      // PDS record should preserve existing labels
+      const pdsRecord = updateRecordFn.mock.calls[0]?.[3] as Record<string, unknown>;
+      expect(pdsRecord.labels).toEqual(existingLabels);
+
+      // DB update should NOT include labels key (partial update)
+      const dbUpdateSet = updateChain.set.mock.calls[0]?.[0] as Record<string, unknown>;
+      expect(dbUpdateSet).not.toHaveProperty("labels");
     });
   });
 

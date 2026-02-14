@@ -1,9 +1,10 @@
-import { eq, and, sql, asc } from "drizzle-orm";
+import { eq, and, sql, asc, notInArray } from "drizzle-orm";
 import type { FastifyPluginCallback } from "fastify";
 import { createPdsClient } from "../lib/pds-client.js";
 import { notFound, forbidden, badRequest } from "../lib/api-errors.js";
 import { resolveMaxMaturity, maturityAllows } from "../lib/content-filter.js";
 import type { MaturityUser } from "../lib/content-filter.js";
+import { loadBlockMuteLists } from "../lib/block-mute.js";
 import { createReplySchema, updateReplySchema, replyQuerySchema } from "../validation/replies.js";
 import { replies } from "../db/schema/replies.js";
 import { topics } from "../db/schema/topics.js";
@@ -32,10 +33,23 @@ const replyJsonSchema = {
     rootCid: { type: "string" as const },
     parentUri: { type: "string" as const },
     parentCid: { type: "string" as const },
+    labels: {
+      type: ["object", "null"] as const,
+      properties: {
+        values: {
+          type: "array" as const,
+          items: {
+            type: "object" as const,
+            properties: { val: { type: "string" as const } },
+          },
+        },
+      },
+    },
     communityDid: { type: "string" as const },
     cid: { type: "string" as const },
     depth: { type: "integer" as const },
     reactionCount: { type: "integer" as const },
+    isMuted: { type: "boolean" as const },
     createdAt: { type: "string" as const, format: "date-time" as const },
     indexedAt: { type: "string" as const, format: "date-time" as const },
   },
@@ -72,6 +86,7 @@ function serializeReply(row: typeof replies.$inferSelect) {
     rootCid: row.rootCid,
     parentUri: row.parentUri,
     parentCid: row.parentCid,
+    labels: row.labels ?? null,
     communityDid: row.communityDid,
     cid: row.cid,
     depth,
@@ -156,6 +171,19 @@ export function replyRoutes(): FastifyPluginCallback {
           properties: {
             content: { type: "string", minLength: 1, maxLength: 50000 },
             parentUri: { type: "string", minLength: 1 },
+            labels: {
+              type: "object",
+              properties: {
+                values: {
+                  type: "array",
+                  items: {
+                    type: "object",
+                    required: ["val"],
+                    properties: { val: { type: "string" } },
+                  },
+                },
+              },
+            },
           },
         },
         response: {
@@ -188,7 +216,7 @@ export function replyRoutes(): FastifyPluginCallback {
 
       const { topicUri } = request.params as { topicUri: string };
       const decodedTopicUri = decodeURIComponent(topicUri);
-      const { content, parentUri } = parsed.data;
+      const { content, parentUri, labels } = parsed.data;
 
       // Look up the parent topic
       const topicRows = await db
@@ -229,6 +257,7 @@ export function replyRoutes(): FastifyPluginCallback {
         root: { uri: topic.uri, cid: topic.cid },
         parent: { uri: parentRefUri, cid: parentRefCid },
         createdAt: now,
+        ...(labels ? { labels } : {}),
       };
 
       try {
@@ -257,6 +286,7 @@ export function replyRoutes(): FastifyPluginCallback {
             parentCid: parentRefCid,
             communityDid: topic.communityDid,
             cid: result.cid,
+            labels: labels ?? null,
             reactionCount: 0,
             createdAt: new Date(now),
             indexedAt: new Date(),
@@ -265,6 +295,7 @@ export function replyRoutes(): FastifyPluginCallback {
             target: replies.uri,
             set: {
               content,
+              labels: labels ?? null,
               cid: result.cid,
               indexedAt: new Date(),
             },
@@ -384,8 +415,16 @@ export function replyRoutes(): FastifyPluginCallback {
         throw forbidden("Content restricted by maturity settings");
       }
 
+      // Block/mute filtering: load the authenticated user's preferences
+      const { blockedDids, mutedDids } = await loadBlockMuteLists(request.user?.did, db);
+
       const { cursor, limit } = parsedQuery.data;
       const conditions = [eq(replies.rootUri, decodedTopicUri)];
+
+      // Exclude replies by blocked authors
+      if (blockedDids.length > 0) {
+        conditions.push(notInArray(replies.authorDid, blockedDids));
+      }
 
       // Cursor-based pagination (ASC order for conversation flow)
       if (cursor) {
@@ -412,6 +451,13 @@ export function replyRoutes(): FastifyPluginCallback {
       const resultRows = hasMore ? rows.slice(0, limit) : rows;
       const serialized = resultRows.map(serializeReply);
 
+      // Annotate muted authors (content is still returned, just flagged)
+      const mutedSet = new Set(mutedDids);
+      const annotatedReplies = serialized.map((r) => ({
+        ...r,
+        isMuted: mutedSet.has(r.authorDid),
+      }));
+
       let nextCursor: string | null = null;
       if (hasMore) {
         const lastRow = resultRows[resultRows.length - 1];
@@ -421,7 +467,7 @@ export function replyRoutes(): FastifyPluginCallback {
       }
 
       return reply.status(200).send({
-        replies: serialized,
+        replies: annotatedReplies,
         cursor: nextCursor,
       });
     });
@@ -448,6 +494,19 @@ export function replyRoutes(): FastifyPluginCallback {
           required: ["content"],
           properties: {
             content: { type: "string", minLength: 1, maxLength: 50000 },
+            labels: {
+              type: "object",
+              properties: {
+                values: {
+                  type: "array",
+                  items: {
+                    type: "object",
+                    required: ["val"],
+                    properties: { val: { type: "string" } },
+                  },
+                },
+              },
+            },
           },
         },
         response: {
@@ -489,8 +548,11 @@ export function replyRoutes(): FastifyPluginCallback {
         throw forbidden("Not authorized to edit this reply");
       }
 
-      const { content } = parsed.data;
+      const { content, labels } = parsed.data;
       const rkey = extractRkey(decodedUri);
+
+      // Resolve labels for PDS record: use provided value, or fall back to existing
+      const resolvedLabels = labels !== undefined ? labels : (replyRow.labels ?? null);
 
       // Build updated record for PDS
       const updatedRecord: Record<string, unknown> = {
@@ -499,18 +561,23 @@ export function replyRoutes(): FastifyPluginCallback {
         root: { uri: replyRow.rootUri, cid: replyRow.rootCid },
         parent: { uri: replyRow.parentUri, cid: replyRow.parentCid },
         createdAt: replyRow.createdAt.toISOString(),
+        ...(resolvedLabels ? { labels: resolvedLabels } : {}),
       };
 
       try {
         const result = await pdsClient.updateRecord(user.did, COLLECTION, rkey, updatedRecord);
 
+        // Build DB update set
+        const dbUpdates: Record<string, unknown> = {
+          content,
+          cid: result.cid,
+          indexedAt: new Date(),
+        };
+        if (labels !== undefined) dbUpdates.labels = labels;
+
         const updated = await db
           .update(replies)
-          .set({
-            content,
-            cid: result.cid,
-            indexedAt: new Date(),
-          })
+          .set(dbUpdates)
           .where(eq(replies.uri, decodedUri))
           .returning();
 

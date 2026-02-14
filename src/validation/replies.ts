@@ -1,6 +1,18 @@
 import { z } from "zod/v4";
 
 // ---------------------------------------------------------------------------
+// Self-label schemas (com.atproto.label.defs#selfLabels)
+// ---------------------------------------------------------------------------
+
+const selfLabelSchema = z.object({
+  val: z.string().max(128),
+});
+
+const selfLabelsSchema = z.object({
+  values: z.array(selfLabelSchema).max(10),
+});
+
+// ---------------------------------------------------------------------------
 // Request schemas
 // ---------------------------------------------------------------------------
 
@@ -14,16 +26,18 @@ export const createReplySchema = z.object({
     .string()
     .min(1, "Parent URI must not be empty")
     .optional(),
+  labels: selfLabelsSchema.optional(),
 });
 
 export type CreateReplyInput = z.infer<typeof createReplySchema>;
 
-/** Schema for updating an existing reply (content only). */
+/** Schema for updating an existing reply (content and optional labels). */
 export const updateReplySchema = z.object({
   content: z
     .string()
     .min(1, "Content must not be empty")
     .max(50000, "Content must be at most 50,000 characters"),
+  labels: selfLabelsSchema.optional(),
 });
 
 export type UpdateReplyInput = z.infer<typeof updateReplySchema>;
@@ -60,6 +74,7 @@ export const replyResponseSchema = z.object({
   rootCid: z.string(),
   parentUri: z.string(),
   parentCid: z.string(),
+  labels: z.object({ values: z.array(z.object({ val: z.string() })) }).nullable(),
   communityDid: z.string(),
   cid: z.string(),
   reactionCount: z.number(),

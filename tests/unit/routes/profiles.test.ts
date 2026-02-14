@@ -116,15 +116,18 @@ function sampleCommunityPrefsRow(overrides?: Record<string, unknown>) {
 const mockDb = createMockDb();
 
 let selectChain: DbChain;
+let selectDistinctChain: DbChain;
 let insertChain: DbChain;
 let deleteChain: DbChain;
 
 function resetAllDbMocks(): void {
   selectChain = createChainableProxy([]);
+  selectDistinctChain = createChainableProxy([]);
   insertChain = createChainableProxy();
   deleteChain = createChainableProxy();
   mockDb.insert.mockReturnValue(insertChain);
   mockDb.select.mockReturnValue(selectChain);
+  mockDb.selectDistinct.mockReturnValue(selectDistinctChain);
   mockDb.update.mockReturnValue(createChainableProxy([]));
   mockDb.delete.mockReturnValue(deleteChain);
   // eslint-disable-next-line @typescript-eslint/no-misused-promises -- Intentionally async mock for Drizzle transaction
@@ -324,6 +327,9 @@ describe("profile routes", () => {
       selectChain.where.mockResolvedValueOnce([{ count: 4 }]);
       // Reactions on replies: 6
       selectChain.where.mockResolvedValueOnce([{ count: 6 }]);
+      // selectDistinct for topic communities and reply communities
+      selectDistinctChain.where.mockResolvedValueOnce([]);
+      selectDistinctChain.where.mockResolvedValueOnce([]);
 
       const response = await app.inject({
         method: "GET",
@@ -366,6 +372,9 @@ describe("profile routes", () => {
       selectChain.where.mockResolvedValueOnce([{ count: 0 }]);
       selectChain.where.mockResolvedValueOnce([{ count: 0 }]);
       selectChain.where.mockResolvedValueOnce([{ count: 0 }]);
+      // selectDistinct for topic communities and reply communities
+      selectDistinctChain.where.mockResolvedValueOnce([]);
+      selectDistinctChain.where.mockResolvedValueOnce([]);
 
       const response = await app.inject({
         method: "GET",
@@ -373,8 +382,82 @@ describe("profile routes", () => {
       });
 
       expect(response.statusCode).toBe(200);
-      const body = response.json<{ reputation: number }>();
+      const body = response.json<{ reputation: number; communityCount: number }>();
       expect(body.reputation).toBe(0);
+      expect(body.communityCount).toBe(0);
+    });
+
+    it("includes communityCount in reputation response", async () => {
+      // User lookup
+      selectChain.where.mockResolvedValueOnce([sampleUserRow()]);
+      // Topics: 3
+      selectChain.where.mockResolvedValueOnce([{ count: 3 }]);
+      // Replies: 7
+      selectChain.where.mockResolvedValueOnce([{ count: 7 }]);
+      // Reactions on topics: 4
+      selectChain.where.mockResolvedValueOnce([{ count: 4 }]);
+      // Reactions on replies: 6
+      selectChain.where.mockResolvedValueOnce([{ count: 6 }]);
+      // Distinct communities from topics
+      selectDistinctChain.where.mockResolvedValueOnce([
+        { communityDid: "did:plc:comm-a" },
+        { communityDid: "did:plc:comm-b" },
+      ]);
+      // Distinct communities from replies
+      selectDistinctChain.where.mockResolvedValueOnce([
+        { communityDid: "did:plc:comm-b" },
+        { communityDid: "did:plc:comm-c" },
+      ]);
+
+      const response = await app.inject({
+        method: "GET",
+        url: `/api/users/${TEST_HANDLE}/reputation`,
+      });
+
+      expect(response.statusCode).toBe(200);
+      const body = response.json<{
+        did: string;
+        handle: string;
+        reputation: number;
+        breakdown: {
+          topicCount: number;
+          replyCount: number;
+          reactionsReceived: number;
+        };
+        communityCount: number;
+      }>();
+      expect(body.communityCount).toBe(3); // comm-a, comm-b, comm-c (deduplicated)
+    });
+
+    it("counts distinct communities across topics and replies", async () => {
+      // User lookup
+      selectChain.where.mockResolvedValueOnce([sampleUserRow()]);
+      // Topics: 2
+      selectChain.where.mockResolvedValueOnce([{ count: 2 }]);
+      // Replies: 1
+      selectChain.where.mockResolvedValueOnce([{ count: 1 }]);
+      // Reactions on topics: 0
+      selectChain.where.mockResolvedValueOnce([{ count: 0 }]);
+      // Reactions on replies: 0
+      selectChain.where.mockResolvedValueOnce([{ count: 0 }]);
+      // Topic communities -- user created topics only in comm-a
+      selectDistinctChain.where.mockResolvedValueOnce([
+        { communityDid: "did:plc:comm-a" },
+      ]);
+      // Reply communities -- user replied only in comm-b (different community)
+      selectDistinctChain.where.mockResolvedValueOnce([
+        { communityDid: "did:plc:comm-b" },
+      ]);
+
+      const response = await app.inject({
+        method: "GET",
+        url: `/api/users/${TEST_HANDLE}/reputation`,
+      });
+
+      expect(response.statusCode).toBe(200);
+      const body = response.json<{ communityCount: number }>();
+      // 2 distinct communities: comm-a (from topics) + comm-b (from replies)
+      expect(body.communityCount).toBe(2);
     });
   });
 

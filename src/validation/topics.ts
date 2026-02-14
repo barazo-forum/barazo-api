@@ -1,6 +1,18 @@
 import { z } from "zod/v4";
 
 // ---------------------------------------------------------------------------
+// Self-label schemas (com.atproto.label.defs#selfLabels)
+// ---------------------------------------------------------------------------
+
+const selfLabelSchema = z.object({
+  val: z.string().max(128),
+});
+
+const selfLabelsSchema = z.object({
+  values: z.array(selfLabelSchema).max(10),
+});
+
+// ---------------------------------------------------------------------------
 // Request schemas
 // ---------------------------------------------------------------------------
 
@@ -25,6 +37,7 @@ export const createTopicSchema = z.object({
     )
     .max(5, "At most 5 tags allowed")
     .optional(),
+  labels: selfLabelsSchema.optional(),
 });
 
 export type CreateTopicInput = z.infer<typeof createTopicSchema>;
@@ -53,6 +66,7 @@ export const updateTopicSchema = z.object({
     )
     .max(5, "At most 5 tags allowed")
     .optional(),
+  labels: selfLabelsSchema.optional(),
 });
 
 export type UpdateTopicInput = z.infer<typeof updateTopicSchema>;
@@ -90,6 +104,7 @@ export const topicResponseSchema = z.object({
   contentFormat: z.string().nullable(),
   category: z.string(),
   tags: z.array(z.string()).nullable(),
+  labels: z.object({ values: z.array(z.object({ val: z.string() })) }).nullable(),
   communityDid: z.string(),
   cid: z.string(),
   replyCount: z.number(),

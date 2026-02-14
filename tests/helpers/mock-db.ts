@@ -78,6 +78,7 @@ export function createChainableProxy(terminalResult: unknown = []): DbChain {
 export interface MockDb {
   insert: MockFn;
   select: MockFn;
+  selectDistinct: MockFn;
   update: MockFn;
   delete: MockFn;
   transaction: MockFn;
@@ -91,6 +92,7 @@ export function createMockDb(): MockDb {
   return {
     insert: vi.fn(),
     select: vi.fn(),
+    selectDistinct: vi.fn(),
     update: vi.fn(),
     delete: vi.fn(),
     transaction: vi.fn(),
@@ -104,8 +106,10 @@ export function createMockDb(): MockDb {
  */
 export function resetDbMocks(mockDb: MockDb): DbChain {
   const selectChain = createChainableProxy([]);
+  const selectDistinctChain = createChainableProxy([]);
   mockDb.insert.mockReturnValue(createChainableProxy());
   mockDb.select.mockReturnValue(selectChain);
+  mockDb.selectDistinct.mockReturnValue(selectDistinctChain);
   mockDb.update.mockReturnValue(createChainableProxy([]));
   mockDb.delete.mockReturnValue(createChainableProxy());
   // eslint-disable-next-line @typescript-eslint/no-misused-promises -- Intentionally async for Drizzle transaction mock
