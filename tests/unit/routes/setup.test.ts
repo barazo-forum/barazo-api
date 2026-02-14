@@ -202,7 +202,12 @@ describe("setup routes", () => {
         adminDid: TEST_DID,
         communityName: "Barazo Community",
       });
-      expect(initializeFn).toHaveBeenCalledWith(TEST_DID, undefined);
+      expect(initializeFn).toHaveBeenCalledWith({
+        did: TEST_DID,
+        communityName: undefined,
+        handle: undefined,
+        serviceEndpoint: undefined,
+      });
     });
 
     it("returns 409 when already initialized", async () => {
@@ -248,7 +253,12 @@ describe("setup routes", () => {
         adminDid: TEST_DID,
         communityName: "Custom Forum Name",
       });
-      expect(initializeFn).toHaveBeenCalledWith(TEST_DID, "Custom Forum Name");
+      expect(initializeFn).toHaveBeenCalledWith({
+        did: TEST_DID,
+        communityName: "Custom Forum Name",
+        handle: undefined,
+        serviceEndpoint: undefined,
+      });
     });
 
     it("returns 400 for invalid communityName (empty string)", async () => {
@@ -300,6 +310,80 @@ describe("setup routes", () => {
           "content-type": "application/json",
         },
         payload: { communityName: "   " },
+      });
+
+      expect(response.statusCode).toBe(400);
+      expect(response.json<{ error: string }>().error).toBe(
+        "Invalid request body",
+      );
+    });
+
+    it("passes handle and serviceEndpoint to service when provided", async () => {
+      validateAccessTokenFn.mockResolvedValueOnce(makeMockSession());
+      initializeFn.mockResolvedValueOnce({
+        initialized: true,
+        adminDid: TEST_DID,
+        communityName: "Barazo Community",
+        communityDid: "did:plc:generated123",
+      });
+
+      const response = await app.inject({
+        method: "POST",
+        url: "/api/setup/initialize",
+        headers: {
+          authorization: `Bearer ${TEST_ACCESS_TOKEN}`,
+          "content-type": "application/json",
+        },
+        payload: {
+          communityName: "My Forum",
+          handle: "forum.example.com",
+          serviceEndpoint: "https://forum.example.com",
+        },
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(initializeFn).toHaveBeenCalledWith({
+        did: TEST_DID,
+        communityName: "My Forum",
+        handle: "forum.example.com",
+        serviceEndpoint: "https://forum.example.com",
+      });
+    });
+
+    it("returns 400 for invalid serviceEndpoint (not a URL)", async () => {
+      validateAccessTokenFn.mockResolvedValueOnce(makeMockSession());
+
+      const response = await app.inject({
+        method: "POST",
+        url: "/api/setup/initialize",
+        headers: {
+          authorization: `Bearer ${TEST_ACCESS_TOKEN}`,
+          "content-type": "application/json",
+        },
+        payload: {
+          serviceEndpoint: "not-a-url",
+        },
+      });
+
+      expect(response.statusCode).toBe(400);
+      expect(response.json<{ error: string }>().error).toBe(
+        "Invalid request body",
+      );
+    });
+
+    it("returns 400 for empty handle", async () => {
+      validateAccessTokenFn.mockResolvedValueOnce(makeMockSession());
+
+      const response = await app.inject({
+        method: "POST",
+        url: "/api/setup/initialize",
+        headers: {
+          authorization: `Bearer ${TEST_ACCESS_TOKEN}`,
+          "content-type": "application/json",
+        },
+        payload: {
+          handle: "",
+        },
       });
 
       expect(response.statusCode).toBe(400);

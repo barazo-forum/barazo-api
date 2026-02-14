@@ -24,6 +24,10 @@ describe("communitySettings schema", () => {
       "communityName",
       "maturityRating",
       "reactionSet",
+      "handle",
+      "serviceEndpoint",
+      "signingKey",
+      "rotationKey",
       "createdAt",
       "updatedAt",
     ];
@@ -47,6 +51,22 @@ describe("communitySettings schema", () => {
 
   it("has nullable adminDid", () => {
     expect(columns.adminDid.notNull).toBe(false);
+  });
+
+  it("has nullable handle", () => {
+    expect(columns.handle.notNull).toBe(false);
+  });
+
+  it("has nullable serviceEndpoint", () => {
+    expect(columns.serviceEndpoint.notNull).toBe(false);
+  });
+
+  it("has nullable signingKey", () => {
+    expect(columns.signingKey.notNull).toBe(false);
+  });
+
+  it("has nullable rotationKey", () => {
+    expect(columns.rotationKey.notNull).toBe(false);
   });
 
   it("has default value for communityName", () => {

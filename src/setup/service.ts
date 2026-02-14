@@ -2,6 +2,7 @@ import { eq, sql } from "drizzle-orm";
 import { communitySettings } from "../db/schema/community-settings.js";
 import type { Database } from "../db/index.js";
 import type { Logger } from "../lib/logger.js";
+import type { PlcDidService } from "../services/plc-did.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -12,15 +13,32 @@ export type SetupStatus =
   | { initialized: false }
   | { initialized: true; communityName: string };
 
+/** Parameters for community initialization. */
+export interface InitializeParams {
+  /** DID of the authenticated user who becomes admin */
+  did: string;
+  /** Optional community name override */
+  communityName?: string | undefined;
+  /** Community handle (e.g. "community.barazo.forum"). Required for PLC DID generation. */
+  handle?: string | undefined;
+  /** Community service endpoint (e.g. "https://community.barazo.forum"). Required for PLC DID generation. */
+  serviceEndpoint?: string | undefined;
+}
+
 /** Result of initialize(): either success with details, or already initialized. */
 export type InitializeResult =
-  | { initialized: true; adminDid: string; communityName: string }
+  | {
+      initialized: true;
+      adminDid: string;
+      communityName: string;
+      communityDid?: string | undefined;
+    }
   | { alreadyInitialized: true };
 
 /** Setup service interface for dependency injection and testing. */
 export interface SetupService {
   getStatus(): Promise<SetupStatus>;
-  initialize(did: string, communityName?: string): Promise<InitializeResult>;
+  initialize(params: InitializeParams): Promise<InitializeResult>;
 }
 
 // ---------------------------------------------------------------------------
@@ -37,12 +55,19 @@ const DEFAULT_COMMUNITY_NAME = "Barazo Community";
  * Create a setup service for managing community initialization.
  *
  * The first authenticated user to call initialize() becomes the community admin.
+ * When handle and serviceEndpoint are provided, a PLC DID is generated and
+ * registered with plc.directory.
  *
  * @param db - Drizzle database instance
  * @param logger - Pino logger instance
+ * @param plcDidService - Optional PLC DID service for DID generation
  * @returns SetupService with getStatus and initialize methods
  */
-export function createSetupService(db: Database, logger: Logger): SetupService {
+export function createSetupService(
+  db: Database,
+  logger: Logger,
+  plcDidService?: PlcDidService,
+): SetupService {
   /**
    * Check whether the community has been initialized.
    *
@@ -78,15 +103,50 @@ export function createSetupService(db: Database, logger: Logger): SetupService {
    * UPDATE existing if not yet initialized. The WHERE clause ensures an
    * already-initialized row is never overwritten.
    *
-   * @param did - DID of the authenticated user who becomes admin
-   * @param communityName - Optional community name override
+   * If handle and serviceEndpoint are provided and a PlcDidService is
+   * available, generates a PLC DID with signing + rotation keys and
+   * registers it with plc.directory.
+   *
+   * @param params - Initialization parameters
    * @returns InitializeResult with the new state or conflict indicator
    */
   async function initialize(
-    did: string,
-    communityName?: string,
+    params: InitializeParams,
   ): Promise<InitializeResult> {
+    const { did, communityName, handle, serviceEndpoint } = params;
+
     try {
+      // Generate PLC DID if handle and serviceEndpoint are provided
+      let communityDid: string | undefined;
+      let signingKeyHex: string | undefined;
+      let rotationKeyHex: string | undefined;
+
+      if (handle && serviceEndpoint && plcDidService) {
+        logger.info(
+          { handle, serviceEndpoint },
+          "Generating PLC DID during community setup",
+        );
+
+        const didResult = await plcDidService.generateDid({
+          handle,
+          serviceEndpoint,
+        });
+
+        communityDid = didResult.did;
+        signingKeyHex = didResult.signingKey;
+        rotationKeyHex = didResult.rotationKey;
+
+        logger.info(
+          { communityDid, handle },
+          "PLC DID generated successfully",
+        );
+      } else if (handle && serviceEndpoint && !plcDidService) {
+        logger.warn(
+          { handle, serviceEndpoint },
+          "PLC DID generation requested but PlcDidService not available",
+        );
+      }
+
       // Atomic upsert: INSERT new row, or UPDATE existing if not yet initialized.
       // The WHERE clause ensures an already-initialized row is never overwritten.
       const rows = await db
@@ -96,6 +156,11 @@ export function createSetupService(db: Database, logger: Logger): SetupService {
           initialized: true,
           adminDid: did,
           communityName: communityName ?? DEFAULT_COMMUNITY_NAME,
+          communityDid: communityDid ?? null,
+          handle: handle ?? null,
+          serviceEndpoint: serviceEndpoint ?? null,
+          signingKey: signingKeyHex ?? null,
+          rotationKey: rotationKeyHex ?? null,
         })
         .onConflictDoUpdate({
           target: communitySettings.id,
@@ -105,12 +170,19 @@ export function createSetupService(db: Database, logger: Logger): SetupService {
             communityName: communityName
               ? communityName
               : sql`${communitySettings.communityName}`,
+            communityDid: communityDid ?? sql`${communitySettings.communityDid}`,
+            handle: handle ?? sql`${communitySettings.handle}`,
+            serviceEndpoint:
+              serviceEndpoint ?? sql`${communitySettings.serviceEndpoint}`,
+            signingKey: signingKeyHex ?? sql`${communitySettings.signingKey}`,
+            rotationKey: rotationKeyHex ?? sql`${communitySettings.rotationKey}`,
             updatedAt: new Date(),
           },
           where: eq(communitySettings.initialized, false),
         })
         .returning({
           communityName: communitySettings.communityName,
+          communityDid: communitySettings.communityDid,
         });
 
       const row = rows[0];
@@ -125,11 +197,17 @@ export function createSetupService(db: Database, logger: Logger): SetupService {
       const finalName = row.communityName;
       logger.info({ did, communityName: finalName }, "Community initialized");
 
-      return {
+      const result: InitializeResult = {
         initialized: true,
         adminDid: did,
         communityName: finalName,
       };
+
+      if (row.communityDid) {
+        result.communityDid = row.communityDid;
+      }
+
+      return result;
     } catch (err: unknown) {
       logger.error({ err, did }, "Failed to initialize community");
       throw err;

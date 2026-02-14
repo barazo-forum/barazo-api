@@ -33,6 +33,7 @@ import { profileRoutes } from "./routes/profiles.js";
 import { createRequireAdmin } from "./auth/require-admin.js";
 import { createSetupService } from "./setup/service.js";
 import type { SetupService } from "./setup/service.js";
+import { createPlcDidService } from "./services/plc-did.js";
 import type { Database } from "./db/index.js";
 import type { Cache } from "./cache/index.js";
 
@@ -140,8 +141,9 @@ export async function buildApp(env: Env) {
   const authMiddleware = createAuthMiddleware(sessionService, app.log);
   app.decorate("authMiddleware", authMiddleware);
 
-  // Setup service
-  const setupService = createSetupService(db, app.log);
+  // PLC DID service + Setup service
+  const plcDidService = createPlcDidService(app.log);
+  const setupService = createSetupService(db, app.log, plcDidService);
   app.decorate("setupService", setupService);
 
   // Admin middleware

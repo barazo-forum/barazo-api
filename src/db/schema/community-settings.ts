@@ -24,6 +24,10 @@ export const communitySettings = pgTable("community_settings", {
     .notNull()
     .default([]),
   communityDescription: text("community_description"),
+  handle: text("handle"),
+  serviceEndpoint: text("service_endpoint"),
+  signingKey: text("signing_key"),
+  rotationKey: text("rotation_key"),
   communityLogoUrl: text("community_logo_url"),
   primaryColor: text("primary_color"),
   accentColor: text("accent_color"),

@@ -7,6 +7,8 @@ import type { FastifyPluginCallback } from "fastify";
 
 const initializeBodySchema = z.object({
   communityName: z.string().trim().min(1).max(255).optional(),
+  handle: z.string().trim().min(1).max(253).optional(),
+  serviceEndpoint: z.url().optional(),
 });
 
 // ---------------------------------------------------------------------------
@@ -18,6 +20,9 @@ const initializeBodySchema = z.object({
  *
  * - GET  /api/setup/status     -- Check if community is initialized (public)
  * - POST /api/setup/initialize -- Initialize community with first admin (auth required)
+ *
+ * When handle and serviceEndpoint are both provided in the initialize request,
+ * a PLC DID is generated and registered with plc.directory.
  */
 export function setupRoutes(): FastifyPluginCallback {
   return (app, _opts, done) => {
@@ -60,10 +65,12 @@ export function setupRoutes(): FastifyPluginCallback {
         }
 
         try {
-          const result = await setupService.initialize(
-            user.did,
-            parsed.data.communityName,
-          );
+          const result = await setupService.initialize({
+            did: user.did,
+            communityName: parsed.data.communityName,
+            handle: parsed.data.handle,
+            serviceEndpoint: parsed.data.serviceEndpoint,
+          });
 
           if ("alreadyInitialized" in result) {
             return await reply.status(409).send({
