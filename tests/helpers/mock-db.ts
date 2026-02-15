@@ -50,23 +50,30 @@ export function createChainableProxy(terminalResult: unknown = []): DbChain {
     returning: vi.fn(),
   };
 
+  // Build a thenable wrapper that spreads the chain's actual methods
+  // so test overrides (e.g. chain.returning.mockResolvedValueOnce) work
+  const makeThenable = () => ({
+    ...chain,
+    then: (resolve: (val: unknown) => void, reject?: (err: unknown) => void) =>
+      Promise.resolve(terminalResult).then(resolve, reject),
+  });
+
   const methods: (keyof DbChain)[] = [
     "values", "onConflictDoUpdate", "onConflictDoNothing",
-    "set", "from", "orderBy", "limit", "returning",
+    "set", "from",
   ];
   for (const m of methods) {
     chain[m].mockImplementation(() => chain);
   }
 
+  // Terminal methods return thenables so `await db.insert().values().returning()` works
+  // and `await db.select().from().where().orderBy()` works
+  chain.orderBy.mockImplementation(() => makeThenable());
+  chain.limit.mockImplementation(() => makeThenable());
+  chain.returning.mockImplementation(() => makeThenable());
+
   // eslint-disable-next-line @typescript-eslint/no-misused-promises -- Intentionally thenable mock for Drizzle chain
-  chain.where.mockImplementation(() => ({
-    ...chain,
-    then: (resolve: (val: unknown) => void, reject?: (err: unknown) => void) =>
-      Promise.resolve(terminalResult).then(resolve, reject),
-    orderBy: chain.orderBy,
-    limit: chain.limit,
-    returning: chain.returning,
-  }));
+  chain.where.mockImplementation(() => makeThenable());
 
   return chain;
 }
