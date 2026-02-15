@@ -29,14 +29,14 @@ const SHOULD_RUN = process.env.LIVE_PLC_TEST === "1";
 
 function createTestLogger(): Logger {
   return {
-    info: (...args: unknown[]) => console.log("[INFO]", ...args),
-    error: (...args: unknown[]) => console.error("[ERROR]", ...args),
-    warn: (...args: unknown[]) => console.warn("[WARN]", ...args),
-    debug: () => {},
-    fatal: (...args: unknown[]) => console.error("[FATAL]", ...args),
-    trace: () => {},
+    info: (...args: unknown[]) => { process.stdout.write(`[INFO] ${args.join(" ")}\n`); },
+    error: (...args: unknown[]) => { process.stderr.write(`[ERROR] ${args.join(" ")}\n`); },
+    warn: (...args: unknown[]) => { process.stderr.write(`[WARN] ${args.join(" ")}\n`); },
+    debug: () => { /* empty */ },
+    fatal: (...args: unknown[]) => { process.stderr.write(`[FATAL] ${args.join(" ")}\n`); },
+    trace: () => { /* empty */ },
     child: () => createTestLogger(),
-    silent: () => {},
+    silent: () => { /* empty */ },
     level: "info",
   } as unknown as Logger;
 }
@@ -53,9 +53,9 @@ describe.skipIf(!SHOULD_RUN)(
       const handle = `test-${String(timestamp)}.barazo.forum`;
       const serviceEndpoint = `https://test-${String(timestamp)}.barazo.forum`;
 
-      console.log("\n=== PLC DID Live Test ===");
-      console.log(`Handle: ${handle}`);
-      console.log(`Service Endpoint: ${serviceEndpoint}`);
+      process.stdout.write("\n=== PLC DID Live Test ===\n");
+      process.stdout.write(`Handle: ${handle}\n`);
+      process.stdout.write(`Service Endpoint: ${serviceEndpoint}\n`);
 
       const result = await service.generateDid({
         handle,
@@ -67,11 +67,11 @@ describe.skipIf(!SHOULD_RUN)(
       expect(result.signingKey).toMatch(/^[0-9a-f]{64}$/);
       expect(result.rotationKey).toMatch(/^[0-9a-f]{64}$/);
 
-      console.log(`\nGenerated DID: ${result.did}`);
-      console.log(`Signing Key (hex): ${result.signingKey}`);
-      console.log(`Rotation Key (hex): ${result.rotationKey}`);
-      console.log(`\nVerify at: https://plc.directory/${result.did}`);
-      console.log("=== End PLC DID Live Test ===\n");
+      process.stdout.write(`\nGenerated DID: ${result.did}\n`);
+      process.stdout.write(`Signing Key (hex): ${result.signingKey}\n`);
+      process.stdout.write(`Rotation Key (hex): ${result.rotationKey}\n`);
+      process.stdout.write(`\nVerify at: https://plc.directory/${result.did}\n`);
+      process.stdout.write("=== End PLC DID Live Test ===\n\n");
 
       // Verify the DID is resolvable from plc.directory
       const verifyResponse = await fetch(
