@@ -11,3 +11,4 @@ export { reports } from "./reports.js";
 export { notifications } from "./notifications.js";
 export { userPreferences, userCommunityPreferences } from "./user-preferences.js";
 export { crossPosts } from "./cross-posts.js";
+export { communityOnboardingFields, userOnboardingResponses } from "./onboarding-fields.js";

@@ -12,6 +12,7 @@ import { replies } from "../db/schema/replies.js";
 import { users } from "../db/schema/users.js";
 import { categories } from "../db/schema/categories.js";
 import { communitySettings } from "../db/schema/community-settings.js";
+import { checkOnboardingComplete } from "../lib/onboarding-gate.js";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -220,6 +221,15 @@ export function topicRoutes(): FastifyPluginCallback {
       const { title, content, category, tags, labels } = parsed.data;
       const now = new Date().toISOString();
       const communityDid = env.COMMUNITY_DID ?? "did:plc:placeholder";
+
+      // Onboarding gate: block if user hasn't completed mandatory onboarding
+      const onboarding = await checkOnboardingComplete(db, user.did, communityDid);
+      if (!onboarding.complete) {
+        return reply.status(403).send({
+          error: "Onboarding required",
+          fields: onboarding.missingFields,
+        });
+      }
 
       // Maturity check: verify user can post in this category
       const catRows = await db

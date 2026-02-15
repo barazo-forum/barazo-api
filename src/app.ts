@@ -31,6 +31,7 @@ import { searchRoutes } from "./routes/search.js";
 import { notificationRoutes } from "./routes/notifications.js";
 import { profileRoutes } from "./routes/profiles.js";
 import { blockMuteRoutes } from "./routes/block-mute.js";
+import { onboardingRoutes } from "./routes/onboarding.js";
 import { createRequireAdmin } from "./auth/require-admin.js";
 import { createSetupService } from "./setup/service.js";
 import type { SetupService } from "./setup/service.js";
@@ -201,6 +202,7 @@ export async function buildApp(env: Env) {
   await app.register(notificationRoutes());
   await app.register(profileRoutes());
   await app.register(blockMuteRoutes());
+  await app.register(onboardingRoutes());
 
   // OpenAPI spec endpoint (after routes so all schemas are registered)
   app.get("/api/openapi.json", { schema: { hide: true } }, async (_request, reply) => {
