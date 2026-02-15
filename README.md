@@ -12,11 +12,17 @@
 
 [![Status: Alpha](https://img.shields.io/badge/status-alpha-orange)]()
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL%203.0-blue.svg)](https://opensource.org/licenses/AGPL-3.0)
+[![CI](https://github.com/barazo-forum/barazo-api/actions/workflows/ci.yml/badge.svg)](https://github.com/barazo-forum/barazo-api/actions/workflows/ci.yml)
 [![Node.js](https://img.shields.io/badge/node-24%20LTS-brightgreen)](https://nodejs.org/)
 [![TypeScript](https://img.shields.io/badge/typescript-5.x-blue)](https://www.typescriptlang.org/)
-[![Tests](https://img.shields.io/badge/tests-979%20passing-brightgreen)](#testing)
 
 </div>
+
+---
+
+## Overview
+
+The AppView backend for Barazo forums. Handles authentication, forum CRUD, firehose indexing, moderation, search, and cross-posting -- all built on the AT Protocol. Communicates with any compatible frontend via REST API. Runs as a single-community forum or a global aggregator indexing all Barazo communities network-wide.
 
 ---
 
@@ -86,7 +92,7 @@
 
 ---
 
-## Implemented Features
+## Features
 
 **AT Protocol integration:**
 - OAuth authentication with any AT Protocol PDS
@@ -138,7 +144,7 @@
 **Plugin system:**
 - Plugin-aware route architecture across all modules
 
-**Security and quality:**
+**Security:**
 - Zod validation on all API endpoints
 - DOMPurify output sanitization on all user-generated content
 - Helmet security headers (CSP, HSTS)
@@ -161,65 +167,6 @@
 
 ---
 
-## Testing
-
-```
-979 tests across 63 test files -- all passing
-```
-
-```bash
-pnpm test           # Run all tests
-pnpm test:watch     # Watch mode
-pnpm test:coverage  # With coverage report
-pnpm lint           # ESLint
-pnpm typecheck      # TypeScript strict mode check
-```
-
----
-
-## Prerequisites
-
-- Node.js 24 LTS
-- pnpm
-- Docker + Docker Compose (for PostgreSQL + Valkey)
-- AT Protocol PDS access (Bluesky or self-hosted)
-
----
-
-## Quick Start
-
-**Clone and install:**
-```bash
-git clone https://github.com/barazo-forum/barazo-api.git
-cd barazo-api
-pnpm install
-```
-
-**Start dependencies:**
-```bash
-docker compose -f docker-compose.dev.yml up -d
-```
-
-**Configure environment:**
-```bash
-cp .env.example .env
-# Edit .env with your settings
-```
-
-**Run development server:**
-```bash
-pnpm dev
-```
-
-**Run tests:**
-```bash
-pnpm test
-pnpm lint
-pnpm typecheck
-```
-
----
-
 ## API Documentation
 
 When running, interactive API docs are available at:
@@ -231,9 +178,39 @@ OpenAPI spec: `GET /api/openapi.json`
 
 ---
 
+## Quick Start
+
+**Prerequisites:** Node.js 24 LTS, pnpm, Docker + Docker Compose, AT Protocol PDS access (Bluesky or self-hosted).
+
+```bash
+git clone https://github.com/barazo-forum/barazo-api.git
+cd barazo-api
+pnpm install
+
+# Start PostgreSQL + Valkey
+docker compose -f docker-compose.dev.yml up -d
+
+# Configure environment
+cp .env.example .env
+# Edit .env with your settings
+
+# Run development server
+pnpm dev
+```
+
+---
+
 ## Development
 
-See [CONTRIBUTING.md](https://github.com/barazo-forum/.github/blob/main/CONTRIBUTING.md) for branching strategy, commit message format, testing requirements, and code review process.
+```bash
+pnpm test           # Run all tests
+pnpm test:watch     # Watch mode
+pnpm test:coverage  # With coverage report
+pnpm lint           # ESLint
+pnpm typecheck      # TypeScript strict mode check
+```
+
+See [CONTRIBUTING.md](https://github.com/barazo-forum/.github/blob/main/CONTRIBUTING.md) for branching strategy, commit format, and code review process.
 
 **Key standards:**
 - TypeScript strict mode (no `any`, no `@ts-ignore`)
@@ -246,7 +223,6 @@ See [CONTRIBUTING.md](https://github.com/barazo-forum/.github/blob/main/CONTRIBU
 
 ## Deployment
 
-**Production deployment via Docker:**
 ```bash
 docker pull ghcr.io/barazo-forum/barazo-api:latest
 ```
@@ -260,9 +236,17 @@ See [barazo-deploy](https://github.com/barazo-forum/barazo-deploy) for full depl
 | Repository | Description | License |
 |------------|-------------|---------|
 | [barazo-web](https://github.com/barazo-forum/barazo-web) | Forum frontend (Next.js, Tailwind) | MIT |
-| [barazo-lexicons](https://github.com/barazo-forum/barazo-lexicons) | AT Protocol lexicon schemas + generated TypeScript types | MIT |
+| [barazo-lexicons](https://github.com/barazo-forum/barazo-lexicons) | AT Protocol lexicon schemas + generated types | MIT |
 | [barazo-deploy](https://github.com/barazo-forum/barazo-deploy) | Docker Compose deployment templates | MIT |
-| [barazo-website](https://github.com/barazo-forum/barazo-website) | Marketing and documentation site (barazo.forum) | MIT |
+| [barazo-website](https://github.com/barazo-forum/barazo-website) | Marketing + documentation site | MIT |
+
+---
+
+## Community
+
+- **Website:** [barazo.forum](https://barazo.forum)
+- **Discussions:** [GitHub Discussions](https://github.com/orgs/barazo-forum/discussions)
+- **Issues:** [Report bugs](https://github.com/barazo-forum/barazo-api/issues)
 
 ---
 
@@ -274,4 +258,4 @@ See [LICENSE](LICENSE) for full terms.
 
 ---
 
-(c) 2026 Barazo. Licensed under AGPL-3.0.
+(c) 2026 Barazo
