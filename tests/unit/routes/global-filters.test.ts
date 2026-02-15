@@ -449,7 +449,7 @@ describe("global filter routes", () => {
       // Default limit=25, so return 26 rows to trigger hasMore
       const rows = Array.from({ length: 26 }, (_, i) =>
         sampleCommunityFilterRow({
-          communityDid: `did:plc:community${i}`,
+          communityDid: `did:plc:community${String(i)}`,
           updatedAt: new Date(`2026-02-${String(13 - Math.floor(i / 2)).padStart(2, "0")}T12:00:00.000Z`),
         }),
       );
@@ -791,7 +791,7 @@ describe("global filter routes", () => {
       const rows = Array.from({ length: 26 }, (_, i) =>
         sampleAccountFilterRow({
           id: i + 1,
-          did: `did:plc:account${i}`,
+          did: `did:plc:account${String(i)}`,
           updatedAt: new Date(`2026-02-${String(13 - Math.floor(i / 2)).padStart(2, "0")}T12:00:00.000Z`),
         }),
       );
