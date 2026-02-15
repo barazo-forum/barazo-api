@@ -592,6 +592,8 @@ describe("topics + replies cross-endpoint integration", () => {
 
       // Topic lookup succeeds
       selectChain.where.mockResolvedValueOnce([sampleTopicRow()]);
+      // Onboarding gate: no mandatory fields
+      selectChain.where.mockResolvedValueOnce([]);
       // Parent reply lookup succeeds
       selectChain.where.mockResolvedValueOnce([sampleReplyRow({
         uri: TEST_PARENT_REPLY_URI,

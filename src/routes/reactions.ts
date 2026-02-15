@@ -7,6 +7,7 @@ import { reactions } from "../db/schema/reactions.js";
 import { topics } from "../db/schema/topics.js";
 import { replies } from "../db/schema/replies.js";
 import { communitySettings } from "../db/schema/community-settings.js";
+import { checkOnboardingComplete } from "../lib/onboarding-gate.js";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -171,6 +172,15 @@ export function reactionRoutes(): FastifyPluginCallback {
 
       const { subjectUri, subjectCid, type: reactionType } = parsed.data;
       const communityDid = env.COMMUNITY_DID ?? "did:plc:placeholder";
+
+      // Onboarding gate: block if user hasn't completed mandatory onboarding
+      const onboarding = await checkOnboardingComplete(db, user.did, communityDid);
+      if (!onboarding.complete) {
+        return reply.status(403).send({
+          error: "Onboarding required",
+          fields: onboarding.missingFields,
+        });
+      }
 
       // Fetch community settings to get the allowed reaction set
       const settingsRows = await db

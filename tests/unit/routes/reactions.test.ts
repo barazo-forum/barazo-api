@@ -210,6 +210,8 @@ describe("reaction routes", () => {
     });
 
     it("creates a reaction on a topic and returns 201", async () => {
+      // 0. Onboarding gate: no mandatory fields
+      selectChain.where.mockResolvedValueOnce([]);
       // 1. Community settings query -> reactionSet includes "like"
       selectChain.where.mockResolvedValueOnce([{ reactionSet: ["like", "heart"] }]);
       // 2. Subject existence check -> topic found
@@ -247,6 +249,8 @@ describe("reaction routes", () => {
     });
 
     it("creates a reaction on a reply and returns 201", async () => {
+      // 0. Onboarding gate: no mandatory fields
+      selectChain.where.mockResolvedValueOnce([]);
       // 1. Community settings
       selectChain.where.mockResolvedValueOnce([{ reactionSet: ["like"] }]);
       // 2. Subject existence check -> reply found
@@ -278,6 +282,8 @@ describe("reaction routes", () => {
       isTrackedFn.mockResolvedValue(false);
       trackRepoFn.mockResolvedValue(undefined);
 
+      // 0. Onboarding gate: no mandatory fields
+      selectChain.where.mockResolvedValueOnce([]);
       selectChain.where.mockResolvedValueOnce([{ reactionSet: ["like"] }]);
       selectChain.where.mockResolvedValueOnce([{ uri: TEST_TOPIC_URI }]);
       insertChain.returning.mockResolvedValueOnce([sampleReactionRow()]);
@@ -367,6 +373,8 @@ describe("reaction routes", () => {
     });
 
     it("returns 400 when reaction type is not in community's reaction set", async () => {
+      // 0. Onboarding gate: no mandatory fields
+      selectChain.where.mockResolvedValueOnce([]);
       // Community only allows "like"
       selectChain.where.mockResolvedValueOnce([{ reactionSet: ["like"] }]);
 
@@ -385,6 +393,8 @@ describe("reaction routes", () => {
     });
 
     it("uses default reaction set ['like'] when no settings exist", async () => {
+      // 0. Onboarding gate: no mandatory fields
+      selectChain.where.mockResolvedValueOnce([]);
       // No settings row found
       selectChain.where.mockResolvedValueOnce([]);
       // Subject exists
@@ -406,6 +416,8 @@ describe("reaction routes", () => {
     });
 
     it("returns 404 when subject does not exist", async () => {
+      // 0. Onboarding gate: no mandatory fields
+      selectChain.where.mockResolvedValueOnce([]);
       selectChain.where.mockResolvedValueOnce([{ reactionSet: ["like"] }]);
       // Subject not found
       selectChain.where.mockResolvedValueOnce([]);
@@ -425,6 +437,8 @@ describe("reaction routes", () => {
     });
 
     it("returns 404 when subject URI has unknown collection", async () => {
+      // 0. Onboarding gate: no mandatory fields
+      selectChain.where.mockResolvedValueOnce([]);
       selectChain.where.mockResolvedValueOnce([{ reactionSet: ["like"] }]);
       // Unknown collection -> subjectExists stays false
 
@@ -443,6 +457,8 @@ describe("reaction routes", () => {
     });
 
     it("returns 409 when duplicate reaction (unique constraint)", async () => {
+      // 0. Onboarding gate: no mandatory fields
+      selectChain.where.mockResolvedValueOnce([]);
       selectChain.where.mockResolvedValueOnce([{ reactionSet: ["like"] }]);
       selectChain.where.mockResolvedValueOnce([{ uri: TEST_TOPIC_URI }]);
       // onConflictDoNothing -> returning() returns empty array
@@ -463,6 +479,8 @@ describe("reaction routes", () => {
     });
 
     it("returns 502 when PDS write fails", async () => {
+      // 0. Onboarding gate: no mandatory fields
+      selectChain.where.mockResolvedValueOnce([]);
       selectChain.where.mockResolvedValueOnce([{ reactionSet: ["like"] }]);
       selectChain.where.mockResolvedValueOnce([{ uri: TEST_TOPIC_URI }]);
       createRecordFn.mockRejectedValueOnce(new Error("PDS unreachable"));

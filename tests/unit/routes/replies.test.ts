@@ -288,6 +288,8 @@ describe("reply routes", () => {
     it("creates a threaded reply (with parentUri) and returns 201", async () => {
       // First select: look up topic
       selectChain.where.mockResolvedValueOnce([sampleTopicRow()]);
+      // Onboarding gate: no mandatory fields
+      selectChain.where.mockResolvedValueOnce([]);
       // Second select: look up parent reply
       selectChain.where.mockResolvedValueOnce([sampleReplyRow({
         uri: TEST_PARENT_REPLY_URI,

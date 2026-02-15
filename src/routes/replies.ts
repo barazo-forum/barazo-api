@@ -11,6 +11,7 @@ import { topics } from "../db/schema/topics.js";
 import { users } from "../db/schema/users.js";
 import { categories } from "../db/schema/categories.js";
 import { communitySettings } from "../db/schema/community-settings.js";
+import { checkOnboardingComplete } from "../lib/onboarding-gate.js";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -228,6 +229,15 @@ export function replyRoutes(): FastifyPluginCallback {
       const topic = topicRows[0];
       if (!topic) {
         throw notFound("Topic not found");
+      }
+
+      // Onboarding gate: block if user hasn't completed mandatory onboarding
+      const onboarding = await checkOnboardingComplete(db, user.did, topic.communityDid);
+      if (!onboarding.complete) {
+        return reply.status(403).send({
+          error: "Onboarding required",
+          fields: onboarding.missingFields,
+        });
       }
 
       // Resolve parent reference
