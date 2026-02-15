@@ -1,4 +1,4 @@
-import { pgTable, text, boolean, timestamp, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, text, boolean, timestamp, jsonb, integer } from "drizzle-orm/pg-core";
 
 export const communitySettings = pgTable("community_settings", {
   id: text("id").primaryKey().default("default"),
@@ -23,6 +23,9 @@ export const communitySettings = pgTable("community_settings", {
     .$type<string[]>()
     .notNull()
     .default([]),
+  jurisdictionCountry: text("jurisdiction_country"),
+  ageThreshold: integer("age_threshold").notNull().default(16),
+  requireLoginForMature: boolean("require_login_for_mature").notNull().default(true),
   communityDescription: text("community_description"),
   handle: text("handle"),
   serviceEndpoint: text("service_endpoint"),

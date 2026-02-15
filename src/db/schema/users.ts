@@ -1,5 +1,6 @@
 import { pgTable, text, timestamp, boolean, integer } from "drizzle-orm/pg-core";
 
+
 export const users = pgTable("users", {
   did: text("did").primaryKey(),
   handle: text("handle").notNull(),
@@ -16,7 +17,7 @@ export const users = pgTable("users", {
   lastActiveAt: timestamp("last_active_at", { withTimezone: true })
     .notNull()
     .defaultNow(),
-  ageDeclaredAt: timestamp("age_declared_at", { withTimezone: true }),
+  declaredAge: integer("declared_age"),
   maturityPref: text("maturity_pref", {
     enum: ["safe", "mature", "adult"],
   })

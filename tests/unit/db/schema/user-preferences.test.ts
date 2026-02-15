@@ -20,7 +20,7 @@ describe("userPreferences schema", () => {
 
     expect(columnNames).toContain("did");
     expect(columnNames).toContain("maturityLevel");
-    expect(columnNames).toContain("ageDeclarationAt");
+    expect(columnNames).toContain("declaredAge");
     expect(columnNames).toContain("mutedWords");
     expect(columnNames).toContain("blockedDids");
     expect(columnNames).toContain("mutedDids");
@@ -46,9 +46,9 @@ describe("userPreferences schema", () => {
     expect(columns.updatedAt.notNull).toBe(true);
   });
 
-  it("should allow ageDeclarationAt to be nullable", () => {
+  it("should allow declaredAge to be nullable", () => {
     const columns = getTableColumns(userPreferences);
-    expect(columns.ageDeclarationAt.notNull).toBe(false);
+    expect(columns.declaredAge.notNull).toBe(false);
   });
 
   it("should have exactly 9 columns", () => {

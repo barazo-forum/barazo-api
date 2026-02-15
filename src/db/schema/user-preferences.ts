@@ -2,6 +2,7 @@ import {
   pgTable,
   text,
   timestamp,
+  integer,
   jsonb,
   boolean,
   index,
@@ -19,7 +20,7 @@ export const userPreferences = pgTable("user_preferences", {
   })
     .notNull()
     .default("sfw"),
-  ageDeclarationAt: timestamp("age_declaration_at", { withTimezone: true }),
+  declaredAge: integer("declared_age"),
   mutedWords: jsonb("muted_words").$type<string[]>().notNull().default([]),
   blockedDids: jsonb("blocked_dids").$type<string[]>().notNull().default([]),
   mutedDids: jsonb("muted_dids").$type<string[]>().notNull().default([]),
