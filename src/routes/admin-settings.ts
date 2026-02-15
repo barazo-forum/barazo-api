@@ -123,6 +123,46 @@ export function adminSettingsRoutes(): FastifyPluginCallback {
     const requireAdmin = app.requireAdmin;
 
     // -------------------------------------------------------------------
+    // GET /api/settings/public (no auth, public community info)
+    // -------------------------------------------------------------------
+
+    app.get("/api/settings/public", {
+      schema: {
+        tags: ["Settings"],
+        summary: "Get public community settings (no auth required)",
+        response: {
+          200: {
+            type: "object" as const,
+            properties: {
+              communityName: { type: "string" as const },
+              maturityRating: { type: "string" as const, enum: ["safe", "mature", "adult"] },
+              communityDescription: { type: ["string", "null"] as const },
+              communityLogoUrl: { type: ["string", "null"] as const },
+            },
+          },
+          404: errorJsonSchema,
+        },
+      },
+    }, async (_request, reply) => {
+      const rows = await db
+        .select()
+        .from(communitySettings)
+        .where(eq(communitySettings.id, "default"));
+
+      const row = rows[0];
+      if (!row) {
+        throw notFound("Community settings not found");
+      }
+
+      return reply.status(200).send({
+        communityName: row.communityName,
+        maturityRating: row.maturityRating,
+        communityDescription: row.communityDescription ?? null,
+        communityLogoUrl: row.communityLogoUrl ?? null,
+      });
+    });
+
+    // -------------------------------------------------------------------
     // GET /api/admin/settings (admin only)
     // -------------------------------------------------------------------
 

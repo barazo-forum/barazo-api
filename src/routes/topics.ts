@@ -52,6 +52,7 @@ const topicJsonSchema = {
     replyCount: { type: "integer" as const },
     reactionCount: { type: "integer" as const },
     isMuted: { type: "boolean" as const },
+    categoryMaturityRating: { type: "string" as const, enum: ["safe", "mature", "adult"] },
     lastActivityAt: { type: "string" as const, format: "date-time" as const },
     createdAt: { type: "string" as const, format: "date-time" as const },
     indexedAt: { type: "string" as const, format: "date-time" as const },
@@ -72,8 +73,12 @@ const errorJsonSchema = {
 /**
  * Serialize a topic row from the DB into a JSON-safe response object.
  * Converts Date fields to ISO strings.
+ * @param categoryMaturityRating - The maturity rating inherited from the topic's category.
  */
-function serializeTopic(row: typeof topics.$inferSelect) {
+function serializeTopic(
+  row: typeof topics.$inferSelect,
+  categoryMaturityRating: string = "safe",
+) {
   return {
     uri: row.uri,
     rkey: row.rkey,
@@ -88,6 +93,7 @@ function serializeTopic(row: typeof topics.$inferSelect) {
     cid: row.cid,
     replyCount: row.replyCount,
     reactionCount: row.reactionCount,
+    categoryMaturityRating,
     lastActivityAt: row.lastActivityAt.toISOString(),
     createdAt: row.createdAt.toISOString(),
     indexedAt: row.indexedAt.toISOString(),
@@ -406,6 +412,9 @@ export function topicRoutes(): FastifyPluginCallback {
       const maxMaturity = resolveMaxMaturity(userProfile, listAgeThreshold);
       const allowed = allowedRatings(maxMaturity);
 
+      // Slug→maturityRating lookup, populated by the category queries below
+      const categoryMaturityMap = new Map<string, string>();
+
       if (env.COMMUNITY_MODE === "global") {
         // ---------------------------------------------------------------
         // Global mode: multi-community filtering
@@ -439,7 +448,7 @@ export function topicRoutes(): FastifyPluginCallback {
 
         // Also filter by category maturity across all allowed communities
         const allowedCats = await db
-          .select({ slug: categories.slug })
+          .select({ slug: categories.slug, maturityRating: categories.maturityRating })
           .from(categories)
           .where(
             and(
@@ -449,6 +458,10 @@ export function topicRoutes(): FastifyPluginCallback {
           );
 
         const allowedSlugs = [...new Set(allowedCats.map((c) => c.slug))];
+        // Build slug→maturityRating lookup for serialization
+        for (const cat of allowedCats) {
+          categoryMaturityMap.set(cat.slug, cat.maturityRating);
+        }
         if (allowedSlugs.length === 0) {
           return reply.status(200).send({ topics: [], cursor: null });
         }
@@ -462,7 +475,7 @@ export function topicRoutes(): FastifyPluginCallback {
 
         // Get category slugs matching allowed maturity levels
         const allowedCategories = await db
-          .select({ slug: categories.slug })
+          .select({ slug: categories.slug, maturityRating: categories.maturityRating })
           .from(categories)
           .where(
             and(
@@ -472,6 +485,10 @@ export function topicRoutes(): FastifyPluginCallback {
           );
 
         const allowedSlugs = allowedCategories.map((c) => c.slug);
+        // Build slug→maturityRating lookup for serialization
+        for (const cat of allowedCategories) {
+          categoryMaturityMap.set(cat.slug, cat.maturityRating);
+        }
 
         // If no categories are allowed, return empty result
         if (allowedSlugs.length === 0) {
@@ -523,7 +540,9 @@ export function topicRoutes(): FastifyPluginCallback {
 
       const hasMore = rows.length > limit;
       const resultRows = hasMore ? rows.slice(0, limit) : rows;
-      const serialized = resultRows.map(serializeTopic);
+      const serialized = resultRows.map((row) =>
+        serializeTopic(row, categoryMaturityMap.get(row.category) ?? "safe"),
+      );
 
       // Annotate muted authors (content is still returned, just flagged)
       const mutedSet = new Set(mutedDids);
@@ -544,6 +563,55 @@ export function topicRoutes(): FastifyPluginCallback {
         topics: annotatedTopics,
         cursor: nextCursor,
       });
+    });
+
+    // -------------------------------------------------------------------
+    // GET /api/topics/by-rkey/:rkey (public, no auth)
+    // -------------------------------------------------------------------
+
+    app.get("/api/topics/by-rkey/:rkey", {
+      schema: {
+        tags: ["Topics"],
+        summary: "Get a single topic by rkey (for SEO/metadata)",
+        params: {
+          type: "object",
+          required: ["rkey"],
+          properties: {
+            rkey: { type: "string" },
+          },
+        },
+        response: {
+          200: topicJsonSchema,
+          404: errorJsonSchema,
+        },
+      },
+    }, async (request, reply) => {
+      const { rkey } = request.params as { rkey: string };
+
+      const rows = await db
+        .select()
+        .from(topics)
+        .where(eq(topics.rkey, rkey));
+
+      const row = rows[0];
+      if (!row) {
+        throw notFound("Topic not found");
+      }
+
+      // Look up the category maturity rating
+      const communityDid = env.COMMUNITY_DID ?? "did:plc:placeholder";
+      const catRows = await db
+        .select({ maturityRating: categories.maturityRating })
+        .from(categories)
+        .where(
+          and(
+            eq(categories.slug, row.category),
+            eq(categories.communityDid, communityDid),
+          ),
+        );
+      const categoryRating = catRows[0]?.maturityRating ?? "safe";
+
+      return reply.status(200).send(serializeTopic(row, categoryRating));
     });
 
     // -------------------------------------------------------------------
@@ -620,7 +688,7 @@ export function topicRoutes(): FastifyPluginCallback {
         throw forbidden("Content restricted by maturity settings");
       }
 
-      return reply.status(200).send(serializeTopic(row));
+      return reply.status(200).send(serializeTopic(row, categoryRating));
     });
 
     // -------------------------------------------------------------------
