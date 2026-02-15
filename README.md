@@ -6,42 +6,17 @@
   <img alt="Barazo Logo" src="https://raw.githubusercontent.com/barazo-forum/.github/main/assets/logo-dark.svg" width="120">
 </picture>
 
-# barazo-api
+# Barazo API
 
-**AppView backend for Barazo forums**
+**AT Protocol AppView backend for federated forums -- portable identity, user data ownership, cross-community reputation.**
 
+[![Status: Alpha](https://img.shields.io/badge/status-alpha-orange)]()
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL%203.0-blue.svg)](https://opensource.org/licenses/AGPL-3.0)
 [![Node.js](https://img.shields.io/badge/node-24%20LTS-brightgreen)](https://nodejs.org/)
 [![TypeScript](https://img.shields.io/badge/typescript-5.x-blue)](https://www.typescriptlang.org/)
-[![Tests](https://img.shields.io/badge/tests-885%20passing-brightgreen)](#testing)
+[![Tests](https://img.shields.io/badge/tests-979%20passing-brightgreen)](#testing)
 
 </div>
-
----
-
-## Status: Alpha
-
-Core MVP implemented. 885 tests across 56 test files, all passing.
-
-**Completed:** P1 (Core MVP) + P2.1 (User Experience) + P2.2 (Global Aggregator + Reputation)
-
-**Next:** P2.3 (Age Declaration Revision + Community Onboarding Fields)
-
----
-
-## What is this?
-
-The barazo-api is the core engine that powers every Barazo forum. It:
-
-- **Subscribes to the AT Protocol firehose** -- Indexes forum records in real-time via Tap
-- **Exposes a REST API** -- All forum operations (topics, replies, reactions, search, moderation)
-- **Manages authentication** -- OAuth integration with any AT Protocol PDS
-- **Handles moderation** -- Forum-level and global content filtering
-- **Enables cross-forum features** -- Reputation, aggregation, maturity filtering across instances
-
-**Two operating modes:**
-- **Single-forum mode** -- Indexes one community
-- **Global mode** -- Aggregates ALL Barazo forums (like barazo.forum)
 
 ---
 
@@ -49,78 +24,155 @@ The barazo-api is the core engine that powers every Barazo forum. It:
 
 | Component | Technology |
 |-----------|-----------|
-| Runtime | Node.js 24 LTS, TypeScript (strict mode) |
-| Framework | Fastify |
-| Database | PostgreSQL 16 + pgvector (semantic search ready) |
-| Cache | Valkey |
+| Runtime | Node.js 24 LTS / TypeScript (strict mode) |
+| Framework | Fastify 5 |
 | Protocol | @atproto/api, @atproto/oauth-client-node, @atproto/tap |
-| ORM | Drizzle |
-| Validation | Zod |
-| Testing | Vitest, Supertest |
-| Logging | Pino |
-| Monitoring | GlitchTip (Sentry-compatible) |
+| Database | PostgreSQL 16 + pgvector (Drizzle ORM, Drizzle Kit migrations) |
+| Cache | Valkey (via ioredis) |
+| Validation | Zod 4 |
+| Testing | Vitest 4 + Supertest + Testcontainers |
+| Logging | Pino (structured) |
+| Monitoring | GlitchTip (self-hosted, Sentry SDK-compatible) |
+| Security | Helmet + DOMPurify + rate limiting + CSP/HSTS |
+| API docs | @fastify/swagger + Scalar |
+
+---
+
+## Route Modules
+
+15 route modules across 74 source files:
+
+| Module | File | Functionality |
+|--------|------|---------------|
+| Auth | `auth.ts` | AT Protocol OAuth sign-in with any PDS |
+| OAuth Metadata | `oauth-metadata.ts` | OAuth discovery metadata endpoint |
+| Health | `health.ts` | Health check |
+| Topics | `topics.ts` | CRUD, sorting (chronological / reactions / trending), cross-posting to Bluesky + Frontpage, self-labels |
+| Replies | `replies.ts` | CRUD threaded replies, self-labels |
+| Categories | `categories.ts` | CRUD with maturity ratings (SFW / Mature / Adult), parent-child hierarchy |
+| Reactions | `reactions.ts` | Configurable reaction types per community |
+| Search | `search.ts` | Full-text search (PostgreSQL tsvector + GIN index), optional semantic search via `EMBEDDING_URL` |
+| Profiles | `profiles.ts` | User profiles with PDS sync, cross-community reputation, age declaration |
+| Notifications | `notifications.ts` | In-app and email notification system |
+| Moderation | `moderation.ts` | Lock, pin, delete, ban, content reporting, first-post queue, word/phrase blocklists, link spam detection, mod action log |
+| Admin Settings | `admin-settings.ts` | Community settings, maturity rating, branding, jurisdiction + age threshold configuration |
+| Block / Mute | `block-mute.ts` | Block and mute users (portable via PDS records) |
+| Onboarding | `onboarding.ts` | Admin-configurable community onboarding fields, user response submission and status tracking |
+| Setup | `setup.ts` | Initial community setup wizard |
+
+---
+
+## Database Schema
+
+15 schema modules (Drizzle ORM):
+
+| Schema | Purpose |
+|--------|---------|
+| `users.ts` | User accounts synced from PDS |
+| `topics.ts` | Forum topics with maturity, self-labels |
+| `replies.ts` | Threaded replies |
+| `categories.ts` | Category hierarchy with maturity ratings |
+| `reactions.ts` | Reaction records |
+| `reports.ts` | Content reports |
+| `notifications.ts` | Notification records |
+| `moderation-actions.ts` | Moderation action log |
+| `cross-posts.ts` | Bluesky + Frontpage cross-post tracking |
+| `community-settings.ts` | Per-community configuration, jurisdiction, age threshold |
+| `user-preferences.ts` | Global and per-community user preferences |
+| `onboarding-fields.ts` | Admin-defined onboarding fields and user responses |
+| `tracked-repos.ts` | AT Protocol repo tracking state |
+| `firehose.ts` | Firehose cursor and subscription state |
+| `index.ts` | Schema barrel export |
 
 ---
 
 ## Implemented Features
 
-**14 route modules:**
-
-| Route | Functionality |
-|-------|--------------|
-| `auth` | AT Protocol OAuth (sign in with any PDS) |
-| `oauth-metadata` | OAuth discovery metadata |
-| `health` | Health check endpoint |
-| `topics` | CRUD, sorting (chronological/reactions/trending), cross-posting to Bluesky/Frontpage, self-labels |
-| `replies` | CRUD threaded replies, self-labels |
-| `categories` | CRUD with maturity ratings, parent/child hierarchy |
-| `reactions` | Configurable reaction types per forum |
-| `search` | Full-text search (PostgreSQL tsvector + GIN) |
-| `profiles` | User profiles with PDS sync, cross-community reputation |
-| `notifications` | In-app + email notifications |
-| `moderation` | Lock, pin, delete, ban, content reporting, word/phrase blocklists, link spam detection |
-| `admin-settings` | Community settings, maturity rating, branding |
-| `block-mute` | Block/mute users (portable via PDS) |
-| `setup` | Initial community setup |
-
-**Core capabilities:**
-- Firehose subscription via Tap (filtered for `forum.barazo.*` records)
-- Content maturity filtering (SFW/Mature/Adult, forum + category level)
-- Age gate (self-declaration endpoint)
-- User preferences (global + per-community)
-- Global aggregator mode (`COMMUNITY_MODE=global`)
-- Cross-community reputation (activity counts across forums)
-- Cross-posting to Bluesky (default ON, toggleable per-topic) + Frontpage (feature flag)
+**AT Protocol integration:**
+- OAuth authentication with any AT Protocol PDS
+- Firehose subscription via Tap, filtered for `forum.barazo.*` collections
+- Record validation (Zod) before indexing
+- Portable block/mute records stored on user PDS
+- Cross-posting to Bluesky (default on, toggleable per topic) and Frontpage (feature flag)
+- Cross-post deletion lifecycle (topic delete cascades to cross-posts)
 - Rich OpenGraph images for cross-posts (forum branding, topic title, category)
-- Cross-post deletion lifecycle (topic deleted -> cross-posts deleted)
-- Zod validation on all endpoints
-- Pino structured logging
-- Security headers (Helmet), rate limiting
-- DOMPurify output sanitization
+- Self-labels on topics and replies
+- Two operating modes: single-forum or global aggregator (`COMMUNITY_MODE=global`)
+
+**Forum core:**
+- Topics CRUD with sorting (chronological, reactions, trending)
+- Threaded replies CRUD
+- Categories with parent-child hierarchy and per-category maturity ratings
+- Configurable reaction types per community
+- Full-text search (PostgreSQL tsvector + GIN index)
+- Optional semantic search (pgvector, activated by `EMBEDDING_URL`)
+- In-app and email notifications
+- User profiles with PDS sync
+- Cross-community reputation (activity counts across forums)
+- User preferences (global and per-community)
+
+**Content maturity and age gating:**
+- Three-tier content maturity system: SFW, Mature, Adult
+- Maturity ratings at both forum and category level
+- Content maturity filtering based on user age declaration
+- Age declaration as numeric value with jurisdiction-aware thresholds
+- Admin-configurable jurisdiction country and age threshold
+
+**Moderation:**
+- Content reporting system
+- First-post moderation queue
+- Word and phrase blocklists
+- Link spam detection
+- Topic lock, pin, and delete
+- User bans
+- Moderation action log
+- GDPR-compliant account deletion (identity event handling)
+
+**Community administration:**
+- Admin settings panel (name, description, branding, colors)
+- Community setup wizard
+- Admin-configurable onboarding fields (text, select, checkbox, etc.)
+- User onboarding response submission and completion tracking
+- Jurisdiction and age threshold configuration
+
+**Plugin system:**
+- Plugin-aware route architecture across all modules
+
+**Security and quality:**
+- Zod validation on all API endpoints
+- DOMPurify output sanitization on all user-generated content
+- Helmet security headers (CSP, HSTS)
+- Rate limiting on all endpoints
+- Pino structured logging (no `console.log`)
+- Sentry-compatible error monitoring (GlitchTip)
+
+---
 
 ## Planned Features
 
-- Semantic search (pgvector hybrid ranking) -- pgvector installed, not yet activated
-- AI-assisted moderation (spam/toxicity flagging)
-- Plugin system
-- Stripe billing integration
-- Multi-tenant support
-- AT Protocol labeler integration
-- Migration API endpoints
+- Semantic search activation (pgvector hybrid ranking) -- infrastructure installed, not yet wired
+- AI-assisted moderation (spam and toxicity flagging)
+- Stripe billing integration (P3)
+- Multi-tenant SaaS management endpoints (P3)
+- AT Protocol labeler integration (P4)
+- Migration API endpoints (P5)
+- Private categories (P4)
+- Solved/accepted answer markers (P4)
 
 ---
 
 ## Testing
 
 ```
-885 tests across 56 test files -- all passing
+979 tests across 63 test files -- all passing
 ```
 
 ```bash
 pnpm test           # Run all tests
+pnpm test:watch     # Watch mode
 pnpm test:coverage  # With coverage report
 pnpm lint           # ESLint
-pnpm typecheck      # TypeScript strict mode
+pnpm typecheck      # TypeScript strict mode check
 ```
 
 ---
@@ -172,8 +224,8 @@ pnpm typecheck
 
 When running, interactive API docs are available at:
 
-**Local:** `http://localhost:3000/docs`
-**Production:** `https://api.barazo.forum/docs`
+- **Local:** `http://localhost:3000/docs`
+- **Production:** `https://api.barazo.forum/docs`
 
 OpenAPI spec: `GET /api/openapi.json`
 
@@ -181,18 +233,14 @@ OpenAPI spec: `GET /api/openapi.json`
 
 ## Development
 
-See [CONTRIBUTING.md](../CONTRIBUTING.md) for:
-- Branching strategy
-- Commit message format
-- Testing requirements
-- Code review process
+See [CONTRIBUTING.md](https://github.com/barazo-forum/.github/blob/main/CONTRIBUTING.md) for branching strategy, commit message format, testing requirements, and code review process.
 
 **Key standards:**
 - TypeScript strict mode (no `any`, no `@ts-ignore`)
-- All endpoints validate input (Zod schemas)
-- All user content sanitized (DOMPurify)
-- Test-driven development (TDD)
-- Conventional commits enforced
+- All endpoints validate input with Zod schemas
+- All user content sanitized with DOMPurify
+- Test-driven development (tests written before implementation)
+- Conventional commits enforced (`type(scope): description`)
 
 ---
 
@@ -207,28 +255,22 @@ See [barazo-deploy](https://github.com/barazo-forum/barazo-deploy) for full depl
 
 ---
 
-## License
-
-**AGPL-3.0** -- Protects the core. Competitors running hosted services must share their changes.
-
-See [LICENSE](LICENSE) for full terms.
-
----
-
 ## Related Repositories
 
-- **[barazo-web](https://github.com/barazo-forum/barazo-web)** -- Forum frontend (MIT)
-- **[barazo-lexicons](https://github.com/barazo-forum/barazo-lexicons)** -- AT Protocol schemas (MIT)
-- **[barazo-deploy](https://github.com/barazo-forum/barazo-deploy)** -- Deployment templates (MIT)
-- **[Organization](https://github.com/barazo-forum)** -- All repos
+| Repository | Description | License |
+|------------|-------------|---------|
+| [barazo-web](https://github.com/barazo-forum/barazo-web) | Forum frontend (Next.js, Tailwind) | MIT |
+| [barazo-lexicons](https://github.com/barazo-forum/barazo-lexicons) | AT Protocol lexicon schemas + generated TypeScript types | MIT |
+| [barazo-deploy](https://github.com/barazo-forum/barazo-deploy) | Docker Compose deployment templates | MIT |
+| [barazo-website](https://github.com/barazo-forum/barazo-website) | Marketing and documentation site (barazo.forum) | MIT |
 
 ---
 
-## Community
+## License
 
-- **Website:** [barazo.forum](https://barazo.forum) (coming soon)
-- **Discussions:** [GitHub Discussions](https://github.com/orgs/barazo-forum/discussions)
-- **Issues:** [Report bugs](https://github.com/barazo-forum/barazo-api/issues)
+**AGPL-3.0** -- Server-side copyleft. Anyone running a modified version as a hosted service must share their changes.
+
+See [LICENSE](LICENSE) for full terms.
 
 ---
 
