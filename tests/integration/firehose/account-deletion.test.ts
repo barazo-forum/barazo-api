@@ -13,7 +13,16 @@ import { ReactionIndexer } from "../../../src/firehose/indexers/reaction.js";
 import { RecordHandler } from "../../../src/firehose/handlers/record.js";
 import { IdentityHandler } from "../../../src/firehose/handlers/identity.js";
 import type { IdentityEvent } from "../../../src/firehose/types.js";
+import type { AccountAgeService } from "../../../src/services/account-age.js";
 import type postgres from "postgres";
+
+/** Stub that skips PLC resolution and always returns 'trusted'. */
+function createStubAccountAgeService(): AccountAgeService {
+  return {
+    resolveCreationDate: async () => null,
+    determineTrustStatus: () => "trusted",
+  };
+}
 
 const DATABASE_URL =
   process.env["DATABASE_URL"] ??
@@ -57,6 +66,7 @@ describe("firehose account deletion (integration)", () => {
       { topic: topicIndexer, reply: replyIndexer, reaction: reactionIndexer },
       db,
       logger as never,
+      createStubAccountAgeService(),
     );
 
     identityHandler = new IdentityHandler(db, logger as never);
