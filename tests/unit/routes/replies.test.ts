@@ -742,7 +742,9 @@ describe("reply routes", () => {
       // Category maturity
       selectChain.where.mockResolvedValueOnce([{ maturityRating: "safe" }]);
       // User profile
-      selectChain.where.mockResolvedValueOnce([{ ageDeclaredAt: null, maturityPref: "safe" }]);
+      selectChain.where.mockResolvedValueOnce([{ declaredAge: null, maturityPref: "safe" }]);
+      // Community settings: ageThreshold
+      selectChain.where.mockResolvedValueOnce([{ ageThreshold: 16 }]);
       // Block/mute preferences
       selectChain.where.mockResolvedValueOnce([{
         blockedDids: [blockedDid],
@@ -773,7 +775,9 @@ describe("reply routes", () => {
       // Category maturity
       selectChain.where.mockResolvedValueOnce([{ maturityRating: "safe" }]);
       // User profile
-      selectChain.where.mockResolvedValueOnce([{ ageDeclaredAt: null, maturityPref: "safe" }]);
+      selectChain.where.mockResolvedValueOnce([{ declaredAge: null, maturityPref: "safe" }]);
+      // Community settings: ageThreshold
+      selectChain.where.mockResolvedValueOnce([{ ageThreshold: 16 }]);
       // Block/mute preferences
       selectChain.where.mockResolvedValueOnce([{
         blockedDids: [],

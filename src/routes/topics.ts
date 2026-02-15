@@ -235,12 +235,19 @@ export function topicRoutes(): FastifyPluginCallback {
       const categoryRating = catRows[0]?.maturityRating ?? "safe";
 
       const userRows = await db
-        .select({ ageDeclaredAt: users.ageDeclaredAt, maturityPref: users.maturityPref })
+        .select({ declaredAge: users.declaredAge, maturityPref: users.maturityPref })
         .from(users)
         .where(eq(users.did, user.did));
       const userProfile: MaturityUser | undefined = userRows[0] ?? undefined;
 
-      const maxMaturity = resolveMaxMaturity(userProfile);
+      // Fetch community age threshold
+      const settingsRows = await db
+        .select({ ageThreshold: communitySettings.ageThreshold })
+        .from(communitySettings)
+        .where(eq(communitySettings.id, "default"));
+      const ageThreshold = settingsRows[0]?.ageThreshold ?? 16;
+
+      const maxMaturity = resolveMaxMaturity(userProfile, ageThreshold);
       if (!maturityAllows(maxMaturity, categoryRating)) {
         throw forbidden("Content restricted by maturity settings");
       }
@@ -370,7 +377,7 @@ export function topicRoutes(): FastifyPluginCallback {
       let userProfile: MaturityUser | undefined;
       if (request.user) {
         const userRows = await db
-          .select({ ageDeclaredAt: users.ageDeclaredAt, maturityPref: users.maturityPref })
+          .select({ declaredAge: users.declaredAge, maturityPref: users.maturityPref })
           .from(users)
           .where(eq(users.did, request.user.did));
         const row = userRows[0];
@@ -379,7 +386,14 @@ export function topicRoutes(): FastifyPluginCallback {
         }
       }
 
-      const maxMaturity = resolveMaxMaturity(userProfile);
+      // Fetch community age threshold
+      const settingsRowsList = await db
+        .select({ ageThreshold: communitySettings.ageThreshold })
+        .from(communitySettings)
+        .where(eq(communitySettings.id, "default"));
+      const listAgeThreshold = settingsRowsList[0]?.ageThreshold ?? 16;
+
+      const maxMaturity = resolveMaxMaturity(userProfile, listAgeThreshold);
       const allowed = allowedRatings(maxMaturity);
 
       if (env.COMMUNITY_MODE === "global") {
@@ -578,13 +592,20 @@ export function topicRoutes(): FastifyPluginCallback {
       let userProfile: MaturityUser | undefined;
       if (request.user) {
         const userRows = await db
-          .select({ ageDeclaredAt: users.ageDeclaredAt, maturityPref: users.maturityPref })
+          .select({ declaredAge: users.declaredAge, maturityPref: users.maturityPref })
           .from(users)
           .where(eq(users.did, request.user.did));
         userProfile = userRows[0] ?? undefined;
       }
 
-      const maxMaturity = resolveMaxMaturity(userProfile);
+      // Fetch community age threshold
+      const singleSettingsRows = await db
+        .select({ ageThreshold: communitySettings.ageThreshold })
+        .from(communitySettings)
+        .where(eq(communitySettings.id, "default"));
+      const singleAgeThreshold = singleSettingsRows[0]?.ageThreshold ?? 16;
+
+      const maxMaturity = resolveMaxMaturity(userProfile, singleAgeThreshold);
       if (!maturityAllows(maxMaturity, categoryRating)) {
         throw forbidden("Content restricted by maturity settings");
       }

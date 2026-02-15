@@ -184,27 +184,74 @@ describe("profile validation schemas", () => {
   // =========================================================================
 
   describe("ageDeclarationSchema", () => {
-    it("parses valid body with confirm: true", () => {
-      const result = ageDeclarationSchema.safeParse({ confirm: true });
-
+    it("parses valid declaredAge: 0 (rather not say)", () => {
+      const result = ageDeclarationSchema.safeParse({ declaredAge: 0 });
       expect(result.success).toBe(true);
       if (result.success) {
-        expect(result.data.confirm).toBe(true);
+        expect(result.data.declaredAge).toBe(0);
       }
     });
 
-    it("fails when confirm is false", () => {
-      const result = ageDeclarationSchema.safeParse({ confirm: false });
+    it("parses valid declaredAge: 13", () => {
+      const result = ageDeclarationSchema.safeParse({ declaredAge: 13 });
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.declaredAge).toBe(13);
+      }
+    });
+
+    it("parses valid declaredAge: 14", () => {
+      const result = ageDeclarationSchema.safeParse({ declaredAge: 14 });
+      expect(result.success).toBe(true);
+    });
+
+    it("parses valid declaredAge: 15", () => {
+      const result = ageDeclarationSchema.safeParse({ declaredAge: 15 });
+      expect(result.success).toBe(true);
+    });
+
+    it("parses valid declaredAge: 16", () => {
+      const result = ageDeclarationSchema.safeParse({ declaredAge: 16 });
+      expect(result.success).toBe(true);
+    });
+
+    it("parses valid declaredAge: 18", () => {
+      const result = ageDeclarationSchema.safeParse({ declaredAge: 18 });
+      expect(result.success).toBe(true);
+    });
+
+    it("fails for declaredAge: 1 (invalid value)", () => {
+      const result = ageDeclarationSchema.safeParse({ declaredAge: 1 });
       expect(result.success).toBe(false);
     });
 
-    it("fails when confirm is missing", () => {
+    it("fails for declaredAge: 12 (below minimum)", () => {
+      const result = ageDeclarationSchema.safeParse({ declaredAge: 12 });
+      expect(result.success).toBe(false);
+    });
+
+    it("fails for declaredAge: 17 (not a valid bracket)", () => {
+      const result = ageDeclarationSchema.safeParse({ declaredAge: 17 });
+      expect(result.success).toBe(false);
+    });
+
+    it("fails for declaredAge: 19 (above valid range)", () => {
+      const result = ageDeclarationSchema.safeParse({ declaredAge: 19 });
+      expect(result.success).toBe(false);
+    });
+
+    it("fails for declaredAge: -1 (negative)", () => {
+      const result = ageDeclarationSchema.safeParse({ declaredAge: -1 });
+      expect(result.success).toBe(false);
+    });
+
+    it("fails for declaredAge: 'sixteen' (string)", () => {
+      const result = ageDeclarationSchema.safeParse({ declaredAge: "sixteen" });
+      expect(result.success).toBe(false);
+    });
+
+    it("fails when declaredAge is missing", () => {
       const result = ageDeclarationSchema.safeParse({});
-      expect(result.success).toBe(false);
-    });
-
-    it("fails when confirm is a string", () => {
-      const result = ageDeclarationSchema.safeParse({ confirm: "true" });
       expect(result.success).toBe(false);
     });
   });

@@ -65,9 +65,16 @@ export const communityPreferencesSchema = z.object({
 
 export type CommunityPreferencesInput = z.infer<typeof communityPreferencesSchema>;
 
+/** Valid declared age values: 0 = "rather not say", then jurisdiction thresholds + 18 */
+const VALID_DECLARED_AGES = [0, 13, 14, 15, 16, 18] as const;
+
 /** Schema for POST /api/users/me/age-declaration body. */
 export const ageDeclarationSchema = z.object({
-  confirm: z.literal(true),
+  declaredAge: z.number().refine(
+    (val): val is (typeof VALID_DECLARED_AGES)[number] =>
+      (VALID_DECLARED_AGES as readonly number[]).includes(val),
+    { message: "declaredAge must be one of: 0, 13, 14, 15, 16, 18" },
+  ),
 });
 
 export type AgeDeclarationInput = z.infer<typeof ageDeclarationSchema>;

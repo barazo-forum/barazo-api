@@ -194,6 +194,8 @@ describe("maturity filtering", () => {
       const noAuthApp = await buildTestApp(undefined);
 
       // No user profile query (unauthenticated)
+      // Community settings: ageThreshold
+      selectChain.where.mockResolvedValueOnce([{ ageThreshold: 16 }]);
       // Categories query: return only safe categories
       selectChain.where.mockResolvedValueOnce([{ slug: "general" }]);
       // Topics query
@@ -213,10 +215,12 @@ describe("maturity filtering", () => {
     });
 
     it("filters topics to safe-only when user has no age declaration", async () => {
-      // User profile: no ageDeclaredAt → maxMaturity = "safe"
+      // User profile: no declaredAge → maxMaturity = "safe"
       selectChain.where.mockResolvedValueOnce([
-        { ageDeclaredAt: null, maturityPref: "mature" },
+        { declaredAge: null, maturityPref: "mature" },
       ]);
+      // Community settings: ageThreshold
+      selectChain.where.mockResolvedValueOnce([{ ageThreshold: 16 }]);
       // Categories: only safe categories returned (DB would filter)
       selectChain.where.mockResolvedValueOnce([{ slug: "general" }]);
       // Topics
@@ -235,8 +239,10 @@ describe("maturity filtering", () => {
     it("includes mature categories when user has age declared and maturityPref=mature", async () => {
       // User profile: age declared, maturityPref = "mature"
       selectChain.where.mockResolvedValueOnce([
-        { ageDeclaredAt: new Date(), maturityPref: "mature" },
+        { declaredAge: 18, maturityPref: "mature" },
       ]);
+      // Community settings: ageThreshold
+      selectChain.where.mockResolvedValueOnce([{ ageThreshold: 16 }]);
       // Categories: both safe and mature categories
       selectChain.where.mockResolvedValueOnce([
         { slug: "general" },
@@ -265,8 +271,10 @@ describe("maturity filtering", () => {
     it("returns empty when no categories match allowed maturity", async () => {
       // User profile: age not declared
       selectChain.where.mockResolvedValueOnce([
-        { ageDeclaredAt: null, maturityPref: "safe" },
+        { declaredAge: null, maturityPref: "safe" },
       ]);
+      // Community settings: ageThreshold
+      selectChain.where.mockResolvedValueOnce([{ ageThreshold: 16 }]);
       // Categories: no safe categories exist
       selectChain.where.mockResolvedValueOnce([]);
 
@@ -311,8 +319,10 @@ describe("maturity filtering", () => {
       selectChain.where.mockResolvedValueOnce([{ maturityRating: "safe" }]);
       // User profile: safe maturity
       selectChain.where.mockResolvedValueOnce([
-        { ageDeclaredAt: null, maturityPref: "safe" },
+        { declaredAge: null, maturityPref: "safe" },
       ]);
+      // Community settings: ageThreshold
+      selectChain.where.mockResolvedValueOnce([{ ageThreshold: 16 }]);
       // Replies query
       selectChain.limit.mockResolvedValueOnce([sampleReplyRow()]);
 
@@ -337,8 +347,10 @@ describe("maturity filtering", () => {
       selectChain.where.mockResolvedValueOnce([{ maturityRating: "adult" }]);
       // User profile: safe maturity (no age declared)
       selectChain.where.mockResolvedValueOnce([
-        { ageDeclaredAt: null, maturityPref: "safe" },
+        { declaredAge: null, maturityPref: "safe" },
       ]);
+      // Community settings: ageThreshold
+      selectChain.where.mockResolvedValueOnce([{ ageThreshold: 16 }]);
 
       const response = await app.inject({
         method: "GET",
@@ -359,8 +371,10 @@ describe("maturity filtering", () => {
       selectChain.where.mockResolvedValueOnce([{ maturityRating: "mature" }]);
       // User profile: age declared, mature pref
       selectChain.where.mockResolvedValueOnce([
-        { ageDeclaredAt: new Date(), maturityPref: "mature" },
+        { declaredAge: 18, maturityPref: "mature" },
       ]);
+      // Community settings: ageThreshold
+      selectChain.where.mockResolvedValueOnce([{ ageThreshold: 16 }]);
       // Replies query
       selectChain.limit.mockResolvedValueOnce([sampleReplyRow()]);
 
@@ -383,6 +397,8 @@ describe("maturity filtering", () => {
       // Category maturity lookup: mature
       selectChain.where.mockResolvedValueOnce([{ maturityRating: "mature" }]);
       // No user profile query (unauthenticated)
+      // Community settings: ageThreshold
+      selectChain.where.mockResolvedValueOnce([{ ageThreshold: 16 }]);
 
       const response = await noAuthApp.inject({
         method: "GET",
@@ -402,8 +418,10 @@ describe("maturity filtering", () => {
       selectChain.where.mockResolvedValueOnce([]);
       // User profile
       selectChain.where.mockResolvedValueOnce([
-        { ageDeclaredAt: null, maturityPref: "safe" },
+        { declaredAge: null, maturityPref: "safe" },
       ]);
+      // Community settings: ageThreshold
+      selectChain.where.mockResolvedValueOnce([{ ageThreshold: 16 }]);
       // Replies query
       selectChain.limit.mockResolvedValueOnce([]);
 

@@ -130,6 +130,9 @@ function sampleCommunitySettings(overrides?: Record<string, unknown>) {
     communityLogoUrl: null,
     primaryColor: null,
     accentColor: null,
+    jurisdictionCountry: null,
+    ageThreshold: 16,
+    requireLoginForMature: true,
     createdAt: new Date(TEST_NOW),
     updatedAt: new Date(TEST_NOW),
     ...overrides,
@@ -568,6 +571,128 @@ describe("admin settings routes", () => {
 
       expect(response.statusCode).toBe(403);
       await regularApp.close();
+    });
+
+    it("updates jurisdictionCountry", async () => {
+      const settings = sampleCommunitySettings();
+      selectChain.where.mockResolvedValueOnce([settings]);
+      const updatedRow = {
+        ...settings,
+        jurisdictionCountry: "NL",
+        updatedAt: new Date(),
+      };
+      updateChain.returning.mockResolvedValueOnce([updatedRow]);
+
+      const response = await app.inject({
+        method: "PUT",
+        url: "/api/admin/settings",
+        headers: { authorization: "Bearer admin-token" },
+        payload: {
+          jurisdictionCountry: "NL",
+        },
+      });
+
+      expect(response.statusCode).toBe(200);
+      const body = response.json<{ jurisdictionCountry: string }>();
+      expect(body.jurisdictionCountry).toBe("NL");
+    });
+
+    it("updates ageThreshold", async () => {
+      const settings = sampleCommunitySettings();
+      selectChain.where.mockResolvedValueOnce([settings]);
+      const updatedRow = {
+        ...settings,
+        ageThreshold: 13,
+        updatedAt: new Date(),
+      };
+      updateChain.returning.mockResolvedValueOnce([updatedRow]);
+
+      const response = await app.inject({
+        method: "PUT",
+        url: "/api/admin/settings",
+        headers: { authorization: "Bearer admin-token" },
+        payload: {
+          ageThreshold: 13,
+        },
+      });
+
+      expect(response.statusCode).toBe(200);
+      const body = response.json<{ ageThreshold: number }>();
+      expect(body.ageThreshold).toBe(13);
+    });
+
+    it("updates requireLoginForMature", async () => {
+      const settings = sampleCommunitySettings();
+      selectChain.where.mockResolvedValueOnce([settings]);
+      const updatedRow = {
+        ...settings,
+        requireLoginForMature: false,
+        updatedAt: new Date(),
+      };
+      updateChain.returning.mockResolvedValueOnce([updatedRow]);
+
+      const response = await app.inject({
+        method: "PUT",
+        url: "/api/admin/settings",
+        headers: { authorization: "Bearer admin-token" },
+        payload: {
+          requireLoginForMature: false,
+        },
+      });
+
+      expect(response.statusCode).toBe(200);
+      const body = response.json<{ requireLoginForMature: boolean }>();
+      expect(body.requireLoginForMature).toBe(false);
+    });
+
+    it("clears jurisdictionCountry with null", async () => {
+      const settings = sampleCommunitySettings({ jurisdictionCountry: "NL" });
+      selectChain.where.mockResolvedValueOnce([settings]);
+      const updatedRow = {
+        ...settings,
+        jurisdictionCountry: null,
+        updatedAt: new Date(),
+      };
+      updateChain.returning.mockResolvedValueOnce([updatedRow]);
+
+      const response = await app.inject({
+        method: "PUT",
+        url: "/api/admin/settings",
+        headers: { authorization: "Bearer admin-token" },
+        payload: {
+          jurisdictionCountry: null,
+        },
+      });
+
+      expect(response.statusCode).toBe(200);
+      const body = response.json<{ jurisdictionCountry: string | null }>();
+      expect(body.jurisdictionCountry).toBeNull();
+    });
+
+    it("returns 400 for ageThreshold below 13", async () => {
+      const response = await app.inject({
+        method: "PUT",
+        url: "/api/admin/settings",
+        headers: { authorization: "Bearer admin-token" },
+        payload: {
+          ageThreshold: 12,
+        },
+      });
+
+      expect(response.statusCode).toBe(400);
+    });
+
+    it("returns 400 for ageThreshold above 18", async () => {
+      const response = await app.inject({
+        method: "PUT",
+        url: "/api/admin/settings",
+        headers: { authorization: "Bearer admin-token" },
+        payload: {
+          ageThreshold: 19,
+        },
+      });
+
+      expect(response.statusCode).toBe(400);
     });
 
     it("does not check categories when maturityRating stays the same", async () => {

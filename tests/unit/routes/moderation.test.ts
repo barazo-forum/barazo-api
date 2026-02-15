@@ -208,7 +208,7 @@ function sampleUserRow(overrides?: Record<string, unknown>) {
     reputationScore: 0,
     firstSeenAt: new Date(TEST_NOW),
     lastActiveAt: new Date(TEST_NOW),
-    ageDeclaredAt: null,
+    declaredAge: null,
     maturityPref: "safe",
     ...overrides,
   };

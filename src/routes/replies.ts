@@ -10,6 +10,7 @@ import { replies } from "../db/schema/replies.js";
 import { topics } from "../db/schema/topics.js";
 import { users } from "../db/schema/users.js";
 import { categories } from "../db/schema/categories.js";
+import { communitySettings } from "../db/schema/community-settings.js";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -401,7 +402,7 @@ export function replyRoutes(): FastifyPluginCallback {
       let userProfile: MaturityUser | undefined;
       if (request.user) {
         const userRows = await db
-          .select({ ageDeclaredAt: users.ageDeclaredAt, maturityPref: users.maturityPref })
+          .select({ declaredAge: users.declaredAge, maturityPref: users.maturityPref })
           .from(users)
           .where(eq(users.did, request.user.did));
         const row = userRows[0];
@@ -410,7 +411,14 @@ export function replyRoutes(): FastifyPluginCallback {
         }
       }
 
-      const maxMaturity = resolveMaxMaturity(userProfile);
+      // Fetch community age threshold
+      const replySettingsRows = await db
+        .select({ ageThreshold: communitySettings.ageThreshold })
+        .from(communitySettings)
+        .where(eq(communitySettings.id, "default"));
+      const replyAgeThreshold = replySettingsRows[0]?.ageThreshold ?? 16;
+
+      const maxMaturity = resolveMaxMaturity(userProfile, replyAgeThreshold);
       if (!maturityAllows(maxMaturity, categoryRating)) {
         throw forbidden("Content restricted by maturity settings");
       }

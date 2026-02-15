@@ -71,9 +71,8 @@ const preferencesJsonSchema = {
   type: "object" as const,
   properties: {
     maturityLevel: { type: "string" as const },
-    ageDeclarationAt: {
-      type: ["string", "null"] as const,
-      format: "date-time" as const,
+    declaredAge: {
+      type: ["integer", "null"] as const,
     },
     mutedWords: { type: "array" as const, items: { type: "string" as const } },
     blockedDids: {
@@ -125,7 +124,7 @@ const communityPrefsJsonSchema = {
 function defaultPreferences() {
   return {
     maturityLevel: "sfw" as const,
-    ageDeclarationAt: null,
+    declaredAge: null as number | null,
     mutedWords: [] as string[],
     blockedDids: [] as string[],
     mutedDids: [] as string[],
@@ -380,9 +379,9 @@ export function profileRoutes(): FastifyPluginCallback {
           security: [{ bearerAuth: [] }],
           body: {
             type: "object",
-            required: ["confirm"],
+            required: ["declaredAge"],
             properties: {
-              confirm: { type: "boolean", enum: [true] },
+              declaredAge: { type: "integer" },
             },
           },
           response: {
@@ -390,9 +389,8 @@ export function profileRoutes(): FastifyPluginCallback {
               type: "object",
               properties: {
                 success: { type: "boolean" },
-                ageDeclarationAt: {
-                  type: "string",
-                  format: "date-time",
+                declaredAge: {
+                  type: "integer",
                 },
               },
             },
@@ -411,9 +409,10 @@ export function profileRoutes(): FastifyPluginCallback {
 
         const parsed = ageDeclarationSchema.safeParse(request.body);
         if (!parsed.success) {
-          throw badRequest("Body must include confirm: true");
+          throw badRequest("declaredAge must be one of: 0, 13, 14, 15, 16, 18");
         }
 
+        const { declaredAge } = parsed.data;
         const now = new Date();
 
         // Upsert into user_preferences
@@ -421,20 +420,26 @@ export function profileRoutes(): FastifyPluginCallback {
           .insert(userPreferences)
           .values({
             did: requestUser.did,
-            ageDeclarationAt: now,
+            declaredAge,
             updatedAt: now,
           })
           .onConflictDoUpdate({
             target: userPreferences.did,
             set: {
-              ageDeclarationAt: now,
+              declaredAge,
               updatedAt: now,
             },
           });
 
+        // Also update users table
+        await db
+          .update(users)
+          .set({ declaredAge })
+          .where(eq(users.did, requestUser.did));
+
         return reply.status(200).send({
           success: true,
-          ageDeclarationAt: now.toISOString(),
+          declaredAge,
         });
       },
     );
@@ -477,7 +482,7 @@ export function profileRoutes(): FastifyPluginCallback {
 
         return reply.status(200).send({
           maturityLevel: prefs.maturityLevel,
-          ageDeclarationAt: prefs.ageDeclarationAt?.toISOString() ?? null,
+          declaredAge: prefs.declaredAge ?? null,
           mutedWords: prefs.mutedWords,
           blockedDids: prefs.blockedDids,
           mutedDids: prefs.mutedDids,
@@ -588,7 +593,7 @@ export function profileRoutes(): FastifyPluginCallback {
 
         return reply.status(200).send({
           maturityLevel: prefs.maturityLevel,
-          ageDeclarationAt: prefs.ageDeclarationAt?.toISOString() ?? null,
+          declaredAge: prefs.declaredAge ?? null,
           mutedWords: prefs.mutedWords,
           blockedDids: prefs.blockedDids,
           mutedDids: prefs.mutedDids,

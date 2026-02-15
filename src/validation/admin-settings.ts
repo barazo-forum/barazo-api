@@ -35,6 +35,21 @@ export const updateSettingsSchema = z.object({
     .string()
     .regex(hexColorPattern, "Accent color must be a valid hex color (e.g., #00ff00)")
     .optional(),
+  jurisdictionCountry: z
+    .string()
+    .length(2, "Jurisdiction country must be a 2-letter ISO 3166-1 alpha-2 code")
+    .regex(/^[A-Z]{2}$/, "Jurisdiction country must be uppercase letters")
+    .nullable()
+    .optional(),
+  ageThreshold: z
+    .number()
+    .int("Age threshold must be an integer")
+    .min(13, "Age threshold must be at least 13")
+    .max(18, "Age threshold must be at most 18")
+    .optional(),
+  requireLoginForMature: z
+    .boolean()
+    .optional(),
 });
 
 export type UpdateSettingsInput = z.infer<typeof updateSettingsSchema>;
@@ -56,6 +71,9 @@ export const settingsResponseSchema = z.object({
   communityLogoUrl: z.string().nullable(),
   primaryColor: z.string().nullable(),
   accentColor: z.string().nullable(),
+  jurisdictionCountry: z.string().nullable(),
+  ageThreshold: z.number(),
+  requireLoginForMature: z.boolean(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });

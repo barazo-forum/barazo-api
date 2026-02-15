@@ -24,6 +24,9 @@ const settingsJsonSchema = {
     communityLogoUrl: { type: ["string", "null"] as const },
     primaryColor: { type: ["string", "null"] as const },
     accentColor: { type: ["string", "null"] as const },
+    jurisdictionCountry: { type: ["string", "null"] as const },
+    ageThreshold: { type: "integer" as const },
+    requireLoginForMature: { type: "boolean" as const },
     createdAt: { type: "string" as const, format: "date-time" as const },
     updatedAt: { type: "string" as const, format: "date-time" as const },
   },
@@ -95,6 +98,9 @@ function serializeSettings(row: typeof communitySettings.$inferSelect) {
     communityLogoUrl: row.communityLogoUrl ?? null,
     primaryColor: row.primaryColor ?? null,
     accentColor: row.accentColor ?? null,
+    jurisdictionCountry: row.jurisdictionCountry ?? null,
+    ageThreshold: row.ageThreshold,
+    requireLoginForMature: row.requireLoginForMature,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };
@@ -171,6 +177,9 @@ export function adminSettingsRoutes(): FastifyPluginCallback {
             communityLogoUrl: { type: "string", format: "uri" },
             primaryColor: { type: "string", pattern: "^#(?:[0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$" },
             accentColor: { type: "string", pattern: "^#(?:[0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$" },
+            jurisdictionCountry: { type: ["string", "null"] },
+            ageThreshold: { type: "integer", minimum: 13, maximum: 18 },
+            requireLoginForMature: { type: "boolean" },
           },
         },
         response: {
@@ -198,7 +207,10 @@ export function adminSettingsRoutes(): FastifyPluginCallback {
         updates.communityDescription === undefined &&
         updates.communityLogoUrl === undefined &&
         updates.primaryColor === undefined &&
-        updates.accentColor === undefined
+        updates.accentColor === undefined &&
+        updates.jurisdictionCountry === undefined &&
+        updates.ageThreshold === undefined &&
+        updates.requireLoginForMature === undefined
       ) {
         throw badRequest("At least one field must be provided");
       }
@@ -279,6 +291,15 @@ export function adminSettingsRoutes(): FastifyPluginCallback {
       }
       if (updates.accentColor !== undefined) {
         dbUpdates.accentColor = updates.accentColor;
+      }
+      if (updates.jurisdictionCountry !== undefined) {
+        dbUpdates.jurisdictionCountry = updates.jurisdictionCountry;
+      }
+      if (updates.ageThreshold !== undefined) {
+        dbUpdates.ageThreshold = updates.ageThreshold;
+      }
+      if (updates.requireLoginForMature !== undefined) {
+        dbUpdates.requireLoginForMature = updates.requireLoginForMature;
       }
 
       const updated = await db

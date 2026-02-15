@@ -204,9 +204,11 @@ function setupMaturityMocks(
   if (authenticated) {
     // User profile query: return a user with safe maturity (age not declared)
     selectChain.where.mockResolvedValueOnce([
-      { ageDeclaredAt: null, maturityPref: "safe" },
+      { declaredAge: null, maturityPref: "safe" },
     ]);
   }
+  // Community settings: ageThreshold
+  selectChain.where.mockResolvedValueOnce([{ ageThreshold: 16 }]);
   // Categories query: return allowed category slugs
   selectChain.where.mockResolvedValueOnce(
     allowedSlugs.map((slug) => ({ slug })),
@@ -1277,22 +1279,25 @@ describe("topic routes", () => {
      *
      * Query order:
      * 1. (if authenticated) User profile query -> selectChain.where
-     * 2. Community settings query -> selectChain.where (with isNotNull filter)
-     * 3. Category slugs query -> selectChain.where (categories by community + maturity)
-     * 4. (if authenticated) Block/mute preferences -> selectChain.where
-     * 5. Topics query -> selectChain.limit
+     * 2. Community settings ageThreshold query -> selectChain.where
+     * 3. Community settings query -> selectChain.where (with isNotNull filter)
+     * 4. Category slugs query -> selectChain.where (categories by community + maturity)
+     * 5. (if authenticated) Block/mute preferences -> selectChain.where
+     * 6. Topics query -> selectChain.limit
      */
     function setupGlobalMaturityMocks(opts: {
       authenticated: boolean;
-      userProfile?: { ageDeclaredAt: Date | null; maturityPref: string };
+      userProfile?: { declaredAge: number | null; maturityPref: string };
       communities: Array<{ communityDid: string | null; maturityRating: string }>;
       categorySlugs: string[];
     }): void {
       if (opts.authenticated) {
         // User profile query
-        const profile = opts.userProfile ?? { ageDeclaredAt: null, maturityPref: "safe" };
+        const profile = opts.userProfile ?? { declaredAge: null, maturityPref: "safe" };
         selectChain.where.mockResolvedValueOnce([profile]);
       }
+      // Community settings: ageThreshold
+      selectChain.where.mockResolvedValueOnce([{ ageThreshold: 16 }]);
       // Community settings query (all communities)
       selectChain.where.mockResolvedValueOnce(opts.communities);
       // Category slugs query (filtered by allowed communities + maturity)
@@ -1317,7 +1322,7 @@ describe("topic routes", () => {
     it("excludes topics from adult-rated communities in global mode", async () => {
       setupGlobalMaturityMocks({
         authenticated: true,
-        userProfile: { ageDeclaredAt: new Date(), maturityPref: "adult" },
+        userProfile: { declaredAge: 18, maturityPref: "adult" },
         communities: [
           { communityDid: "did:plc:sfw-community", maturityRating: "safe" },
           { communityDid: "did:plc:adult-community", maturityRating: "adult" },
@@ -1345,7 +1350,7 @@ describe("topic routes", () => {
     it("excludes mature-rated communities for SFW-only users", async () => {
       setupGlobalMaturityMocks({
         authenticated: true,
-        userProfile: { ageDeclaredAt: null, maturityPref: "safe" },
+        userProfile: { declaredAge: null, maturityPref: "safe" },
         communities: [
           { communityDid: "did:plc:sfw-community", maturityRating: "safe" },
           { communityDid: "did:plc:mature-community", maturityRating: "mature" },
@@ -1372,7 +1377,7 @@ describe("topic routes", () => {
     it("includes mature-rated communities for users with mature preference", async () => {
       setupGlobalMaturityMocks({
         authenticated: true,
-        userProfile: { ageDeclaredAt: new Date(), maturityPref: "mature" },
+        userProfile: { declaredAge: 18, maturityPref: "mature" },
         communities: [
           { communityDid: "did:plc:sfw-community", maturityRating: "safe" },
           { communityDid: "did:plc:mature-community", maturityRating: "mature" },
@@ -1443,7 +1448,7 @@ describe("topic routes", () => {
     it("excludes adult communities even for users with adult maturity level", async () => {
       setupGlobalMaturityMocks({
         authenticated: true,
-        userProfile: { ageDeclaredAt: new Date(), maturityPref: "adult" },
+        userProfile: { declaredAge: 18, maturityPref: "adult" },
         communities: [
           { communityDid: "did:plc:sfw-community", maturityRating: "safe" },
           { communityDid: "did:plc:adult-community", maturityRating: "adult" },
@@ -1494,7 +1499,7 @@ describe("topic routes", () => {
     it("returns empty result when no categories pass the maturity filter in global mode", async () => {
       setupGlobalMaturityMocks({
         authenticated: true,
-        userProfile: { ageDeclaredAt: null, maturityPref: "safe" },
+        userProfile: { declaredAge: null, maturityPref: "safe" },
         communities: [
           { communityDid: "did:plc:sfw-community", maturityRating: "safe" },
         ],

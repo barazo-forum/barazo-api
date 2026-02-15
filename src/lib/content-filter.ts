@@ -2,7 +2,7 @@
 // Content maturity filtering helpers
 // ---------------------------------------------------------------------------
 // Determines the maximum maturity level a user is allowed to see based on
-// authentication status, age declaration, and maturity preference.
+// authentication status, declared age, age threshold, and maturity preference.
 // ---------------------------------------------------------------------------
 
 import { isMaturityAtMost, ratingsAtMost } from "./maturity.js";
@@ -10,24 +10,31 @@ import type { MaturityRating } from "./maturity.js";
 
 /** Minimal user shape needed for maturity resolution. */
 export interface MaturityUser {
-  ageDeclaredAt: Date | null | undefined;
+  declaredAge: number | null | undefined;
   maturityPref: string;
 }
+
+/** Default age threshold (GDPR Art. 8 strictest: 16). */
+const DEFAULT_AGE_THRESHOLD = 16;
 
 /**
  * Resolve the maximum maturity rating a user is allowed to view.
  *
  * Rules:
  * - Unauthenticated (user is undefined): "safe" only
- * - Authenticated but age not declared: "safe" only
- * - Authenticated with age declared: use their maturityPref
+ * - No age declared (null): "safe" only
+ * - "Rather not say" (0): "safe" only
+ * - Declared age below community threshold: "safe" only
+ * - Declared age meets threshold: use their maturityPref
  */
 export function resolveMaxMaturity(
   user: MaturityUser | undefined,
+  ageThreshold: number = DEFAULT_AGE_THRESHOLD,
 ): MaturityRating {
   if (!user) return "safe";
-  if (!user.ageDeclaredAt) return "safe";
-  // Safe: maturityPref validated by DB enum constraint
+  if (user.declaredAge === null || user.declaredAge === undefined) return "safe";
+  if (user.declaredAge === 0) return "safe";
+  if (user.declaredAge < ageThreshold) return "safe";
   const pref = user.maturityPref as MaturityRating;
   return pref;
 }

@@ -74,7 +74,7 @@ function sampleUserRow(overrides?: Record<string, unknown>) {
     reputationScore: 0,
     firstSeenAt: new Date(TEST_NOW),
     lastActiveAt: new Date(TEST_NOW),
-    ageDeclaredAt: null,
+    declaredAge: null,
     maturityPref: "safe",
     ...overrides,
   };
@@ -84,7 +84,7 @@ function samplePrefsRow(overrides?: Record<string, unknown>) {
   return {
     did: TEST_DID,
     maturityLevel: "sfw",
-    ageDeclarationAt: null,
+    declaredAge: null,
     mutedWords: [],
     blockedDids: [],
     mutedDids: [],
@@ -481,22 +481,39 @@ describe("profile routes", () => {
       resetAllDbMocks();
     });
 
-    it("stores age declaration timestamp", async () => {
+    it("stores declared age and returns it", async () => {
       const response = await app.inject({
         method: "POST",
         url: "/api/users/me/age-declaration",
         headers: { authorization: "Bearer test-token" },
-        payload: { confirm: true },
+        payload: { declaredAge: 16 },
       });
 
       expect(response.statusCode).toBe(200);
       const body = response.json<{
         success: boolean;
-        ageDeclarationAt: string;
+        declaredAge: number;
       }>();
       expect(body.success).toBe(true);
-      expect(body.ageDeclarationAt).toBeTruthy();
+      expect(body.declaredAge).toBe(16);
       expect(mockDb.insert).toHaveBeenCalledOnce();
+    });
+
+    it("accepts declaredAge 0 (rather not say)", async () => {
+      const response = await app.inject({
+        method: "POST",
+        url: "/api/users/me/age-declaration",
+        headers: { authorization: "Bearer test-token" },
+        payload: { declaredAge: 0 },
+      });
+
+      expect(response.statusCode).toBe(200);
+      const body = response.json<{
+        success: boolean;
+        declaredAge: number;
+      }>();
+      expect(body.success).toBe(true);
+      expect(body.declaredAge).toBe(0);
     });
 
     it("returns 401 when not authenticated", async () => {
@@ -505,19 +522,19 @@ describe("profile routes", () => {
       const response = await noAuthApp.inject({
         method: "POST",
         url: "/api/users/me/age-declaration",
-        payload: { confirm: true },
+        payload: { declaredAge: 16 },
       });
 
       expect(response.statusCode).toBe(401);
       await noAuthApp.close();
     });
 
-    it("returns 400 when confirm is not true", async () => {
+    it("returns 400 when declaredAge is invalid", async () => {
       const response = await app.inject({
         method: "POST",
         url: "/api/users/me/age-declaration",
         headers: { authorization: "Bearer test-token" },
-        payload: { confirm: false },
+        payload: { declaredAge: 17 },
       });
 
       expect(response.statusCode).toBe(400);
