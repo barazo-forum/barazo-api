@@ -15,6 +15,7 @@ export default defineConfig({
     "./src/db/schema/notifications.ts",
     "./src/db/schema/user-preferences.ts",
     "./src/db/schema/cross-posts.ts",
+    "./src/db/schema/onboarding-fields.ts",
   ],
   out: "./drizzle",
   dialect: "postgresql",
