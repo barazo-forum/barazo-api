@@ -11,6 +11,7 @@ import { ReplyIndexer } from "./indexers/reply.js";
 import { ReactionIndexer } from "./indexers/reaction.js";
 import { RecordHandler } from "./handlers/record.js";
 import { IdentityHandler } from "./handlers/identity.js";
+import { createAccountAgeService } from "../services/account-age.js";
 import type { RecordEvent, IdentityEvent } from "./types.js";
 
 interface FirehoseStatus {
@@ -43,11 +44,13 @@ export class FirehoseService {
     const topicIndexer = new TopicIndexer(db, logger);
     const replyIndexer = new ReplyIndexer(db, logger);
     const reactionIndexer = new ReactionIndexer(db, logger);
+    const accountAgeService = createAccountAgeService(logger);
 
     this.recordHandler = new RecordHandler(
       { topic: topicIndexer, reply: replyIndexer, reaction: reactionIndexer },
       db,
       logger,
+      accountAgeService,
     );
 
     this.identityHandler = new IdentityHandler(db, logger);

@@ -6,12 +6,22 @@ import { resolveMaxMaturity, maturityAllows } from "../lib/content-filter.js";
 import type { MaturityUser } from "../lib/content-filter.js";
 import { loadBlockMuteLists } from "../lib/block-mute.js";
 import { createReplySchema, updateReplySchema, replyQuerySchema } from "../validation/replies.js";
+import {
+  runAntiSpamChecks,
+  loadAntiSpamSettings,
+  isNewAccount,
+  isAccountTrusted,
+  checkWriteRateLimit,
+} from "../lib/anti-spam.js";
+import { tooManyRequests } from "../lib/api-errors.js";
+import { moderationQueue } from "../db/schema/moderation-queue.js";
 import { replies } from "../db/schema/replies.js";
 import { topics } from "../db/schema/topics.js";
 import { users } from "../db/schema/users.js";
 import { categories } from "../db/schema/categories.js";
 import { communitySettings } from "../db/schema/community-settings.js";
 import { checkOnboardingComplete } from "../lib/onboarding-gate.js";
+import { createNotificationService } from "../services/notification.js";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -149,6 +159,7 @@ export function replyRoutes(): FastifyPluginCallback {
   return (app, _opts, done) => {
     const { db, env, authMiddleware, firehose } = app;
     const pdsClient = createPdsClient(app.oauthClient, app.log);
+    const notificationService = createNotificationService(db, app.log);
 
     // -------------------------------------------------------------------
     // POST /api/topics/:topicUri/replies (auth required)
@@ -196,6 +207,7 @@ export function replyRoutes(): FastifyPluginCallback {
               cid: { type: "string" },
               rkey: { type: "string" },
               content: { type: "string" },
+              moderationStatus: { type: "string", enum: ["approved", "held", "rejected"] },
               createdAt: { type: "string", format: "date-time" },
             },
           },
@@ -241,6 +253,28 @@ export function replyRoutes(): FastifyPluginCallback {
         });
       }
 
+      // Anti-spam checks
+      const antiSpamSettings = await loadAntiSpamSettings(db, app.cache, topic.communityDid);
+      const trusted = await isAccountTrusted(db, user.did, topic.communityDid, antiSpamSettings.trustedPostThreshold);
+
+      if (!trusted) {
+        const isNew = await isNewAccount(db, user.did, topic.communityDid, antiSpamSettings.newAccountDays);
+
+        // Write rate limit
+        const rateLimited = await checkWriteRateLimit(app.cache, user.did, topic.communityDid, isNew, antiSpamSettings);
+        if (rateLimited) {
+          throw tooManyRequests("Write rate limit exceeded. Please try again later.");
+        }
+      }
+
+      // Content-level anti-spam checks (word filter, first-post queue, link hold, burst)
+      const spamResult = await runAntiSpamChecks(db, app.cache, {
+        authorDid: user.did,
+        communityDid: topic.communityDid,
+        contentType: "reply",
+        content,
+      });
+
       // Resolve parent reference
       let parentRefUri = topic.uri;
       let parentRefCid = topic.cid;
@@ -285,6 +319,7 @@ export function replyRoutes(): FastifyPluginCallback {
         }
 
         // Insert into local DB optimistically
+        const contentModerationStatus = spamResult.held ? "held" : "approved";
         await db
           .insert(replies)
           .values({
@@ -300,6 +335,7 @@ export function replyRoutes(): FastifyPluginCallback {
             cid: result.cid,
             labels: labels ?? null,
             reactionCount: 0,
+            moderationStatus: contentModerationStatus,
             createdAt: new Date(now),
             indexedAt: new Date(),
           })
@@ -309,24 +345,73 @@ export function replyRoutes(): FastifyPluginCallback {
               content,
               labels: labels ?? null,
               cid: result.cid,
+              moderationStatus: contentModerationStatus,
               indexedAt: new Date(),
             },
           });
 
+        // Insert moderation queue entries if held
+        if (spamResult.held) {
+          const queueEntries = spamResult.reasons.map((r) => ({
+            contentUri: result.uri,
+            contentType: "reply" as const,
+            authorDid: user.did,
+            communityDid: topic.communityDid,
+            queueReason: r.reason,
+            matchedWords: r.matchedWords ?? null,
+          }));
+          await db.insert(moderationQueue).values(queueEntries);
+
+          app.log.info(
+            {
+              replyUri: result.uri,
+              reasons: spamResult.reasons.map((r) => r.reason),
+              authorDid: user.did,
+            },
+            "Reply held for moderation",
+          );
+        }
+
         // Update parent topic: increment replyCount, set lastActivityAt
-        await db
-          .update(topics)
-          .set({
-            replyCount: sql`${topics.replyCount} + 1`,
-            lastActivityAt: new Date(),
-          })
-          .where(eq(topics.uri, decodedTopicUri));
+        // Only count approved replies in the visible reply count
+        if (!spamResult.held) {
+          await db
+            .update(topics)
+            .set({
+              replyCount: sql`${topics.replyCount} + 1`,
+              lastActivityAt: new Date(),
+            })
+            .where(eq(topics.uri, decodedTopicUri));
+        }
+
+        // Fire-and-forget: generate notifications for reply + mentions
+        if (!spamResult.held) {
+          notificationService.notifyOnReply({
+            replyUri: result.uri,
+            actorDid: user.did,
+            topicUri: decodedTopicUri,
+            parentUri: parentRefUri,
+            communityDid: topic.communityDid,
+          }).catch((err: unknown) => {
+            app.log.error({ err, replyUri: result.uri }, "Reply notification failed");
+          });
+
+          notificationService.notifyOnMentions({
+            content,
+            subjectUri: result.uri,
+            actorDid: user.did,
+            communityDid: topic.communityDid,
+          }).catch((err: unknown) => {
+            app.log.error({ err, replyUri: result.uri }, "Mention notification failed");
+          });
+        }
 
         return await reply.status(201).send({
           uri: result.uri,
           cid: result.cid,
           rkey,
           content,
+          moderationStatus: contentModerationStatus,
           createdAt: now,
         });
       } catch (err: unknown) {
@@ -438,7 +523,10 @@ export function replyRoutes(): FastifyPluginCallback {
       const { blockedDids, mutedDids } = await loadBlockMuteLists(request.user?.did, db);
 
       const { cursor, limit } = parsedQuery.data;
-      const conditions = [eq(replies.rootUri, decodedTopicUri)];
+      const conditions = [
+        eq(replies.rootUri, decodedTopicUri),
+        eq(replies.moderationStatus, "approved"),
+      ];
 
       // Exclude replies by blocked authors
       if (blockedDids.length > 0) {

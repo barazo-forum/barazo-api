@@ -1,4 +1,4 @@
-import { eq, and, desc, sql, inArray, notInArray, isNotNull } from "drizzle-orm";
+import { eq, and, desc, sql, inArray, notInArray, isNotNull, ne, or } from "drizzle-orm";
 import type { FastifyPluginCallback } from "fastify";
 import { createPdsClient } from "../lib/pds-client.js";
 import { notFound, forbidden, badRequest } from "../lib/api-errors.js";
@@ -7,12 +7,23 @@ import type { MaturityUser } from "../lib/content-filter.js";
 import { createTopicSchema, updateTopicSchema, topicQuerySchema } from "../validation/topics.js";
 import { createCrossPostService } from "../services/cross-post.js";
 import { loadBlockMuteLists } from "../lib/block-mute.js";
+import {
+  runAntiSpamChecks,
+  loadAntiSpamSettings,
+  isNewAccount,
+  isAccountTrusted,
+  checkWriteRateLimit,
+  canCreateTopic,
+} from "../lib/anti-spam.js";
+import { tooManyRequests } from "../lib/api-errors.js";
+import { moderationQueue } from "../db/schema/moderation-queue.js";
 import { topics } from "../db/schema/topics.js";
 import { replies } from "../db/schema/replies.js";
 import { users } from "../db/schema/users.js";
 import { categories } from "../db/schema/categories.js";
 import { communitySettings } from "../db/schema/community-settings.js";
 import { checkOnboardingComplete } from "../lib/onboarding-gate.js";
+import { createNotificationService } from "../services/notification.js";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -157,6 +168,7 @@ export function topicRoutes(): FastifyPluginCallback {
       frontpageEnabled: env.FEATURE_CROSSPOST_FRONTPAGE,
       publicUrl: env.PUBLIC_URL,
     });
+    const notificationService = createNotificationService(db, app.log);
 
     // -------------------------------------------------------------------
     // POST /api/topics (auth required)
@@ -204,6 +216,7 @@ export function topicRoutes(): FastifyPluginCallback {
               rkey: { type: "string" },
               title: { type: "string" },
               category: { type: "string" },
+              moderationStatus: { type: "string", enum: ["approved", "held", "rejected"] },
               createdAt: { type: "string", format: "date-time" },
             },
           },
@@ -268,6 +281,37 @@ export function topicRoutes(): FastifyPluginCallback {
         throw forbidden("Content restricted by maturity settings");
       }
 
+      // Anti-spam checks
+      const antiSpamSettings = await loadAntiSpamSettings(db, app.cache, communityDid);
+      const trusted = await isAccountTrusted(db, user.did, communityDid, antiSpamSettings.trustedPostThreshold);
+
+      if (!trusted) {
+        const isNew = await isNewAccount(db, user.did, communityDid, antiSpamSettings.newAccountDays);
+
+        // Write rate limit
+        const rateLimited = await checkWriteRateLimit(app.cache, user.did, communityDid, isNew, antiSpamSettings);
+        if (rateLimited) {
+          throw tooManyRequests("Write rate limit exceeded. Please try again later.");
+        }
+
+        // Topic creation delay: new accounts need at least one approved reply
+        if (antiSpamSettings.topicCreationDelayEnabled) {
+          const canPost = await canCreateTopic(db, user.did, communityDid, true);
+          if (!canPost) {
+            throw forbidden("New accounts must have at least one approved reply before creating topics");
+          }
+        }
+      }
+
+      // Content-level anti-spam checks (word filter, first-post queue, link hold, burst)
+      const spamResult = await runAntiSpamChecks(db, app.cache, {
+        authorDid: user.did,
+        communityDid,
+        contentType: "topic",
+        title,
+        content,
+      });
+
       // Build AT Protocol record
       const record: Record<string, unknown> = {
         title,
@@ -292,6 +336,7 @@ export function topicRoutes(): FastifyPluginCallback {
         }
 
         // Insert into local DB optimistically (don't wait for firehose)
+        const contentModerationStatus = spamResult.held ? "held" : "approved";
         await db
           .insert(topics)
           .values({
@@ -307,6 +352,7 @@ export function topicRoutes(): FastifyPluginCallback {
             cid: result.cid,
             replyCount: 0,
             reactionCount: 0,
+            moderationStatus: contentModerationStatus,
             lastActivityAt: new Date(now),
             createdAt: new Date(now),
             indexedAt: new Date(),
@@ -320,12 +366,36 @@ export function topicRoutes(): FastifyPluginCallback {
               tags: tags ?? [],
               labels: labels ?? null,
               cid: result.cid,
+              moderationStatus: contentModerationStatus,
               indexedAt: new Date(),
             },
           });
 
+        // Insert moderation queue entries if held
+        if (spamResult.held) {
+          const queueEntries = spamResult.reasons.map((r) => ({
+            contentUri: result.uri,
+            contentType: "topic" as const,
+            authorDid: user.did,
+            communityDid,
+            queueReason: r.reason,
+            matchedWords: r.matchedWords ?? null,
+          }));
+          await db.insert(moderationQueue).values(queueEntries);
+
+          app.log.info(
+            {
+              topicUri: result.uri,
+              reasons: spamResult.reasons.map((r) => r.reason),
+              authorDid: user.did,
+            },
+            "Topic held for moderation",
+          );
+        }
+
         // Fire cross-posting in background (fire-and-forget, does not block response)
-        if (env.FEATURE_CROSSPOST_BLUESKY || env.FEATURE_CROSSPOST_FRONTPAGE) {
+        // Only cross-post if content is approved (not held)
+        if (!spamResult.held && (env.FEATURE_CROSSPOST_BLUESKY || env.FEATURE_CROSSPOST_FRONTPAGE)) {
           crossPostService.crossPostTopic({
             did: user.did,
             topicUri: result.uri,
@@ -337,12 +407,25 @@ export function topicRoutes(): FastifyPluginCallback {
           });
         }
 
+        // Fire-and-forget: generate mention notifications from topic content
+        if (!spamResult.held) {
+          notificationService.notifyOnMentions({
+            content,
+            subjectUri: result.uri,
+            actorDid: user.did,
+            communityDid,
+          }).catch((err: unknown) => {
+            app.log.error({ err, topicUri: result.uri }, "Mention notification failed");
+          });
+        }
+
         return await reply.status(201).send({
           uri: result.uri,
           cid: result.cid,
           rkey,
           title,
           category,
+          moderationStatus: contentModerationStatus,
           createdAt: now,
         });
       } catch (err: unknown) {
@@ -466,6 +549,21 @@ export function topicRoutes(): FastifyPluginCallback {
           return reply.status(200).send({ topics: [], cursor: null });
         }
         conditions.push(inArray(topics.category, allowedSlugs));
+
+        // Exclude content from accounts < 24h old in global aggregator feeds.
+        // Uses a query-time check so trust auto-upgrades after 24h without a cron job:
+        // exclude WHERE trust_status = 'new' AND author's account_created_at > now() - 24h.
+        // Content from new accounts remains visible in specific community feeds (single mode).
+        conditions.push(
+          or(
+            ne(topics.trustStatus, "new"),
+            sql`NOT EXISTS (
+              SELECT 1 FROM users u
+              WHERE u.did = ${topics.authorDid}
+              AND u.account_created_at > NOW() - INTERVAL '24 hours'
+            )`,
+          ),
+        );
       } else {
         // ---------------------------------------------------------------
         // Single mode: filter by the one configured community
@@ -498,6 +596,9 @@ export function topicRoutes(): FastifyPluginCallback {
         // Filter topics to only those in allowed categories
         conditions.push(inArray(topics.category, allowedSlugs));
       }
+
+      // Only show approved content in public listings
+      conditions.push(eq(topics.moderationStatus, "approved"));
 
       // Block/mute filtering: load the authenticated user's preferences
       const { blockedDids, mutedDids } = await loadBlockMuteLists(request.user?.did, db);

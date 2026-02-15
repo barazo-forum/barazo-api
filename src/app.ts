@@ -27,12 +27,16 @@ import { categoryRoutes } from "./routes/categories.js";
 import { adminSettingsRoutes } from "./routes/admin-settings.js";
 import { reactionRoutes } from "./routes/reactions.js";
 import { moderationRoutes } from "./routes/moderation.js";
+import { moderationQueueRoutes } from "./routes/moderation-queue.js";
 import { searchRoutes } from "./routes/search.js";
 import { notificationRoutes } from "./routes/notifications.js";
 import { profileRoutes } from "./routes/profiles.js";
 import { blockMuteRoutes } from "./routes/block-mute.js";
 import { onboardingRoutes } from "./routes/onboarding.js";
+import { globalFilterRoutes } from "./routes/global-filters.js";
 import { createRequireAdmin } from "./auth/require-admin.js";
+import { createRequireOperator } from "./auth/require-operator.js";
+import { OzoneService } from "./services/ozone.js";
 import { createSetupService } from "./setup/service.js";
 import type { SetupService } from "./setup/service.js";
 import { createPlcDidService } from "./services/plc-did.js";
@@ -54,6 +58,8 @@ declare module "fastify" {
     setupService: SetupService;
     handleResolver: HandleResolver;
     requireAdmin: ReturnType<typeof createRequireAdmin>;
+    requireOperator: ReturnType<typeof createRequireOperator>;
+    ozoneService: OzoneService | null;
   }
 }
 
@@ -159,6 +165,17 @@ export async function buildApp(env: Env) {
   const requireAdmin = createRequireAdmin(db, authMiddleware, app.log);
   app.decorate("requireAdmin", requireAdmin);
 
+  // Operator middleware (global mode only)
+  const requireOperator = createRequireOperator(env, authMiddleware, app.log);
+  app.decorate("requireOperator", requireOperator);
+
+  // Ozone labeler service (opt-in, only if URL is configured)
+  let ozoneService: OzoneService | null = null;
+  if (env.OZONE_LABELER_URL) {
+    ozoneService = new OzoneService(db, cache, app.log, env.OZONE_LABELER_URL);
+  }
+  app.decorate("ozoneService", ozoneService);
+
   // OpenAPI documentation (register before routes so schemas are collected)
   await app.register(swagger, {
     openapi: {
@@ -205,11 +222,13 @@ export async function buildApp(env: Env) {
   await app.register(adminSettingsRoutes());
   await app.register(reactionRoutes());
   await app.register(moderationRoutes());
+  await app.register(moderationQueueRoutes());
   await app.register(searchRoutes());
   await app.register(notificationRoutes());
   await app.register(profileRoutes());
   await app.register(blockMuteRoutes());
   await app.register(onboardingRoutes());
+  await app.register(globalFilterRoutes());
 
   // OpenAPI spec endpoint (after routes so all schemas are registered)
   app.get("/api/openapi.json", { schema: { hide: true } }, async (_request, reply) => {
@@ -218,14 +237,20 @@ export async function buildApp(env: Env) {
       .send(app.swagger());
   });
 
-  // Start firehose when app is ready
+  // Start firehose and optional services when app is ready
   app.addHook("onReady", async () => {
     await firehose.start();
+    if (ozoneService) {
+      ozoneService.start();
+    }
   });
 
-  // Graceful shutdown: stop firehose before closing DB
+  // Graceful shutdown: stop services before closing DB
   app.addHook("onClose", async () => {
     app.log.info("Shutting down...");
+    if (ozoneService) {
+      ozoneService.stop();
+    }
     await firehose.stop();
     await cache.quit();
     await dbClient.end();

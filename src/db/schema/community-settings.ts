@@ -16,9 +16,33 @@ export const communitySettings = pgTable("community_settings", {
     .notNull()
     .default(["like"]),
   moderationThresholds: jsonb("moderation_thresholds")
-    .$type<{ autoBlockReportCount: number; warnThreshold: number }>()
+    .$type<{
+      autoBlockReportCount: number;
+      warnThreshold: number;
+      firstPostQueueCount: number;
+      newAccountDays: number;
+      newAccountWriteRatePerMin: number;
+      establishedWriteRatePerMin: number;
+      linkHoldEnabled: boolean;
+      topicCreationDelayEnabled: boolean;
+      burstPostCount: number;
+      burstWindowMinutes: number;
+      trustedPostThreshold: number;
+    }>()
     .notNull()
-    .default({ autoBlockReportCount: 5, warnThreshold: 3 }),
+    .default({
+      autoBlockReportCount: 5,
+      warnThreshold: 3,
+      firstPostQueueCount: 3,
+      newAccountDays: 7,
+      newAccountWriteRatePerMin: 3,
+      establishedWriteRatePerMin: 10,
+      linkHoldEnabled: true,
+      topicCreationDelayEnabled: true,
+      burstPostCount: 5,
+      burstWindowMinutes: 10,
+      trustedPostThreshold: 10,
+    }),
   wordFilter: jsonb("word_filter")
     .$type<string[]>()
     .notNull()

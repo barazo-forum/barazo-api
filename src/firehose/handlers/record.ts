@@ -1,3 +1,4 @@
+import { eq } from "drizzle-orm";
 import { users } from "../../db/schema/users.js";
 import type { Database } from "../../db/index.js";
 import type { Logger } from "../../lib/logger.js";
@@ -8,6 +9,7 @@ import { validateRecord } from "../validation.js";
 import type { TopicIndexer } from "../indexers/topic.js";
 import type { ReplyIndexer } from "../indexers/reply.js";
 import type { ReactionIndexer } from "../indexers/reaction.js";
+import type { AccountAgeService, TrustStatus } from "../../services/account-age.js";
 
 interface Indexers {
   topic: TopicIndexer;
@@ -26,6 +28,7 @@ export class RecordHandler {
     private indexers: Indexers,
     private db: Database,
     private logger: Logger,
+    private accountAgeService: AccountAgeService,
   ) {}
 
   async handle(event: RecordEvent): Promise<void> {
@@ -63,9 +66,10 @@ export class RecordHandler {
         return;
       }
 
-      // Upsert user stub on create
+      // Resolve trust status on create (upsert user + check account age)
+      let trustStatus: TrustStatus = "trusted";
       if (action === "create") {
-        await this.upsertUser(did);
+        trustStatus = await this.upsertUserWithTrustCheck(did);
       }
 
       const params = {
@@ -75,6 +79,7 @@ export class RecordHandler {
         cid: cid ?? "",
         record,
         live,
+        trustStatus,
       };
 
       if (action === "create") {
@@ -99,6 +104,7 @@ export class RecordHandler {
       cid: string;
       record: Record<string, unknown>;
       live: boolean;
+      trustStatus: TrustStatus;
     },
   ): Promise<void> {
     switch (indexerName) {
@@ -123,6 +129,7 @@ export class RecordHandler {
       cid: string;
       record: Record<string, unknown>;
       live: boolean;
+      trustStatus: TrustStatus;
     },
   ): Promise<void> {
     switch (indexerName) {
@@ -174,17 +181,72 @@ export class RecordHandler {
     }
   }
 
-  private async upsertUser(did: string): Promise<void> {
+  /**
+   * Upsert user and resolve trust status based on account age.
+   *
+   * On first encounter of a DID:
+   * 1. Resolve account creation date from PLC directory
+   * 2. Insert user with accountCreatedAt
+   * 3. Return 'new' if account < 24h old, 'trusted' otherwise
+   *
+   * For existing users:
+   * 1. Check stored accountCreatedAt
+   * 2. If missing, resolve from PLC and update
+   * 3. Return trust status based on account age
+   */
+  private async upsertUserWithTrustCheck(did: string): Promise<TrustStatus> {
     try {
+      // Check if user already exists
+      const existing = await this.db
+        .select({
+          did: users.did,
+          accountCreatedAt: users.accountCreatedAt,
+        })
+        .from(users)
+        .where(eq(users.did, did));
+
+      if (existing.length > 0) {
+        const user = existing[0];
+        if (user?.accountCreatedAt) {
+          return this.accountAgeService.determineTrustStatus(user.accountCreatedAt);
+        }
+
+        // Legacy row without accountCreatedAt -- resolve now
+        const createdAt = await this.accountAgeService.resolveCreationDate(did);
+        if (createdAt) {
+          await this.db
+            .update(users)
+            .set({ accountCreatedAt: createdAt })
+            .where(eq(users.did, did));
+        }
+        return this.accountAgeService.determineTrustStatus(createdAt);
+      }
+
+      // New user -- resolve account creation date before inserting
+      const createdAt = await this.accountAgeService.resolveCreationDate(did);
+
       await this.db
         .insert(users)
         .values({
           did,
           handle: did, // Stub -- will be updated by identity event
+          accountCreatedAt: createdAt,
         })
         .onConflictDoNothing();
+
+      const trustStatus = this.accountAgeService.determineTrustStatus(createdAt);
+
+      if (trustStatus === "new") {
+        this.logger.info(
+          { did, accountCreatedAt: createdAt?.toISOString() },
+          "New account detected (< 24h old), indexing with trust_status: new",
+        );
+      }
+
+      return trustStatus;
     } catch (err) {
-      this.logger.error({ err, did }, "Failed to upsert user stub");
+      this.logger.error({ err, did }, "Failed to upsert user with trust check");
+      return "trusted"; // Fail open -- don't block indexing
     }
   }
 }

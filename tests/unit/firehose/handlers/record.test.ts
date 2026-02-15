@@ -22,6 +22,11 @@ function createMockDb() {
         where: vi.fn().mockResolvedValue([]),
       }),
     }),
+    update: vi.fn().mockReturnValue({
+      set: vi.fn().mockReturnValue({
+        where: vi.fn().mockResolvedValue(undefined),
+      }),
+    }),
   };
 }
 
@@ -34,12 +39,20 @@ function createMockLogger() {
   };
 }
 
+function createMockAccountAgeService() {
+  return {
+    resolveCreationDate: vi.fn().mockResolvedValue(null),
+    determineTrustStatus: vi.fn().mockReturnValue("trusted" as const),
+  };
+}
+
 describe("RecordHandler", () => {
   let topicIndexer: ReturnType<typeof createMockIndexer>;
   let replyIndexer: ReturnType<typeof createMockIndexer>;
   let reactionIndexer: ReturnType<typeof createMockIndexer>;
   let db: ReturnType<typeof createMockDb>;
   let logger: ReturnType<typeof createMockLogger>;
+  let accountAgeService: ReturnType<typeof createMockAccountAgeService>;
   let handler: RecordHandler;
 
   beforeEach(() => {
@@ -48,6 +61,7 @@ describe("RecordHandler", () => {
     reactionIndexer = createMockIndexer();
     db = createMockDb();
     logger = createMockLogger();
+    accountAgeService = createMockAccountAgeService();
     handler = new RecordHandler(
       {
         topic: topicIndexer,
@@ -56,6 +70,7 @@ describe("RecordHandler", () => {
       } as never,
       db as never,
       logger as never,
+      accountAgeService as never,
     );
   });
 
@@ -241,7 +256,7 @@ describe("RecordHandler", () => {
     });
   });
 
-  describe("user upsert", () => {
+  describe("user upsert with trust check", () => {
     it("upserts a user stub on create events", async () => {
       const event: RecordEvent = {
         id: 9,
@@ -263,7 +278,190 @@ describe("RecordHandler", () => {
 
       await handler.handle(event);
 
+      expect(db.select).toHaveBeenCalled();
+      expect(accountAgeService.resolveCreationDate).toHaveBeenCalledWith("did:plc:newuser");
       expect(db.insert).toHaveBeenCalled();
+    });
+
+    it("passes trust status 'new' to indexer for new accounts", async () => {
+      accountAgeService.determineTrustStatus.mockReturnValue("new");
+
+      const event: RecordEvent = {
+        id: 11,
+        action: "create",
+        did: "did:plc:brandnew",
+        rev: "rev1",
+        collection: "forum.barazo.topic.post",
+        rkey: "abc123",
+        record: {
+          title: "Test",
+          content: "Content",
+          community: "did:plc:community",
+          category: "general",
+          createdAt: "2026-01-01T00:00:00.000Z",
+        },
+        cid: "bafyabc",
+        live: true,
+      };
+
+      await handler.handle(event);
+
+      const call = topicIndexer.handleCreate.mock.calls[0] as [{ trustStatus: string }];
+      expect(call[0].trustStatus).toBe("new");
+    });
+
+    it("passes trust status 'trusted' to indexer for established accounts", async () => {
+      accountAgeService.determineTrustStatus.mockReturnValue("trusted");
+
+      const event: RecordEvent = {
+        id: 12,
+        action: "create",
+        did: "did:plc:established",
+        rev: "rev1",
+        collection: "forum.barazo.topic.post",
+        rkey: "abc123",
+        record: {
+          title: "Test",
+          content: "Content",
+          community: "did:plc:community",
+          category: "general",
+          createdAt: "2026-01-01T00:00:00.000Z",
+        },
+        cid: "bafyabc",
+        live: true,
+      };
+
+      await handler.handle(event);
+
+      const call = topicIndexer.handleCreate.mock.calls[0] as [{ trustStatus: string }];
+      expect(call[0].trustStatus).toBe("trusted");
+    });
+
+    it("checks stored accountCreatedAt for existing users", async () => {
+      const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000);
+      db.select.mockReturnValue({
+        from: vi.fn().mockReturnValue({
+          where: vi.fn().mockResolvedValue([
+            { did: "did:plc:existing", accountCreatedAt: twoHoursAgo },
+          ]),
+        }),
+      });
+      accountAgeService.determineTrustStatus.mockReturnValue("new");
+
+      const event: RecordEvent = {
+        id: 13,
+        action: "create",
+        did: "did:plc:existing",
+        rev: "rev1",
+        collection: "forum.barazo.topic.post",
+        rkey: "abc123",
+        record: {
+          title: "Test",
+          content: "Content",
+          community: "did:plc:community",
+          category: "general",
+          createdAt: "2026-01-01T00:00:00.000Z",
+        },
+        cid: "bafyabc",
+        live: true,
+      };
+
+      await handler.handle(event);
+
+      // Should use determineTrustStatus with the stored date, not resolve again
+      expect(accountAgeService.determineTrustStatus).toHaveBeenCalledWith(twoHoursAgo);
+      expect(accountAgeService.resolveCreationDate).not.toHaveBeenCalled();
+    });
+
+    it("resolves PLC creation date for existing users without accountCreatedAt", async () => {
+      db.select.mockReturnValue({
+        from: vi.fn().mockReturnValue({
+          where: vi.fn().mockResolvedValue([
+            { did: "did:plc:legacy", accountCreatedAt: null },
+          ]),
+        }),
+      });
+      const resolvedDate = new Date("2026-01-01T00:00:00.000Z");
+      accountAgeService.resolveCreationDate.mockResolvedValue(resolvedDate);
+
+      const event: RecordEvent = {
+        id: 14,
+        action: "create",
+        did: "did:plc:legacy",
+        rev: "rev1",
+        collection: "forum.barazo.topic.post",
+        rkey: "abc123",
+        record: {
+          title: "Test",
+          content: "Content",
+          community: "did:plc:community",
+          category: "general",
+          createdAt: "2026-01-01T00:00:00.000Z",
+        },
+        cid: "bafyabc",
+        live: true,
+      };
+
+      await handler.handle(event);
+
+      expect(accountAgeService.resolveCreationDate).toHaveBeenCalledWith("did:plc:legacy");
+      expect(db.update).toHaveBeenCalled();
+    });
+
+    it("does not call accountAgeService for update events", async () => {
+      const event: RecordEvent = {
+        id: 15,
+        action: "update",
+        did: "did:plc:test",
+        rev: "rev2",
+        collection: "forum.barazo.topic.post",
+        rkey: "abc123",
+        record: {
+          title: "Updated",
+          content: "Updated content",
+          community: "did:plc:community",
+          category: "general",
+          createdAt: "2026-01-01T00:00:00.000Z",
+        },
+        cid: "bafynew",
+        live: true,
+      };
+
+      await handler.handle(event);
+
+      expect(accountAgeService.resolveCreationDate).not.toHaveBeenCalled();
+    });
+
+    it("defaults to 'trusted' when upsert fails", async () => {
+      db.select.mockReturnValue({
+        from: vi.fn().mockReturnValue({
+          where: vi.fn().mockRejectedValue(new Error("DB error")),
+        }),
+      });
+
+      const event: RecordEvent = {
+        id: 16,
+        action: "create",
+        did: "did:plc:dberror",
+        rev: "rev1",
+        collection: "forum.barazo.topic.post",
+        rkey: "abc123",
+        record: {
+          title: "Test",
+          content: "Content",
+          community: "did:plc:community",
+          category: "general",
+          createdAt: "2026-01-01T00:00:00.000Z",
+        },
+        cid: "bafyabc",
+        live: true,
+      };
+
+      await handler.handle(event);
+
+      // Should still call the indexer with trusted (fail open)
+      const call = topicIndexer.handleCreate.mock.calls[0] as [{ trustStatus: string }];
+      expect(call[0].trustStatus).toBe("trusted");
     });
   });
 

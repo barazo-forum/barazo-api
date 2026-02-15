@@ -127,6 +127,13 @@
       "when": 1771151983300,
       "tag": "0017_empty_leper_queen",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1771195295640,
+      "tag": "0018_shocking_pet_avengers",
+      "breakpoints": true
     }
   ]
 }

@@ -72,8 +72,17 @@ export const resolveReportSchema = z.object({
 // ---------------------------------------------------------------------------
 
 export const moderationThresholdsSchema = z.object({
-  autoBlockReportCount: z.number().int().min(1).max(100).default(5),
-  warnThreshold: z.number().int().min(1).max(50).default(3),
+  autoBlockReportCount: z.number().int().min(1).max(100).optional(),
+  warnThreshold: z.number().int().min(1).max(50).optional(),
+  firstPostQueueCount: z.number().int().min(0).max(50).optional(),
+  newAccountDays: z.number().int().min(0).max(90).optional(),
+  newAccountWriteRatePerMin: z.number().int().min(1).max(30).optional(),
+  establishedWriteRatePerMin: z.number().int().min(1).max(100).optional(),
+  linkHoldEnabled: z.boolean().optional(),
+  topicCreationDelayEnabled: z.boolean().optional(),
+  burstPostCount: z.number().int().min(2).max(50).optional(),
+  burstWindowMinutes: z.number().int().min(1).max(60).optional(),
+  trustedPostThreshold: z.number().int().min(1).max(100).optional(),
 });
 
 export const reportedUsersQuerySchema = z.object({

@@ -23,4 +23,6 @@ export const users = pgTable("users", {
   })
     .notNull()
     .default("safe"),
+  /** Account creation date resolved from PLC directory on first encounter. */
+  accountCreatedAt: timestamp("account_created_at", { withTimezone: true }),
 });

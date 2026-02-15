@@ -24,7 +24,11 @@ import { users } from "../db/schema/users.js";
 import { moderationActions } from "../db/schema/moderation-actions.js";
 import { reports } from "../db/schema/reports.js";
 import { communitySettings } from "../db/schema/community-settings.js";
+import { notifications } from "../db/schema/notifications.js";
+import { communityFilters } from "../db/schema/community-filters.js";
 import { createRequireModerator } from "../auth/require-moderator.js";
+import { checkBanPropagation } from "../services/ban-propagation.js";
+import { createNotificationService } from "../services/notification.js";
 
 // ---------------------------------------------------------------------------
 // OpenAPI JSON Schema definitions
@@ -136,6 +140,7 @@ export function moderationRoutes(): FastifyPluginCallback {
     const requireModerator = createRequireModerator(db, authMiddleware, app.log);
     const requireAdmin = app.requireAdmin;
     const communityDid = env.COMMUNITY_DID ?? "did:plc:placeholder";
+    const notificationService = createNotificationService(db, app.log);
 
     // -------------------------------------------------------------------
     // POST /api/moderation/lock/:id (moderator+)
@@ -213,6 +218,16 @@ export function moderationRoutes(): FastifyPluginCallback {
         { action, topicUri: decodedUri, moderatorDid: user.did },
         `Topic ${action}ed`,
       );
+
+      // Fire-and-forget: notify topic author of lock/unlock
+      notificationService.notifyOnModAction({
+        targetUri: decodedUri,
+        moderatorDid: user.did,
+        targetDid: topic.authorDid,
+        communityDid,
+      }).catch((err: unknown) => {
+        app.log.error({ err, topicUri: decodedUri }, "Mod action notification failed");
+      });
 
       return reply.status(200).send({
         uri: decodedUri,
@@ -296,6 +311,16 @@ export function moderationRoutes(): FastifyPluginCallback {
         { action, topicUri: decodedUri, moderatorDid: user.did },
         `Topic ${action}ned`,
       );
+
+      // Fire-and-forget: notify topic author of pin/unpin
+      notificationService.notifyOnModAction({
+        targetUri: decodedUri,
+        moderatorDid: user.did,
+        targetDid: topic.authorDid,
+        communityDid,
+      }).catch((err: unknown) => {
+        app.log.error({ err, topicUri: decodedUri }, "Mod action notification failed");
+      });
 
       return reply.status(200).send({
         uri: decodedUri,
@@ -387,6 +412,16 @@ export function moderationRoutes(): FastifyPluginCallback {
           "Topic mod-deleted",
         );
 
+        // Fire-and-forget: notify topic author of deletion
+        notificationService.notifyOnModAction({
+          targetUri: decodedUri,
+          moderatorDid: user.did,
+          targetDid: topic.authorDid,
+          communityDid,
+        }).catch((err: unknown) => {
+          app.log.error({ err, topicUri: decodedUri }, "Mod action notification failed");
+        });
+
         return reply.status(200).send({
           uri: decodedUri,
           isModDeleted: true,
@@ -430,6 +465,16 @@ export function moderationRoutes(): FastifyPluginCallback {
         { action: "delete", replyUri: decodedUri, moderatorDid: user.did },
         "Reply mod-deleted",
       );
+
+      // Fire-and-forget: notify reply author of deletion
+      notificationService.notifyOnModAction({
+        targetUri: decodedUri,
+        moderatorDid: user.did,
+        targetDid: replyRow.authorDid,
+        communityDid,
+      }).catch((err: unknown) => {
+        app.log.error({ err, replyUri: decodedUri }, "Mod action notification failed");
+      });
 
       return reply.status(200).send({
         uri: decodedUri,
@@ -525,6 +570,40 @@ export function moderationRoutes(): FastifyPluginCallback {
         { action, targetDid, adminDid: admin.did },
         `User ${action}ned`,
       );
+
+      // In global mode, check ban propagation across communities
+      if (env.COMMUNITY_MODE === "global" && action === "ban") {
+        try {
+          const result = await checkBanPropagation(
+            db,
+            app.cache,
+            app.log,
+            targetDid,
+          );
+          if (result.propagated) {
+            app.log.info(
+              { targetDid, banCount: result.banCount },
+              "Ban propagation triggered global account filter",
+            );
+          }
+        } catch (err) {
+          app.log.warn(
+            { err, targetDid },
+            "Ban propagation check failed (non-critical)",
+          );
+        }
+      }
+
+      // Fire-and-forget: notify banned/unbanned user
+      // Use targetDid as the targetUri since bans are user-level, not content-level
+      notificationService.notifyOnModAction({
+        targetUri: `at://${targetDid}`,
+        moderatorDid: admin.did,
+        targetDid,
+        communityDid,
+      }).catch((err: unknown) => {
+        app.log.error({ err, targetDid }, "Mod action notification failed");
+      });
 
       return reply.status(200).send({
         did: targetDid,
@@ -724,6 +803,32 @@ export function moderationRoutes(): FastifyPluginCallback {
         { reportId: report.id, reporterDid: user.did, targetUri, reasonType },
         "Content reported",
       );
+
+      // In global mode, notify the community admin about the report
+      if (env.COMMUNITY_MODE === "global") {
+        try {
+          const filterRows = await db
+            .select({ adminDid: communityFilters.adminDid })
+            .from(communityFilters)
+            .where(eq(communityFilters.communityDid, communityDid));
+
+          const adminDid = filterRows[0]?.adminDid;
+          if (adminDid) {
+            await db.insert(notifications).values({
+              recipientDid: adminDid,
+              type: "global_report",
+              subjectUri: targetUri,
+              actorDid: user.did,
+              communityDid,
+            });
+          }
+        } catch (err) {
+          app.log.warn(
+            { err, communityDid },
+            "Failed to send global report notification (non-critical)",
+          );
+        }
+      }
 
       return reply.status(201).send(serializeReport(report));
     });
@@ -973,6 +1078,15 @@ export function moderationRoutes(): FastifyPluginCallback {
             properties: {
               autoBlockReportCount: { type: "number" },
               warnThreshold: { type: "number" },
+              firstPostQueueCount: { type: "number" },
+              newAccountDays: { type: "number" },
+              newAccountWriteRatePerMin: { type: "number" },
+              establishedWriteRatePerMin: { type: "number" },
+              linkHoldEnabled: { type: "boolean" },
+              topicCreationDelayEnabled: { type: "boolean" },
+              burstPostCount: { type: "number" },
+              burstWindowMinutes: { type: "number" },
+              trustedPostThreshold: { type: "number" },
             },
           },
         },
@@ -984,14 +1098,20 @@ export function moderationRoutes(): FastifyPluginCallback {
         .where(eq(communitySettings.id, "default"));
 
       const settings = settingsRows[0];
-      const thresholds = settings?.moderationThresholds ?? {
-        autoBlockReportCount: 5,
-        warnThreshold: 3,
-      };
+      const t = settings?.moderationThresholds;
 
       return reply.status(200).send({
-        autoBlockReportCount: thresholds.autoBlockReportCount,
-        warnThreshold: thresholds.warnThreshold,
+        autoBlockReportCount: t?.autoBlockReportCount ?? 5,
+        warnThreshold: t?.warnThreshold ?? 3,
+        firstPostQueueCount: t?.firstPostQueueCount ?? 3,
+        newAccountDays: t?.newAccountDays ?? 7,
+        newAccountWriteRatePerMin: t?.newAccountWriteRatePerMin ?? 3,
+        establishedWriteRatePerMin: t?.establishedWriteRatePerMin ?? 10,
+        linkHoldEnabled: t?.linkHoldEnabled ?? true,
+        topicCreationDelayEnabled: t?.topicCreationDelayEnabled ?? true,
+        burstPostCount: t?.burstPostCount ?? 5,
+        burstWindowMinutes: t?.burstWindowMinutes ?? 10,
+        trustedPostThreshold: t?.trustedPostThreshold ?? 10,
       });
     });
 
@@ -1010,6 +1130,15 @@ export function moderationRoutes(): FastifyPluginCallback {
           properties: {
             autoBlockReportCount: { type: "number", minimum: 1, maximum: 100 },
             warnThreshold: { type: "number", minimum: 1, maximum: 50 },
+            firstPostQueueCount: { type: "number", minimum: 0, maximum: 50 },
+            newAccountDays: { type: "number", minimum: 0, maximum: 90 },
+            newAccountWriteRatePerMin: { type: "number", minimum: 1, maximum: 30 },
+            establishedWriteRatePerMin: { type: "number", minimum: 1, maximum: 100 },
+            linkHoldEnabled: { type: "boolean" },
+            topicCreationDelayEnabled: { type: "boolean" },
+            burstPostCount: { type: "number", minimum: 2, maximum: 50 },
+            burstWindowMinutes: { type: "number", minimum: 1, maximum: 60 },
+            trustedPostThreshold: { type: "number", minimum: 1, maximum: 100 },
           },
         },
         response: {
@@ -1018,6 +1147,15 @@ export function moderationRoutes(): FastifyPluginCallback {
             properties: {
               autoBlockReportCount: { type: "number" },
               warnThreshold: { type: "number" },
+              firstPostQueueCount: { type: "number" },
+              newAccountDays: { type: "number" },
+              newAccountWriteRatePerMin: { type: "number" },
+              establishedWriteRatePerMin: { type: "number" },
+              linkHoldEnabled: { type: "boolean" },
+              topicCreationDelayEnabled: { type: "boolean" },
+              burstPostCount: { type: "number" },
+              burstWindowMinutes: { type: "number" },
+              trustedPostThreshold: { type: "number" },
             },
           },
           400: errorJsonSchema,
@@ -1029,22 +1167,48 @@ export function moderationRoutes(): FastifyPluginCallback {
         throw badRequest("Invalid threshold values");
       }
 
-      // Update community settings with moderation thresholds
-      // Store as JSON in the community settings since we may not have dedicated columns
-      await db
-        .update(communitySettings)
-        .set({
-          moderationThresholds: {
-            autoBlockReportCount: parsed.data.autoBlockReportCount,
-            warnThreshold: parsed.data.warnThreshold,
-          },
-        })
+      // Load existing thresholds, merge with partial update
+      const existingRows = await db
+        .select({ moderationThresholds: communitySettings.moderationThresholds })
+        .from(communitySettings)
         .where(eq(communitySettings.id, "default"));
 
-      return reply.status(200).send({
-        autoBlockReportCount: parsed.data.autoBlockReportCount,
-        warnThreshold: parsed.data.warnThreshold,
-      });
+      const existing = existingRows[0]?.moderationThresholds ?? {
+        autoBlockReportCount: 5,
+        warnThreshold: 3,
+        firstPostQueueCount: 3,
+        newAccountDays: 7,
+        newAccountWriteRatePerMin: 3,
+        establishedWriteRatePerMin: 10,
+        linkHoldEnabled: true,
+        topicCreationDelayEnabled: true,
+        burstPostCount: 5,
+        burstWindowMinutes: 10,
+        trustedPostThreshold: 10,
+      };
+
+      // Filter out undefined values from the partial update
+      const definedUpdates: Record<string, unknown> = {};
+      for (const [key, value] of Object.entries(parsed.data)) {
+        if (value !== undefined) {
+          definedUpdates[key] = value;
+        }
+      }
+      const merged = { ...existing, ...definedUpdates } as typeof existing;
+
+      await db
+        .update(communitySettings)
+        .set({ moderationThresholds: merged })
+        .where(eq(communitySettings.id, "default"));
+
+      // Invalidate cached anti-spam settings
+      try {
+        await app.cache.del(`antispam:settings:${communityDid}`);
+      } catch {
+        // Non-critical
+      }
+
+      return reply.status(200).send(merged);
     });
 
     done();

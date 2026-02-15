@@ -34,6 +34,17 @@ export const topics = pgTable(
     isLocked: boolean("is_locked").notNull().default(false),
     isPinned: boolean("is_pinned").notNull().default(false),
     isModDeleted: boolean("is_mod_deleted").notNull().default(false),
+    moderationStatus: text("moderation_status", {
+      enum: ["approved", "held", "rejected"],
+    })
+      .notNull()
+      .default("approved"),
+    /** Trust status based on account age at indexing time. 'new' for accounts < 24h old. */
+    trustStatus: text("trust_status", {
+      enum: ["trusted", "new"],
+    })
+      .notNull()
+      .default("trusted"),
     // Note: search_vector (tsvector) and embedding (vector) columns exist in the
     // database but are managed outside Drizzle schema (see migration 0010).
     // search_vector is maintained by a database trigger.
@@ -45,5 +56,7 @@ export const topics = pgTable(
     index("topics_created_at_idx").on(table.createdAt),
     index("topics_last_activity_at_idx").on(table.lastActivityAt),
     index("topics_community_did_idx").on(table.communityDid),
+    index("topics_moderation_status_idx").on(table.moderationStatus),
+    index("topics_trust_status_idx").on(table.trustStatus),
   ],
 );

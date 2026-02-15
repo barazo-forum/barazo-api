@@ -23,6 +23,26 @@ vi.mock("../../../src/lib/pds-client.js", () => ({
   }),
 }));
 
+// Mock anti-spam module (tested separately in anti-spam.test.ts)
+vi.mock("../../../src/lib/anti-spam.js", () => ({
+  loadAntiSpamSettings: vi.fn().mockResolvedValue({
+    wordFilter: [],
+    firstPostQueueCount: 3,
+    newAccountDays: 7,
+    newAccountWriteRatePerMin: 3,
+    establishedWriteRatePerMin: 10,
+    linkHoldEnabled: true,
+    topicCreationDelayEnabled: false,
+    burstPostCount: 5,
+    burstWindowMinutes: 10,
+    trustedPostThreshold: 10,
+  }),
+  isNewAccount: vi.fn().mockResolvedValue(false),
+  isAccountTrusted: vi.fn().mockResolvedValue(true),
+  checkWriteRateLimit: vi.fn().mockResolvedValue(false),
+  runAntiSpamChecks: vi.fn().mockResolvedValue({ held: false, reasons: [] }),
+}));
+
 // Import routes AFTER mocking
 import { replyRoutes } from "../../../src/routes/replies.js";
 

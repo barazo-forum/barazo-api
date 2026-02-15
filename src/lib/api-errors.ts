@@ -55,3 +55,12 @@ export function badRequest(message: string): ApiError {
 export function conflict(message: string): ApiError {
   return new ApiError(409, message);
 }
+
+/**
+ * Create a 429 Too Many Requests error.
+ *
+ * @param message - Human-readable description of the rate limit violation.
+ */
+export function tooManyRequests(message: string): ApiError {
+  return new ApiError(429, message);
+}

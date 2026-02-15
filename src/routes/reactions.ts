@@ -8,6 +8,7 @@ import { topics } from "../db/schema/topics.js";
 import { replies } from "../db/schema/replies.js";
 import { communitySettings } from "../db/schema/community-settings.js";
 import { checkOnboardingComplete } from "../lib/onboarding-gate.js";
+import { createNotificationService } from "../services/notification.js";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -120,6 +121,7 @@ export function reactionRoutes(): FastifyPluginCallback {
   return (app, _opts, done) => {
     const { db, env, authMiddleware, firehose } = app;
     const pdsClient = createPdsClient(app.oauthClient, app.log);
+    const notificationService = createNotificationService(db, app.log);
 
     // -------------------------------------------------------------------
     // POST /api/reactions (auth required)
@@ -296,6 +298,15 @@ export function reactionRoutes(): FastifyPluginCallback {
         if (insertResult.length === 0) {
           throw conflict("Reaction already exists");
         }
+
+        // Fire-and-forget: generate notification for the content author
+        notificationService.notifyOnReaction({
+          subjectUri,
+          actorDid: user.did,
+          communityDid,
+        }).catch((err: unknown) => {
+          app.log.error({ err, subjectUri }, "Reaction notification failed");
+        });
 
         return await reply.status(201).send({
           uri: result.uri,

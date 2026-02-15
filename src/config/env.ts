@@ -76,6 +76,20 @@ export const envSchema = z.object({
     .default("false")
     .transform((v) => v === "true"),
   PUBLIC_URL: z.string().default("http://localhost:3001"),
+
+  // Global mode: operator DIDs (comma-separated)
+  OPERATOR_DIDS: z
+    .string()
+    .default("")
+    .transform((v) =>
+      v
+        .split(",")
+        .map((s) => s.trim())
+        .filter((s) => s.length > 0),
+    ),
+
+  // Ozone labeler (opt-in)
+  OZONE_LABELER_URL: z.string().default("https://mod.bsky.app"),
 });
 
 export type Env = z.infer<typeof envSchema>;

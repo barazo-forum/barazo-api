@@ -3,6 +3,7 @@ import { replies } from "../../db/schema/replies.js";
 import { topics } from "../../db/schema/topics.js";
 import type { Database } from "../../db/index.js";
 import type { Logger } from "../../lib/logger.js";
+import type { TrustStatus } from "../../services/account-age.js";
 
 interface CreateParams {
   uri: string;
@@ -11,6 +12,7 @@ interface CreateParams {
   cid: string;
   record: Record<string, unknown>;
   live: boolean;
+  trustStatus: TrustStatus;
 }
 
 interface UpdateParams {
@@ -20,6 +22,7 @@ interface UpdateParams {
   cid: string;
   record: Record<string, unknown>;
   live: boolean;
+  trustStatus: TrustStatus;
 }
 
 interface DeleteParams {
@@ -36,7 +39,7 @@ export class ReplyIndexer {
   ) {}
 
   async handleCreate(params: CreateParams): Promise<void> {
-    const { uri, rkey, did, cid, record } = params;
+    const { uri, rkey, did, cid, record, trustStatus } = params;
 
     const root = record["root"] as { uri: string; cid: string };
     const parent = record["parent"] as { uri: string; cid: string };
@@ -58,6 +61,7 @@ export class ReplyIndexer {
           cid,
           labels: (record["labels"] as { values: { val: string }[] } | undefined) ?? null,
           createdAt: new Date(record["createdAt"] as string),
+          trustStatus,
         })
         .onConflictDoNothing();
 
@@ -71,7 +75,7 @@ export class ReplyIndexer {
         .where(eq(topics.uri, root.uri));
     });
 
-    this.logger.debug({ uri, did }, "Indexed reply");
+    this.logger.debug({ uri, did, trustStatus }, "Indexed reply");
   }
 
   async handleUpdate(params: UpdateParams): Promise<void> {
