@@ -29,6 +29,13 @@ export const reports = pgTable(
     }),
     resolvedBy: text("resolved_by"),
     resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+    appealReason: text("appeal_reason"),
+    appealedAt: timestamp("appealed_at", { withTimezone: true }),
+    appealStatus: text("appeal_status", {
+      enum: ["none", "pending", "rejected"],
+    })
+      .notNull()
+      .default("none"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),

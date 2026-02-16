@@ -17,6 +17,8 @@ import {
   resolveReportSchema,
   reportedUsersQuerySchema,
   moderationThresholdsSchema,
+  appealReportSchema,
+  myReportsQuerySchema,
 } from "../validation/moderation.js";
 import { topics } from "../db/schema/topics.js";
 import { replies } from "../db/schema/replies.js";
@@ -67,6 +69,9 @@ const reportJsonSchema = {
     resolutionType: { type: ["string", "null"] as const },
     resolvedBy: { type: ["string", "null"] as const },
     resolvedAt: { type: ["string", "null"] as const },
+    appealReason: { type: ["string", "null"] as const },
+    appealedAt: { type: ["string", "null"] as const },
+    appealStatus: { type: "string" as const, enum: ["none", "pending", "rejected"] },
     createdAt: { type: "string" as const, format: "date-time" as const },
   },
 };
@@ -99,6 +104,9 @@ function serializeReport(row: typeof reports.$inferSelect) {
     resolutionType: row.resolutionType,
     resolvedBy: row.resolvedBy,
     resolvedAt: row.resolvedAt?.toISOString() ?? null,
+    appealReason: row.appealReason ?? null,
+    appealedAt: row.appealedAt?.toISOString() ?? null,
+    appealStatus: row.appealStatus,
     createdAt: row.createdAt.toISOString(),
   };
 }
@@ -1209,6 +1217,191 @@ export function moderationRoutes(): FastifyPluginCallback {
       }
 
       return reply.status(200).send(merged);
+    });
+
+    // -------------------------------------------------------------------
+    // GET /api/moderation/my-reports (authenticated user)
+    // -------------------------------------------------------------------
+
+    app.get("/api/moderation/my-reports", {
+      preHandler: [authMiddleware.requireAuth],
+      schema: {
+        tags: ["Moderation"],
+        summary: "List reports submitted by the authenticated user (paginated)",
+        security: [{ bearerAuth: [] }],
+        querystring: {
+          type: "object",
+          properties: {
+            cursor: { type: "string" },
+            limit: { type: "string" },
+          },
+        },
+        response: {
+          200: {
+            type: "object",
+            properties: {
+              reports: { type: "array", items: reportJsonSchema },
+              cursor: { type: ["string", "null"] },
+            },
+          },
+          400: errorJsonSchema,
+          401: errorJsonSchema,
+        },
+      },
+    }, async (request, reply) => {
+      const user = request.user;
+      if (!user) {
+        return reply.status(401).send({ error: "Authentication required" });
+      }
+
+      const parsed = myReportsQuerySchema.safeParse(request.query);
+      if (!parsed.success) {
+        throw badRequest("Invalid query parameters");
+      }
+
+      const { cursor, limit } = parsed.data;
+      const conditions = [
+        eq(reports.reporterDid, user.did),
+        eq(reports.communityDid, communityDid),
+      ];
+
+      if (cursor) {
+        const decoded = decodeCursor(cursor);
+        if (decoded) {
+          conditions.push(
+            sql`(${reports.createdAt}, ${reports.id}) < (${decoded.createdAt}::timestamptz, ${decoded.id})`,
+          );
+        }
+      }
+
+      const whereClause = and(...conditions);
+      const fetchLimit = limit + 1;
+
+      const rows = await db
+        .select()
+        .from(reports)
+        .where(whereClause)
+        .orderBy(desc(reports.createdAt))
+        .limit(fetchLimit);
+
+      const hasMore = rows.length > limit;
+      const resultRows = hasMore ? rows.slice(0, limit) : rows;
+
+      let nextCursor: string | null = null;
+      if (hasMore) {
+        const lastRow = resultRows[resultRows.length - 1];
+        if (lastRow) {
+          nextCursor = encodeCursor(lastRow.createdAt.toISOString(), lastRow.id);
+        }
+      }
+
+      return reply.status(200).send({
+        reports: resultRows.map(serializeReport),
+        cursor: nextCursor,
+      });
+    });
+
+    // -------------------------------------------------------------------
+    // POST /api/moderation/reports/:id/appeal (authenticated user)
+    // -------------------------------------------------------------------
+
+    app.post("/api/moderation/reports/:id/appeal", {
+      preHandler: [authMiddleware.requireAuth],
+      schema: {
+        tags: ["Moderation"],
+        summary: "Appeal a dismissed report",
+        security: [{ bearerAuth: [] }],
+        params: {
+          type: "object",
+          required: ["id"],
+          properties: { id: { type: "string" } },
+        },
+        body: {
+          type: "object",
+          required: ["reason"],
+          properties: {
+            reason: { type: "string", minLength: 1, maxLength: 1000 },
+          },
+        },
+        response: {
+          200: reportJsonSchema,
+          400: errorJsonSchema,
+          401: errorJsonSchema,
+          403: errorJsonSchema,
+          404: errorJsonSchema,
+          409: errorJsonSchema,
+        },
+      },
+    }, async (request, reply) => {
+      const user = request.user;
+      if (!user) {
+        return reply.status(401).send({ error: "Authentication required" });
+      }
+
+      const { id } = request.params as { id: string };
+      const reportId = Number(id);
+      if (Number.isNaN(reportId)) {
+        throw badRequest("Invalid report ID");
+      }
+
+      const parsed = appealReportSchema.safeParse(request.body);
+      if (!parsed.success) {
+        throw badRequest("Invalid appeal data");
+      }
+
+      const existing = await db
+        .select()
+        .from(reports)
+        .where(
+          and(
+            eq(reports.id, reportId),
+            eq(reports.communityDid, communityDid),
+          ),
+        );
+
+      const report = existing[0];
+      if (!report) {
+        throw notFound("Report not found");
+      }
+
+      if (report.reporterDid !== user.did) {
+        throw forbidden("You can only appeal your own reports");
+      }
+
+      if (report.status !== "resolved") {
+        throw badRequest("Can only appeal resolved reports");
+      }
+
+      if (report.resolutionType !== "dismissed") {
+        throw badRequest("Can only appeal dismissed reports");
+      }
+
+      if (report.appealStatus !== "none") {
+        throw conflict("Report has already been appealed");
+      }
+
+      const updated = await db
+        .update(reports)
+        .set({
+          appealReason: parsed.data.reason,
+          appealedAt: new Date(),
+          appealStatus: "pending",
+          status: "pending",
+        })
+        .where(eq(reports.id, reportId))
+        .returning();
+
+      const appealedReport = updated[0];
+      if (!appealedReport) {
+        throw notFound("Report not found after update");
+      }
+
+      app.log.info(
+        { reportId, reporterDid: user.did },
+        "Report appealed",
+      );
+
+      return reply.status(200).send(serializeReport(appealedReport));
     });
 
     done();

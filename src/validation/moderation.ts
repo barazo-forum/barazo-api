@@ -88,3 +88,16 @@ export const moderationThresholdsSchema = z.object({
 export const reportedUsersQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(25),
 });
+
+// ---------------------------------------------------------------------------
+// Appeal schemas
+// ---------------------------------------------------------------------------
+
+export const appealReportSchema = z.object({
+  reason: z.string().min(1).max(1000),
+});
+
+export const myReportsQuerySchema = z.object({
+  cursor: z.string().optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(25),
+});
