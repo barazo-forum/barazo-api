@@ -62,6 +62,7 @@ const replyJsonSchema = {
     depth: { type: "integer" as const },
     reactionCount: { type: "integer" as const },
     isMuted: { type: "boolean" as const },
+    ozoneLabel: { type: ["string", "null"] as const },
     createdAt: { type: "string" as const, format: "date-time" as const },
     indexedAt: { type: "string" as const, format: "date-time" as const },
   },
@@ -253,12 +254,19 @@ export function replyRoutes(): FastifyPluginCallback {
         });
       }
 
+      // Ozone label check: spam-labeled accounts get stricter rate limits
+      let ozoneSpamLabeled = false;
+      if (app.ozoneService) {
+        ozoneSpamLabeled = await app.ozoneService.isSpamLabeled(user.did);
+      }
+
       // Anti-spam checks
       const antiSpamSettings = await loadAntiSpamSettings(db, app.cache, topic.communityDid);
-      const trusted = await isAccountTrusted(db, user.did, topic.communityDid, antiSpamSettings.trustedPostThreshold);
+      const trusted = !ozoneSpamLabeled && await isAccountTrusted(db, user.did, topic.communityDid, antiSpamSettings.trustedPostThreshold);
 
       if (!trusted) {
-        const isNew = await isNewAccount(db, user.did, topic.communityDid, antiSpamSettings.newAccountDays);
+        // Ozone spam-labeled accounts are always treated as new (stricter rate limits)
+        const isNew = ozoneSpamLabeled || await isNewAccount(db, user.did, topic.communityDid, antiSpamSettings.newAccountDays);
 
         // Write rate limit
         const rateLimited = await checkWriteRateLimit(app.cache, user.did, topic.communityDid, isNew, antiSpamSettings);
@@ -558,11 +566,22 @@ export function replyRoutes(): FastifyPluginCallback {
       const resultRows = hasMore ? rows.slice(0, limit) : rows;
       const serialized = resultRows.map(serializeReply);
 
+      // Ozone label annotation: flag content from spam-labeled accounts
+      const ozoneMap = new Map<string, string | null>();
+      if (app.ozoneService) {
+        const uniqueDids = [...new Set(serialized.map((r) => r.authorDid))];
+        for (const did of uniqueDids) {
+          const isSpam = await app.ozoneService.isSpamLabeled(did);
+          ozoneMap.set(did, isSpam ? "spam" : null);
+        }
+      }
+
       // Annotate muted authors (content is still returned, just flagged)
       const mutedSet = new Set(mutedDids);
       const annotatedReplies = serialized.map((r) => ({
         ...r,
         isMuted: mutedSet.has(r.authorDid),
+        ozoneLabel: ozoneMap.get(r.authorDid) ?? null,
       }));
 
       let nextCursor: string | null = null;
