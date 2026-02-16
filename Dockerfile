@@ -11,8 +11,8 @@ WORKDIR /workspace
 # Enable pnpm via corepack
 RUN corepack enable && corepack prepare pnpm@10.29.2 --activate
 
-# Copy workspace root config
-COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+# Copy workspace root config (including .npmrc for inject-workspace-packages)
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
 
 # Copy all workspace package.json files (needed for pnpm install)
 COPY barazo-lexicons/package.json ./barazo-lexicons/
@@ -44,8 +44,8 @@ RUN pnpm --filter @barazo-forum/lexicons build && \
     pnpm --filter barazo-api build
 
 # Create standalone production deployment with resolved dependencies.
-# pnpm deploy resolves catalog: entries and copies only prod deps.
-RUN pnpm --filter barazo-api deploy /app/deploy --prod --legacy
+# pnpm deploy copies workspace + prod deps (requires inject-workspace-packages=true in .npmrc).
+RUN pnpm --filter barazo-api deploy /app/deploy --prod
 
 # ---------------------------------------------------------------------------
 # Stage 3: Production runner
