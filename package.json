@@ -40,7 +40,7 @@
     "@ipld/dag-cbor": "^9.2.5",
     "@noble/secp256k1": "^3.0.0",
     "@scalar/fastify-api-reference": "^1.44.18",
-    "@sentry/node": "^9.27.0",
+    "@sentry/node": "^10.39.0",
     "drizzle-orm": "^0.45.1",
     "fastify": "^5.7.4",
     "ioredis": "^5.6.1",
