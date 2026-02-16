@@ -15,6 +15,7 @@ const mockEnv = {
   OAUTH_CLIENT_ID: "http://localhost",
   OAUTH_SESSION_TTL: 604800,
   OAUTH_ACCESS_TOKEN_TTL: 900,
+  CORS_ORIGINS: "http://localhost:3000",
 } as Env;
 
 // ---------------------------------------------------------------------------
@@ -200,7 +201,7 @@ describe("auth routes", () => {
   // =========================================================================
 
   describe("GET /api/auth/callback", () => {
-    it("returns access token and sets cookie for valid callback", async () => {
+    it("redirects to frontend and sets cookie for valid callback", async () => {
       const mockSession = makeMockSessionWithToken();
       const mockOAuthSession = { did: TEST_DID };
 
@@ -216,18 +217,12 @@ describe("auth routes", () => {
         url: "/api/auth/callback?iss=https://pds.example.com&code=test-code&state=test-state",
       });
 
-      expect(response.statusCode).toBe(200);
+      expect(response.statusCode).toBe(302);
 
-      const body = response.json<{
-        accessToken: string;
-        expiresAt: number;
-        did: string;
-        handle: string;
-      }>();
-      expect(body.accessToken).toBe(TEST_ACCESS_TOKEN);
-      expect(body.expiresAt).toBe(TEST_EXPIRES_AT);
-      expect(body.did).toBe(TEST_DID);
-      expect(body.handle).toBe(TEST_HANDLE);
+      // Verify redirect URL points to frontend callback with success flag
+      const location = response.headers.location as string;
+      expect(location).toContain("/auth/callback");
+      expect(location).toContain("success=true");
 
       // Verify handle was resolved from DID and session created with resolved handle
       expect(resolveFn).toHaveBeenCalledWith(TEST_DID);
@@ -241,7 +236,7 @@ describe("auth routes", () => {
       expect(refreshCookie).toBeDefined();
       expect(refreshCookie?.value).toBe(TEST_SID);
       expect(refreshCookie?.httpOnly).toBe(true);
-      expect(refreshCookie?.sameSite).toBe("Strict");
+      expect(refreshCookie?.sameSite).toBe("Lax");
       expect(refreshCookie?.path).toBe("/api/auth");
     });
 
@@ -278,7 +273,7 @@ describe("auth routes", () => {
       expect(body.error).toBe("Invalid callback parameters");
     });
 
-    it("returns 502 when OAuth client throws", async () => {
+    it("redirects to frontend with error when OAuth client throws", async () => {
       callbackFn.mockRejectedValueOnce(new Error("Token exchange failed"));
 
       const response = await app.inject({
@@ -286,9 +281,10 @@ describe("auth routes", () => {
         url: "/api/auth/callback?iss=https://pds.example.com&code=test-code&state=test-state",
       });
 
-      expect(response.statusCode).toBe(502);
-      const body = response.json<{ error: string }>();
-      expect(body.error).toBe("OAuth callback failed");
+      expect(response.statusCode).toBe(302);
+      const location = response.headers.location as string;
+      expect(location).toContain("/auth/callback");
+      expect(location).toContain("error=");
     });
   });
 
@@ -528,6 +524,7 @@ describe("auth routes (production mode)", () => {
     OAUTH_SESSION_TTL: 604800,
     OAUTH_ACCESS_TOKEN_TTL: 900,
     RATE_LIMIT_AUTH: 10,
+    CORS_ORIGINS: "https://forum.barazo.forum",
   } as Env;
 
   beforeAll(async () => {
@@ -566,7 +563,7 @@ describe("auth routes (production mode)", () => {
       url: "/api/auth/callback?iss=https://pds.example.com&code=test-code&state=test-state",
     });
 
-    expect(response.statusCode).toBe(200);
+    expect(response.statusCode).toBe(302);
 
     const cookies = response.cookies;
     const refreshCookie = cookies.find(
