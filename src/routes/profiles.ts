@@ -7,6 +7,8 @@ import {
   ageDeclarationSchema,
 } from "../validation/profiles.js";
 import { users } from "../db/schema/users.js";
+import { communityProfiles } from "../db/schema/community-profiles.js";
+import { resolveProfile } from "../lib/resolve-profile.js";
 import { topics } from "../db/schema/topics.js";
 import { replies } from "../db/schema/replies.js";
 import { reactions } from "../db/schema/reactions.js";
@@ -35,6 +37,8 @@ const profileJsonSchema = {
     handle: { type: "string" as const },
     displayName: { type: ["string", "null"] as const },
     avatarUrl: { type: ["string", "null"] as const },
+    bannerUrl: { type: ["string", "null"] as const },
+    bio: { type: ["string", "null"] as const },
     role: { type: "string" as const },
     firstSeenAt: { type: "string" as const, format: "date-time" as const },
     lastActiveAt: { type: "string" as const, format: "date-time" as const },
@@ -185,6 +189,12 @@ export function profileRoutes(): FastifyPluginCallback {
               handle: { type: "string" },
             },
           },
+          querystring: {
+            type: "object",
+            properties: {
+              communityDid: { type: "string" },
+            },
+          },
           response: {
             200: profileJsonSchema,
             404: errorJsonSchema,
@@ -193,6 +203,7 @@ export function profileRoutes(): FastifyPluginCallback {
       },
       async (request, reply) => {
         const { handle } = request.params as { handle: string };
+        const { communityDid } = request.query as { communityDid?: string };
 
         // Look up user by handle
         const userRows = await db
@@ -237,11 +248,40 @@ export function profileRoutes(): FastifyPluginCallback {
           (reactionsOnTopicsResult[0]?.count ?? 0) +
           (reactionsOnRepliesResult[0]?.count ?? 0);
 
-        return reply.status(200).send({
+        // Build source profile for resolution
+        const sourceProfile = {
           did: user.did,
           handle: user.handle,
           displayName: user.displayName ?? null,
           avatarUrl: user.avatarUrl ?? null,
+          bannerUrl: user.bannerUrl ?? null,
+          bio: user.bio ?? null,
+        };
+
+        // Optionally resolve through community override layer
+        let resolved = sourceProfile;
+        if (communityDid) {
+          const overrideRows = await db
+            .select()
+            .from(communityProfiles)
+            .where(
+              and(
+                eq(communityProfiles.did, user.did),
+                eq(communityProfiles.communityDid, communityDid),
+              ),
+            );
+
+          const override = overrideRows[0] ?? null;
+          resolved = resolveProfile(sourceProfile, override);
+        }
+
+        return reply.status(200).send({
+          did: resolved.did,
+          handle: resolved.handle,
+          displayName: resolved.displayName,
+          avatarUrl: resolved.avatarUrl,
+          bannerUrl: resolved.bannerUrl,
+          bio: resolved.bio,
           role: user.role,
           firstSeenAt: user.firstSeenAt.toISOString(),
           lastActiveAt: user.lastActiveAt.toISOString(),
@@ -862,6 +902,11 @@ export function profileRoutes(): FastifyPluginCallback {
           await tx
             .delete(topics)
             .where(eq(topics.authorDid, userDid));
+
+          // Delete community profile overrides
+          await tx
+            .delete(communityProfiles)
+            .where(eq(communityProfiles.did, userDid));
 
           // Delete community preferences
           await tx

@@ -2,6 +2,7 @@ import Fastify from "fastify";
 import helmet from "@fastify/helmet";
 import cors from "@fastify/cors";
 import cookie from "@fastify/cookie";
+import multipart from "@fastify/multipart";
 import rateLimit from "@fastify/rate-limit";
 import swagger from "@fastify/swagger";
 import scalarApiReference from "@scalar/fastify-api-reference";
@@ -34,6 +35,8 @@ import { profileRoutes } from "./routes/profiles.js";
 import { blockMuteRoutes } from "./routes/block-mute.js";
 import { onboardingRoutes } from "./routes/onboarding.js";
 import { globalFilterRoutes } from "./routes/global-filters.js";
+import { communityProfileRoutes } from "./routes/community-profiles.js";
+import { uploadRoutes } from "./routes/uploads.js";
 import { createRequireAdmin } from "./auth/require-admin.js";
 import { createRequireOperator } from "./auth/require-operator.js";
 import { OzoneService } from "./services/ozone.js";
@@ -42,6 +45,10 @@ import type { SetupService } from "./setup/service.js";
 import { createPlcDidService } from "./services/plc-did.js";
 import { createHandleResolver } from "./lib/handle-resolver.js";
 import type { HandleResolver } from "./lib/handle-resolver.js";
+import { createProfileSyncService } from "./services/profile-sync.js";
+import type { ProfileSyncService } from "./services/profile-sync.js";
+import { createLocalStorage } from "./lib/storage.js";
+import type { StorageService } from "./lib/storage.js";
 import type { Database } from "./db/index.js";
 import type { Cache } from "./cache/index.js";
 
@@ -60,6 +67,8 @@ declare module "fastify" {
     requireAdmin: ReturnType<typeof createRequireAdmin>;
     requireOperator: ReturnType<typeof createRequireOperator>;
     ozoneService: OzoneService | null;
+    profileSync: ProfileSyncService;
+    storage: StorageService;
   }
 }
 
@@ -137,6 +146,11 @@ export async function buildApp(env: Env) {
   // Cookies (must be registered before auth routes)
   await app.register(cookie, { secret: env.SESSION_SECRET });
 
+  // Multipart file uploads
+  await app.register(multipart, {
+    limits: { fileSize: env.UPLOAD_MAX_SIZE_BYTES },
+  });
+
   // OAuth client
   const oauthClient = createOAuthClient(env, cache, app.log);
   app.decorate("oauthClient", oauthClient);
@@ -157,6 +171,10 @@ export async function buildApp(env: Env) {
   const handleResolver = createHandleResolver(cache, db, app.log);
   app.decorate("handleResolver", handleResolver);
 
+  // Profile sync (fetches AT Protocol profile from PDS at login)
+  const profileSync = createProfileSyncService(oauthClient, db, app.log);
+  app.decorate("profileSync", profileSync);
+
   // PLC DID service + Setup service
   const plcDidService = createPlcDidService(app.log);
   const setupService = createSetupService(db, app.log, plcDidService);
@@ -169,6 +187,14 @@ export async function buildApp(env: Env) {
   // Operator middleware (global mode only)
   const requireOperator = createRequireOperator(env, authMiddleware, app.log);
   app.decorate("requireOperator", requireOperator);
+
+  // Local file storage for uploads
+  const uploadBaseUrl =
+    env.UPLOAD_BASE_URL ??
+    env.CORS_ORIGINS.split(",")[0]?.trim() ??
+    "http://localhost:3000";
+  const storage = createLocalStorage(env.UPLOAD_DIR, uploadBaseUrl, app.log);
+  app.decorate("storage", storage);
 
   // Ozone labeler service (opt-in, only if URL is configured)
   let ozoneService: OzoneService | null = null;
@@ -230,6 +256,8 @@ export async function buildApp(env: Env) {
   await app.register(blockMuteRoutes());
   await app.register(onboardingRoutes());
   await app.register(globalFilterRoutes());
+  await app.register(communityProfileRoutes());
+  await app.register(uploadRoutes());
 
   // OpenAPI spec endpoint (after routes so all schemas are registered)
   app.get("/api/openapi.json", { schema: { hide: true } }, async (_request, reply) => {

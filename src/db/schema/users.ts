@@ -6,6 +6,8 @@ export const users = pgTable("users", {
   handle: text("handle").notNull(),
   displayName: text("display_name"),
   avatarUrl: text("avatar_url"),
+  bannerUrl: text("banner_url"),
+  bio: text("bio"),
   role: text("role", { enum: ["user", "moderator", "admin"] })
     .notNull()
     .default("user"),

@@ -110,6 +110,7 @@ describe("auth routes", () => {
     app.decorate("env", mockEnv);
     app.decorate("sessionService", mockSessionService);
     app.decorate("handleResolver", mockHandleResolver);
+    app.decorate("profileSync", { syncProfile: vi.fn().mockResolvedValue({ displayName: null, avatarUrl: null, bannerUrl: null, bio: null }) });
 
     // Register auth routes (cast needed because mock is not full NodeOAuthClient)
     await app.register(
@@ -533,6 +534,7 @@ describe("auth routes (production mode)", () => {
     prodApp.decorate("env", prodEnv);
     prodApp.decorate("sessionService", mockSessionService);
     prodApp.decorate("handleResolver", mockHandleResolver);
+    prodApp.decorate("profileSync", { syncProfile: vi.fn().mockResolvedValue({ displayName: null, avatarUrl: null, bannerUrl: null, bio: null }) });
     await prodApp.register(
       authRoutes(mockOAuthClient as Parameters<typeof authRoutes>[0]),
     );

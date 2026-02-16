@@ -35,6 +35,7 @@
     "@fastify/cookie": "^11.0.2",
     "@fastify/cors": "^11.0.0",
     "@fastify/helmet": "^13.0.0",
+    "@fastify/multipart": "^9.4.0",
     "@fastify/rate-limit": "^10.2.0",
     "@fastify/swagger": "^9.7.0",
     "@ipld/dag-cbor": "^9.2.5",
@@ -44,22 +45,22 @@
     "drizzle-orm": "^0.45.1",
     "fastify": "^5.7.4",
     "ioredis": "^5.6.1",
-    "multiformats": "catalog:",
+    "multiformats": "^13.4.2",
     "postgres": "^3.4.8",
     "sharp": "^0.34.5",
-    "zod": "catalog:"
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@testcontainers/postgresql": "^11.11.0",
-    "@types/node": "catalog:",
-    "@vitest/coverage-v8": "catalog:",
+    "@types/node": "^25.2.3",
+    "@vitest/coverage-v8": "^4.0.18",
     "drizzle-kit": "^0.31.9",
-    "eslint": "catalog:",
+    "eslint": "^9.39.2",
     "supertest": "^7.1.0",
     "testcontainers": "^11.11.0",
     "tsx": "^4.20.3",
-    "typescript": "catalog:",
-    "typescript-eslint": "catalog:",
-    "vitest": "catalog:"
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.55.0",
+    "vitest": "^4.0.18"
   }
 }

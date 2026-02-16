@@ -69,6 +69,8 @@ function sampleUserRow(overrides?: Record<string, unknown>) {
     handle: TEST_HANDLE,
     displayName: "Alice",
     avatarUrl: "https://example.com/avatar.jpg",
+    bannerUrl: "https://example.com/banner.jpg",
+    bio: "Hello, I am Alice",
     role: "user",
     isBanned: false,
     reputationScore: 0,
@@ -247,6 +249,8 @@ describe("profile routes", () => {
         did: string;
         handle: string;
         displayName: string;
+        bannerUrl: string | null;
+        bio: string | null;
         role: string;
         activity: {
           topicCount: number;
@@ -257,10 +261,109 @@ describe("profile routes", () => {
       expect(body.did).toBe(TEST_DID);
       expect(body.handle).toBe(TEST_HANDLE);
       expect(body.displayName).toBe("Alice");
+      expect(body.bannerUrl).toBe("https://example.com/banner.jpg");
+      expect(body.bio).toBe("Hello, I am Alice");
       expect(body.role).toBe("user");
       expect(body.activity.topicCount).toBe(5);
       expect(body.activity.replyCount).toBe(10);
       expect(body.activity.reactionsReceived).toBe(5);
+    });
+
+    it("returns null for bannerUrl and bio when not set", async () => {
+      selectChain.where.mockResolvedValueOnce([
+        sampleUserRow({ bannerUrl: null, bio: null }),
+      ]);
+      selectChain.where.mockResolvedValueOnce([{ count: 0 }]);
+      selectChain.where.mockResolvedValueOnce([{ count: 0 }]);
+      selectChain.where.mockResolvedValueOnce([{ count: 0 }]);
+      selectChain.where.mockResolvedValueOnce([{ count: 0 }]);
+
+      const response = await app.inject({
+        method: "GET",
+        url: `/api/users/${TEST_HANDLE}`,
+      });
+
+      expect(response.statusCode).toBe(200);
+      const body = response.json<{
+        bannerUrl: string | null;
+        bio: string | null;
+      }>();
+      expect(body.bannerUrl).toBeNull();
+      expect(body.bio).toBeNull();
+    });
+
+    it("resolves profile through community override when communityDid is provided", async () => {
+      // 1st select: user by handle
+      selectChain.where.mockResolvedValueOnce([sampleUserRow()]);
+      // 2nd select: topic count
+      selectChain.where.mockResolvedValueOnce([{ count: 0 }]);
+      // 3rd select: reply count
+      selectChain.where.mockResolvedValueOnce([{ count: 0 }]);
+      // 4th select: reactions on topics
+      selectChain.where.mockResolvedValueOnce([{ count: 0 }]);
+      // 5th select: reactions on replies
+      selectChain.where.mockResolvedValueOnce([{ count: 0 }]);
+      // 6th select: community_profiles override
+      selectChain.where.mockResolvedValueOnce([
+        {
+          did: TEST_DID,
+          communityDid: COMMUNITY_DID,
+          displayName: "Community Alice",
+          avatarUrl: null,
+          bannerUrl: "https://example.com/community-banner.jpg",
+          bio: null,
+          updatedAt: new Date(TEST_NOW),
+        },
+      ]);
+
+      const response = await app.inject({
+        method: "GET",
+        url: `/api/users/${TEST_HANDLE}?communityDid=${COMMUNITY_DID}`,
+      });
+
+      expect(response.statusCode).toBe(200);
+      const body = response.json<{
+        did: string;
+        handle: string;
+        displayName: string;
+        avatarUrl: string | null;
+        bannerUrl: string | null;
+        bio: string | null;
+      }>();
+      // Community override takes precedence for displayName and bannerUrl
+      expect(body.displayName).toBe("Community Alice");
+      expect(body.bannerUrl).toBe("https://example.com/community-banner.jpg");
+      // Falls back to source for avatarUrl and bio (override is null)
+      expect(body.avatarUrl).toBe("https://example.com/avatar.jpg");
+      expect(body.bio).toBe("Hello, I am Alice");
+    });
+
+    it("returns source profile when communityDid has no override row", async () => {
+      // 1st select: user by handle
+      selectChain.where.mockResolvedValueOnce([sampleUserRow()]);
+      // 2nd-5th select: activity counts
+      selectChain.where.mockResolvedValueOnce([{ count: 0 }]);
+      selectChain.where.mockResolvedValueOnce([{ count: 0 }]);
+      selectChain.where.mockResolvedValueOnce([{ count: 0 }]);
+      selectChain.where.mockResolvedValueOnce([{ count: 0 }]);
+      // 6th select: no community_profiles row
+      selectChain.where.mockResolvedValueOnce([]);
+
+      const response = await app.inject({
+        method: "GET",
+        url: `/api/users/${TEST_HANDLE}?communityDid=${COMMUNITY_DID}`,
+      });
+
+      expect(response.statusCode).toBe(200);
+      const body = response.json<{
+        displayName: string;
+        bannerUrl: string | null;
+        bio: string | null;
+      }>();
+      // Falls back to source values
+      expect(body.displayName).toBe("Alice");
+      expect(body.bannerUrl).toBe("https://example.com/banner.jpg");
+      expect(body.bio).toBe("Hello, I am Alice");
     });
 
     it("returns 404 for unknown handle", async () => {
@@ -893,10 +996,10 @@ describe("profile routes", () => {
       // Transaction should be called once
       expect(mockDb.transaction).toHaveBeenCalledOnce();
       // Multiple delete calls within transaction (reactions, notifications x2,
-      // reports, replies, topics, community prefs, user prefs, users)
+      // reports, replies, topics, community profiles, community prefs, user prefs, users)
       expect(mockDb.delete).toHaveBeenCalled();
-      // Check at least 8 delete calls (one per table)
-      expect(mockDb.delete.mock.calls.length).toBeGreaterThanOrEqual(8);
+      // Check at least 9 delete calls (one per table)
+      expect(mockDb.delete.mock.calls.length).toBeGreaterThanOrEqual(9);
     });
 
     it("returns 401 when not authenticated", async () => {

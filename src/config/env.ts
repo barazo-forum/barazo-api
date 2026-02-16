@@ -88,6 +88,11 @@ export const envSchema = z.object({
         .filter((s) => s.length > 0),
     ),
 
+  // Uploads
+  UPLOAD_DIR: z.string().default("./uploads"),
+  UPLOAD_MAX_SIZE_BYTES: z.coerce.number().default(5_242_880), // 5MB
+  UPLOAD_BASE_URL: z.string().optional(),
+
   // Ozone labeler (opt-in)
   OZONE_LABELER_URL: z.string().default("https://mod.bsky.app"),
 });

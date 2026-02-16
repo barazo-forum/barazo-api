@@ -21,6 +21,7 @@ export default defineConfig({
     "./src/db/schema/community-filters.ts",
     "./src/db/schema/account-filters.ts",
     "./src/db/schema/ozone-labels.ts",
+    "./src/db/schema/community-profiles.ts",
   ],
   out: "./drizzle",
   dialect: "postgresql",

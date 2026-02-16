@@ -17,3 +17,4 @@ export { accountTrust } from "./account-trust.js";
 export { communityFilters } from "./community-filters.js";
 export { accountFilters } from "./account-filters.js";
 export { ozoneLabels } from "./ozone-labels.js";
+export { communityProfiles } from "./community-profiles.js";

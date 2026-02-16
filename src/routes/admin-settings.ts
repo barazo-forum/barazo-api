@@ -134,6 +134,7 @@ export function adminSettingsRoutes(): FastifyPluginCallback {
           200: {
             type: "object" as const,
             properties: {
+              communityDid: { type: ["string", "null"] as const },
               communityName: { type: "string" as const },
               maturityRating: { type: "string" as const, enum: ["safe", "mature", "adult"] },
               communityDescription: { type: ["string", "null"] as const },
@@ -155,6 +156,7 @@ export function adminSettingsRoutes(): FastifyPluginCallback {
       }
 
       return reply.status(200).send({
+        communityDid: row.communityDid ?? null,
         communityName: row.communityName,
         maturityRating: row.maturityRating,
         communityDescription: row.communityDescription ?? null,

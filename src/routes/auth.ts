@@ -104,6 +104,9 @@ export function authRoutes(
 
         const session = await sessionService.createSession(did, handle);
 
+        // Fire-and-forget profile sync from PDS (never blocks auth flow)
+        void app.profileSync.syncProfile(did);
+
         // Set refresh cookie (sameSite lax to survive cross-site redirect from PDS)
         void reply.setCookie(COOKIE_NAME, session.sid, {
           httpOnly: true,
