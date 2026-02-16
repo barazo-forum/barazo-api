@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm";
 import type { FastifyPluginCallback } from "fastify";
 import { badRequest } from "../lib/api-errors.js";
+import { loadMutedWords, contentMatchesMutedWords } from "../lib/muted-words.js";
 import { createEmbeddingService } from "../services/embedding.js";
 import { searchQuerySchema } from "../validation/search.js";
 import type { Database } from "../db/index.js";
@@ -26,6 +27,7 @@ const searchResultJsonSchema = {
     rank: { type: "number" as const },
     rootUri: { type: ["string", "null"] as const },
     rootTitle: { type: ["string", "null"] as const },
+    isMutedWord: { type: "boolean" as const },
   },
 };
 
@@ -89,6 +91,7 @@ interface SearchResultItem {
   rank: number;
   rootUri: string | null;
   rootTitle: string | null;
+  isMutedWord?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -447,8 +450,23 @@ export function searchRoutes(): FastifyPluginCallback {
         });
       }
 
+      // Muted word annotation: flag matching content for client-side collapsing
+      const communityDid = env.COMMUNITY_MODE === "single"
+        ? env.COMMUNITY_DID
+        : undefined;
+      const mutedWords = await loadMutedWords(request.user?.did, communityDid, db);
+
+      const annotatedResults = pageResults.map((r) => ({
+        ...r,
+        isMutedWord: contentMatchesMutedWords(
+          r.content,
+          mutedWords,
+          r.title ?? undefined,
+        ),
+      }));
+
       return reply.status(200).send({
-        results: pageResults,
+        results: annotatedResults,
         cursor: nextCursor,
         total,
         searchMode,

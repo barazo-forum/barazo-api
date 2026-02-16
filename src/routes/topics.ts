@@ -7,6 +7,7 @@ import type { MaturityUser } from "../lib/content-filter.js";
 import { createTopicSchema, updateTopicSchema, topicQuerySchema } from "../validation/topics.js";
 import { createCrossPostService } from "../services/cross-post.js";
 import { loadBlockMuteLists } from "../lib/block-mute.js";
+import { loadMutedWords, contentMatchesMutedWords } from "../lib/muted-words.js";
 import {
   runAntiSpamChecks,
   loadAntiSpamSettings,
@@ -63,6 +64,7 @@ const topicJsonSchema = {
     replyCount: { type: "integer" as const },
     reactionCount: { type: "integer" as const },
     isMuted: { type: "boolean" as const },
+    isMutedWord: { type: "boolean" as const },
     ozoneLabel: { type: ["string", "null"] as const },
     categoryMaturityRating: { type: "string" as const, enum: ["safe", "mature", "adult"] },
     lastActivityAt: { type: "string" as const, format: "date-time" as const },
@@ -663,11 +665,18 @@ export function topicRoutes(): FastifyPluginCallback {
         }
       }
 
-      // Annotate muted authors (content is still returned, just flagged)
+      // Load muted words for content filtering
+      const communityDid = env.COMMUNITY_MODE === "single"
+        ? env.COMMUNITY_DID
+        : undefined;
+      const mutedWords = await loadMutedWords(request.user?.did, communityDid, db);
+
+      // Annotate muted authors and muted word matches (content still returned, just flagged)
       const mutedSet = new Set(mutedDids);
       const annotatedTopics = serialized.map((t) => ({
         ...t,
         isMuted: mutedSet.has(t.authorDid),
+        isMutedWord: contentMatchesMutedWords(t.content, mutedWords, t.title),
         ozoneLabel: ozoneMap.get(t.authorDid) ?? null,
       }));
 

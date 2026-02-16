@@ -5,6 +5,7 @@ import { notFound, forbidden, badRequest } from "../lib/api-errors.js";
 import { resolveMaxMaturity, maturityAllows } from "../lib/content-filter.js";
 import type { MaturityUser } from "../lib/content-filter.js";
 import { loadBlockMuteLists } from "../lib/block-mute.js";
+import { loadMutedWords, contentMatchesMutedWords } from "../lib/muted-words.js";
 import { createReplySchema, updateReplySchema, replyQuerySchema } from "../validation/replies.js";
 import {
   runAntiSpamChecks,
@@ -62,6 +63,7 @@ const replyJsonSchema = {
     depth: { type: "integer" as const },
     reactionCount: { type: "integer" as const },
     isMuted: { type: "boolean" as const },
+    isMutedWord: { type: "boolean" as const },
     ozoneLabel: { type: ["string", "null"] as const },
     createdAt: { type: "string" as const, format: "date-time" as const },
     indexedAt: { type: "string" as const, format: "date-time" as const },
@@ -576,11 +578,15 @@ export function replyRoutes(): FastifyPluginCallback {
         }
       }
 
-      // Annotate muted authors (content is still returned, just flagged)
+      // Load muted words for content filtering
+      const mutedWords = await loadMutedWords(request.user?.did, topic.communityDid, db);
+
+      // Annotate muted authors and muted word matches (content still returned, just flagged)
       const mutedSet = new Set(mutedDids);
       const annotatedReplies = serialized.map((r) => ({
         ...r,
         isMuted: mutedSet.has(r.authorDid),
+        isMutedWord: contentMatchesMutedWords(r.content, mutedWords),
         ozoneLabel: ozoneMap.get(r.authorDid) ?? null,
       }));
 
