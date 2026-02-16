@@ -50,7 +50,7 @@
     "zod": "catalog:"
   },
   "devDependencies": {
-    "@testcontainers/postgresql": "^10.23.0",
+    "@testcontainers/postgresql": "^11.11.0",
     "@types/node": "catalog:",
     "@vitest/coverage-v8": "catalog:",
     "drizzle-kit": "^0.31.4",
