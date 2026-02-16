@@ -32,6 +32,16 @@ export interface PdsClient {
     collection: string,
     rkey: string,
   ): Promise<void>;
+
+  /**
+   * Upload a binary blob (e.g. an image) to the user's PDS.
+   * Returns the blob reference object suitable for embedding in records.
+   */
+  uploadBlob(
+    did: string,
+    data: Uint8Array,
+    mimeType: string,
+  ): Promise<unknown>;
 }
 
 // ---------------------------------------------------------------------------
@@ -145,6 +155,30 @@ export function createPdsClient(
         logger.error(
           { err, did, collection, rkey },
           "PDS deleteRecord failed: %s",
+          pdsErrorMessage(err),
+        );
+        throw err;
+      }
+    },
+
+    async uploadBlob(
+      did: string,
+      data: Uint8Array,
+      mimeType: string,
+    ): Promise<unknown> {
+      logger.debug({ did, mimeType, size: data.length }, "PDS uploadBlob");
+
+      try {
+        const agent = await getAgent(did);
+        const response = await agent.uploadBlob(data, {
+          encoding: mimeType,
+        });
+
+        return response.data.blob;
+      } catch (err: unknown) {
+        logger.error(
+          { err, did, mimeType },
+          "PDS uploadBlob failed: %s",
           pdsErrorMessage(err),
         );
         throw err;

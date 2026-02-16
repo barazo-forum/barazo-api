@@ -24,13 +24,14 @@ const MENTION_REGEX = /@([a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA
 // Types
 // ---------------------------------------------------------------------------
 
-export type NotificationType = "reply" | "reaction" | "mention" | "mod_action";
+export type NotificationType = "reply" | "reaction" | "mention" | "mod_action" | "cross_post_failed";
 
 export interface NotificationService {
   notifyOnReply(params: ReplyNotificationParams): Promise<void>;
   notifyOnReaction(params: ReactionNotificationParams): Promise<void>;
   notifyOnModAction(params: ModActionNotificationParams): Promise<void>;
   notifyOnMentions(params: MentionNotificationParams): Promise<void>;
+  notifyOnCrossPostFailure(params: CrossPostFailureNotificationParams): Promise<void>;
 }
 
 export interface ReplyNotificationParams {
@@ -73,6 +74,17 @@ export interface MentionNotificationParams {
   subjectUri: string;
   /** DID of the user who wrote the content. */
   actorDid: string;
+  /** Community DID. */
+  communityDid: string;
+}
+
+export interface CrossPostFailureNotificationParams {
+  /** URI of the topic that failed to cross-post. */
+  topicUri: string;
+  /** DID of the topic author (notification recipient). */
+  authorDid: string;
+  /** Which cross-post service failed ("bluesky" or "frontpage"). */
+  service: string;
   /** Community DID. */
   communityDid: string;
 }
@@ -272,6 +284,27 @@ export function createNotificationService(
         logger.error(
           { err, subjectUri: params.subjectUri },
           "Failed to generate mention notifications",
+        );
+      }
+    },
+
+    async notifyOnCrossPostFailure(
+      params: CrossPostFailureNotificationParams,
+    ): Promise<void> {
+      try {
+        // Use communityDid as actorDid since this is a system-generated
+        // notification (avoids self-notification suppression)
+        await db.insert(notifications).values({
+          recipientDid: params.authorDid,
+          type: "cross_post_failed",
+          subjectUri: params.topicUri,
+          actorDid: params.communityDid,
+          communityDid: params.communityDid,
+        });
+      } catch (err: unknown) {
+        logger.error(
+          { err, topicUri: params.topicUri, service: params.service },
+          "Failed to generate cross-post failure notification",
         );
       }
     },

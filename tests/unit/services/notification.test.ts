@@ -375,3 +375,61 @@ describe("notifyOnMentions", () => {
     expect(mockDb.insert).not.toHaveBeenCalled();
   });
 });
+
+// ===========================================================================
+// notifyOnCrossPostFailure
+// ===========================================================================
+
+describe("notifyOnCrossPostFailure", () => {
+  it("creates a cross_post_failed notification for the topic author", async () => {
+    const insertChain = createChainableProxy();
+    mockDb.insert.mockReturnValue(insertChain);
+
+    await service.notifyOnCrossPostFailure({
+      topicUri: TOPIC_URI,
+      authorDid: ACTOR_DID,
+      service: "bluesky",
+      communityDid: COMMUNITY_DID,
+    });
+
+    expect(mockDb.insert).toHaveBeenCalled();
+  });
+
+  it("creates separate notifications for different failed services", async () => {
+    const insertChain = createChainableProxy();
+    mockDb.insert.mockReturnValue(insertChain);
+
+    await service.notifyOnCrossPostFailure({
+      topicUri: TOPIC_URI,
+      authorDid: ACTOR_DID,
+      service: "bluesky",
+      communityDid: COMMUNITY_DID,
+    });
+
+    await service.notifyOnCrossPostFailure({
+      topicUri: TOPIC_URI,
+      authorDid: ACTOR_DID,
+      service: "frontpage",
+      communityDid: COMMUNITY_DID,
+    });
+
+    expect(mockDb.insert).toHaveBeenCalledTimes(2);
+  });
+
+  it("logs error and does not throw on DB failure", async () => {
+    const insertChain = createChainableProxy();
+    insertChain.values.mockRejectedValue(new Error("DB error"));
+    mockDb.insert.mockReturnValue(insertChain);
+
+    await expect(
+      service.notifyOnCrossPostFailure({
+        topicUri: TOPIC_URI,
+        authorDid: ACTOR_DID,
+        service: "bluesky",
+        communityDid: COMMUNITY_DID,
+      }),
+    ).resolves.toBeUndefined();
+
+    expect(mockLogger.error).toHaveBeenCalled();
+  });
+});

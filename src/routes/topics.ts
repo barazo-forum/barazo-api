@@ -166,12 +166,13 @@ export function topicRoutes(): FastifyPluginCallback {
   return (app, _opts, done) => {
     const { db, env, authMiddleware, firehose } = app;
     const pdsClient = createPdsClient(app.oauthClient, app.log);
+    const notificationService = createNotificationService(db, app.log);
     const crossPostService = createCrossPostService(pdsClient, db, app.log, {
       blueskyEnabled: env.FEATURE_CROSSPOST_BLUESKY,
       frontpageEnabled: env.FEATURE_CROSSPOST_FRONTPAGE,
       publicUrl: env.PUBLIC_URL,
-    });
-    const notificationService = createNotificationService(db, app.log);
+      communityName: env.COMMUNITY_NAME,
+    }, notificationService);
 
     // -------------------------------------------------------------------
     // POST /api/topics (auth required)
@@ -412,6 +413,7 @@ export function topicRoutes(): FastifyPluginCallback {
             title,
             content,
             category,
+            communityDid,
           }).catch((err: unknown) => {
             app.log.error({ err, topicUri: result.uri }, "Cross-posting failed");
           });

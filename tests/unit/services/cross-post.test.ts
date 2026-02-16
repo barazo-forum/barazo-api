@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { createCrossPostService } from "../../../src/services/cross-post.js";
 import type { PdsClient, PdsWriteResult } from "../../../src/lib/pds-client.js";
+import type { NotificationService } from "../../../src/services/notification.js";
 import { createMockDb, createChainableProxy } from "../../helpers/mock-db.js";
 import type { DbChain } from "../../helpers/mock-db.js";
 
@@ -28,25 +29,58 @@ function createMockPdsClient(): PdsClient & {
   createRecord: ReturnType<typeof vi.fn>;
   updateRecord: ReturnType<typeof vi.fn>;
   deleteRecord: ReturnType<typeof vi.fn>;
+  uploadBlob: ReturnType<typeof vi.fn>;
 } {
   return {
     createRecord: vi.fn<(did: string, collection: string, record: Record<string, unknown>) => Promise<PdsWriteResult>>(),
     updateRecord: vi.fn<(did: string, collection: string, rkey: string, record: Record<string, unknown>) => Promise<PdsWriteResult>>(),
     deleteRecord: vi.fn<(did: string, collection: string, rkey: string) => Promise<void>>(),
+    uploadBlob: vi.fn(),
   };
 }
+
+// ---------------------------------------------------------------------------
+// Mock notification service
+// ---------------------------------------------------------------------------
+
+function createMockNotificationService(): NotificationService & {
+  notifyOnReply: ReturnType<typeof vi.fn>;
+  notifyOnReaction: ReturnType<typeof vi.fn>;
+  notifyOnModAction: ReturnType<typeof vi.fn>;
+  notifyOnMentions: ReturnType<typeof vi.fn>;
+  notifyOnCrossPostFailure: ReturnType<typeof vi.fn>;
+} {
+  return {
+    notifyOnReply: vi.fn().mockResolvedValue(undefined),
+    notifyOnReaction: vi.fn().mockResolvedValue(undefined),
+    notifyOnModAction: vi.fn().mockResolvedValue(undefined),
+    notifyOnMentions: vi.fn().mockResolvedValue(undefined),
+    notifyOnCrossPostFailure: vi.fn().mockResolvedValue(undefined),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Mock OG image generation (avoid actual sharp calls in unit tests)
+// ---------------------------------------------------------------------------
+
+vi.mock("../../../src/services/og-image.js", () => ({
+  generateOgImage: vi.fn().mockResolvedValue(Buffer.from("fake-png-data")),
+}));
 
 // ---------------------------------------------------------------------------
 // Test constants
 // ---------------------------------------------------------------------------
 
 const TEST_DID = "did:plc:testuser123";
+const TEST_COMMUNITY_DID = "did:plc:community123";
 const TEST_TOPIC_URI = `at://${TEST_DID}/forum.barazo.topic.post/abc123`;
 const TEST_BLUESKY_URI = `at://${TEST_DID}/app.bsky.feed.post/bsky001`;
 const TEST_BLUESKY_CID = "bafyreibsky001";
 const TEST_FRONTPAGE_URI = `at://${TEST_DID}/fyi.frontpage.post/fp001`;
 const TEST_FRONTPAGE_CID = "bafyreifp001";
 const TEST_PUBLIC_URL = "https://forum.example.com";
+const TEST_COMMUNITY_NAME = "Test Community";
+const TEST_BLOB_REF = { $type: "blob", ref: { $link: "bafyblob123" }, mimeType: "image/png", size: 1234 };
 
 // ---------------------------------------------------------------------------
 // Tests
@@ -55,6 +89,7 @@ const TEST_PUBLIC_URL = "https://forum.example.com";
 describe("cross-post service", () => {
   let mockPds: ReturnType<typeof createMockPdsClient>;
   let mockDb: ReturnType<typeof createMockDb>;
+  let mockNotifications: ReturnType<typeof createMockNotificationService>;
   let insertChain: DbChain;
   let selectChain: DbChain;
   let deleteChain: DbChain;
@@ -63,12 +98,16 @@ describe("cross-post service", () => {
     vi.clearAllMocks();
     mockPds = createMockPdsClient();
     mockDb = createMockDb();
+    mockNotifications = createMockNotificationService();
     insertChain = createChainableProxy();
     selectChain = createChainableProxy([]);
     deleteChain = createChainableProxy();
     mockDb.insert.mockReturnValue(insertChain);
     mockDb.select.mockReturnValue(selectChain);
     mockDb.delete.mockReturnValue(deleteChain);
+
+    // Default: blob upload succeeds
+    mockPds.uploadBlob.mockResolvedValue(TEST_BLOB_REF);
   });
 
   // =========================================================================
@@ -90,7 +129,9 @@ describe("cross-post service", () => {
           blueskyEnabled: true,
           frontpageEnabled: false,
           publicUrl: TEST_PUBLIC_URL,
+          communityName: TEST_COMMUNITY_NAME,
         },
+        mockNotifications,
       );
 
       await service.crossPostTopic({
@@ -99,6 +140,7 @@ describe("cross-post service", () => {
         title: "My Topic",
         content: "Topic content here.",
         category: "general",
+        communityDid: TEST_COMMUNITY_DID,
       });
 
       expect(mockPds.createRecord).toHaveBeenCalledOnce();
@@ -126,6 +168,147 @@ describe("cross-post service", () => {
       );
     });
 
+    it("includes OG image as thumb in Bluesky embed", async () => {
+      mockPds.createRecord.mockResolvedValue({
+        uri: TEST_BLUESKY_URI,
+        cid: TEST_BLUESKY_CID,
+      });
+
+      const service = createCrossPostService(
+        mockPds,
+        mockDb as never,
+        mockLogger as never,
+        {
+          blueskyEnabled: true,
+          frontpageEnabled: false,
+          publicUrl: TEST_PUBLIC_URL,
+          communityName: TEST_COMMUNITY_NAME,
+        },
+        mockNotifications,
+      );
+
+      await service.crossPostTopic({
+        did: TEST_DID,
+        topicUri: TEST_TOPIC_URI,
+        title: "OG Image Topic",
+        content: "Testing OG image.",
+        category: "general",
+        communityDid: TEST_COMMUNITY_DID,
+      });
+
+      // Should upload blob first
+      expect(mockPds.uploadBlob).toHaveBeenCalledOnce();
+      expect(mockPds.uploadBlob).toHaveBeenCalledWith(
+        TEST_DID,
+        expect.any(Buffer) as Buffer,
+        "image/png",
+      );
+
+      // Embed should include thumb with the blob reference
+      const [, , record] = mockPds.createRecord.mock.calls[0] as [
+        string,
+        string,
+        Record<string, unknown>,
+      ];
+      const embed = record.embed as Record<string, unknown>;
+      const external = embed.external as Record<string, unknown>;
+      expect(external.thumb).toBe(TEST_BLOB_REF);
+    });
+
+    it("still cross-posts without thumb when OG image generation fails", async () => {
+      // Mock OG image failure
+      const { generateOgImage } = await import("../../../src/services/og-image.js");
+      vi.mocked(generateOgImage).mockRejectedValueOnce(new Error("Image generation failed"));
+
+      mockPds.createRecord.mockResolvedValue({
+        uri: TEST_BLUESKY_URI,
+        cid: TEST_BLUESKY_CID,
+      });
+
+      const service = createCrossPostService(
+        mockPds,
+        mockDb as never,
+        mockLogger as never,
+        {
+          blueskyEnabled: true,
+          frontpageEnabled: false,
+          publicUrl: TEST_PUBLIC_URL,
+          communityName: TEST_COMMUNITY_NAME,
+        },
+        mockNotifications,
+      );
+
+      await service.crossPostTopic({
+        did: TEST_DID,
+        topicUri: TEST_TOPIC_URI,
+        title: "No Thumb Topic",
+        content: "OG image will fail.",
+        category: "general",
+        communityDid: TEST_COMMUNITY_DID,
+      });
+
+      // Should still create the post (without thumb)
+      expect(mockPds.createRecord).toHaveBeenCalledOnce();
+      const [, , record] = mockPds.createRecord.mock.calls[0] as [
+        string,
+        string,
+        Record<string, unknown>,
+      ];
+      const embed = record.embed as Record<string, unknown>;
+      const external = embed.external as Record<string, unknown>;
+      expect(external.thumb).toBeUndefined();
+
+      // Should log warning
+      expect(mockLogger.warn).toHaveBeenCalledWith(
+        expect.objectContaining({
+          topicUri: TEST_TOPIC_URI,
+        }) as Record<string, unknown>,
+        expect.stringContaining("OG image") as string,
+      );
+    });
+
+    it("still cross-posts without thumb when blob upload fails", async () => {
+      mockPds.uploadBlob.mockRejectedValueOnce(new Error("Upload failed"));
+      mockPds.createRecord.mockResolvedValue({
+        uri: TEST_BLUESKY_URI,
+        cid: TEST_BLUESKY_CID,
+      });
+
+      const service = createCrossPostService(
+        mockPds,
+        mockDb as never,
+        mockLogger as never,
+        {
+          blueskyEnabled: true,
+          frontpageEnabled: false,
+          publicUrl: TEST_PUBLIC_URL,
+          communityName: TEST_COMMUNITY_NAME,
+        },
+        mockNotifications,
+      );
+
+      await service.crossPostTopic({
+        did: TEST_DID,
+        topicUri: TEST_TOPIC_URI,
+        title: "Upload Fail Topic",
+        content: "Blob upload will fail.",
+        category: "general",
+        communityDid: TEST_COMMUNITY_DID,
+      });
+
+      // Should still create the post
+      expect(mockPds.createRecord).toHaveBeenCalledOnce();
+      // Thumb should not be set
+      const [, , record] = mockPds.createRecord.mock.calls[0] as [
+        string,
+        string,
+        Record<string, unknown>,
+      ];
+      const embed = record.embed as Record<string, unknown>;
+      const external = embed.external as Record<string, unknown>;
+      expect(external.thumb).toBeUndefined();
+    });
+
     it("cross-posts to Frontpage when enabled", async () => {
       mockPds.createRecord.mockResolvedValue({
         uri: TEST_FRONTPAGE_URI,
@@ -140,7 +323,9 @@ describe("cross-post service", () => {
           blueskyEnabled: false,
           frontpageEnabled: true,
           publicUrl: TEST_PUBLIC_URL,
+          communityName: TEST_COMMUNITY_NAME,
         },
+        mockNotifications,
       );
 
       await service.crossPostTopic({
@@ -149,6 +334,7 @@ describe("cross-post service", () => {
         title: "Frontpage Topic",
         content: "Content for Frontpage.",
         category: "general",
+        communityDid: TEST_COMMUNITY_DID,
       });
 
       expect(mockPds.createRecord).toHaveBeenCalledOnce();
@@ -184,7 +370,9 @@ describe("cross-post service", () => {
           blueskyEnabled: true,
           frontpageEnabled: true,
           publicUrl: TEST_PUBLIC_URL,
+          communityName: TEST_COMMUNITY_NAME,
         },
+        mockNotifications,
       );
 
       await service.crossPostTopic({
@@ -193,6 +381,7 @@ describe("cross-post service", () => {
         title: "Dual Post",
         content: "Content for both.",
         category: "general",
+        communityDid: TEST_COMMUNITY_DID,
       });
 
       // Both services called
@@ -212,7 +401,9 @@ describe("cross-post service", () => {
           blueskyEnabled: false,
           frontpageEnabled: false,
           publicUrl: TEST_PUBLIC_URL,
+          communityName: TEST_COMMUNITY_NAME,
         },
+        mockNotifications,
       );
 
       await service.crossPostTopic({
@@ -221,13 +412,14 @@ describe("cross-post service", () => {
         title: "No Cross-Post",
         content: "Should not go anywhere.",
         category: "general",
+        communityDid: TEST_COMMUNITY_DID,
       });
 
       expect(mockPds.createRecord).not.toHaveBeenCalled();
       expect(mockDb.insert).not.toHaveBeenCalled();
     });
 
-    it("logs error but does not throw when Bluesky fails", async () => {
+    it("notifies user when Bluesky cross-post fails", async () => {
       mockPds.createRecord.mockRejectedValue(
         new Error("Bluesky PDS unreachable"),
       );
@@ -240,18 +432,21 @@ describe("cross-post service", () => {
           blueskyEnabled: true,
           frontpageEnabled: false,
           publicUrl: TEST_PUBLIC_URL,
+          communityName: TEST_COMMUNITY_NAME,
         },
+        mockNotifications,
       );
 
-      // Should NOT throw
       await service.crossPostTopic({
         did: TEST_DID,
         topicUri: TEST_TOPIC_URI,
         title: "Will Fail",
         content: "Bluesky is down.",
         category: "general",
+        communityDid: TEST_COMMUNITY_DID,
       });
 
+      // Error still logged
       expect(mockLogger.error).toHaveBeenCalledWith(
         expect.objectContaining({
           topicUri: TEST_TOPIC_URI,
@@ -259,8 +454,89 @@ describe("cross-post service", () => {
         }) as Record<string, unknown>,
         "Failed to cross-post to Bluesky",
       );
+
+      // User should be notified
+      expect(mockNotifications.notifyOnCrossPostFailure).toHaveBeenCalledWith({
+        topicUri: TEST_TOPIC_URI,
+        authorDid: TEST_DID,
+        service: "bluesky",
+        communityDid: TEST_COMMUNITY_DID,
+      });
+
       // DB insert should NOT be called since PDS failed
       expect(mockDb.insert).not.toHaveBeenCalled();
+    });
+
+    it("notifies user when Frontpage cross-post fails", async () => {
+      mockPds.createRecord.mockRejectedValue(
+        new Error("Frontpage PDS error"),
+      );
+
+      const service = createCrossPostService(
+        mockPds,
+        mockDb as never,
+        mockLogger as never,
+        {
+          blueskyEnabled: false,
+          frontpageEnabled: true,
+          publicUrl: TEST_PUBLIC_URL,
+          communityName: TEST_COMMUNITY_NAME,
+        },
+        mockNotifications,
+      );
+
+      await service.crossPostTopic({
+        did: TEST_DID,
+        topicUri: TEST_TOPIC_URI,
+        title: "FP Fail",
+        content: "Frontpage is down.",
+        category: "general",
+        communityDid: TEST_COMMUNITY_DID,
+      });
+
+      expect(mockNotifications.notifyOnCrossPostFailure).toHaveBeenCalledWith({
+        topicUri: TEST_TOPIC_URI,
+        authorDid: TEST_DID,
+        service: "frontpage",
+        communityDid: TEST_COMMUNITY_DID,
+      });
+    });
+
+    it("notifies for each failed service independently", async () => {
+      mockPds.createRecord.mockRejectedValue(
+        new Error("PDS error"),
+      );
+
+      const service = createCrossPostService(
+        mockPds,
+        mockDb as never,
+        mockLogger as never,
+        {
+          blueskyEnabled: true,
+          frontpageEnabled: true,
+          publicUrl: TEST_PUBLIC_URL,
+          communityName: TEST_COMMUNITY_NAME,
+        },
+        mockNotifications,
+      );
+
+      await service.crossPostTopic({
+        did: TEST_DID,
+        topicUri: TEST_TOPIC_URI,
+        title: "Both Fail",
+        content: "Everything is broken.",
+        category: "general",
+        communityDid: TEST_COMMUNITY_DID,
+      });
+
+      // Two failure notifications (one per service)
+      expect(mockNotifications.notifyOnCrossPostFailure).toHaveBeenCalledTimes(2);
+      expect(mockNotifications.notifyOnCrossPostFailure).toHaveBeenCalledWith(
+        expect.objectContaining({ service: "bluesky" }) as Record<string, unknown>,
+      );
+      expect(mockNotifications.notifyOnCrossPostFailure).toHaveBeenCalledWith(
+        expect.objectContaining({ service: "frontpage" }) as Record<string, unknown>,
+      );
     });
 
     it("continues Frontpage when Bluesky fails", async () => {
@@ -279,7 +555,9 @@ describe("cross-post service", () => {
           blueskyEnabled: true,
           frontpageEnabled: true,
           publicUrl: TEST_PUBLIC_URL,
+          communityName: TEST_COMMUNITY_NAME,
         },
+        mockNotifications,
       );
 
       await service.crossPostTopic({
@@ -288,12 +566,19 @@ describe("cross-post service", () => {
         title: "Partial Success",
         content: "One succeeds, one fails.",
         category: "general",
+        communityDid: TEST_COMMUNITY_DID,
       });
 
       // Bluesky error logged
       expect(mockLogger.error).toHaveBeenCalledWith(
         expect.objectContaining({ service: "bluesky" }) as Record<string, unknown>,
         "Failed to cross-post to Bluesky",
+      );
+
+      // Bluesky failure notification sent
+      expect(mockNotifications.notifyOnCrossPostFailure).toHaveBeenCalledOnce();
+      expect(mockNotifications.notifyOnCrossPostFailure).toHaveBeenCalledWith(
+        expect.objectContaining({ service: "bluesky" }) as Record<string, unknown>,
       );
 
       // Frontpage success logged
@@ -324,7 +609,9 @@ describe("cross-post service", () => {
           blueskyEnabled: true,
           frontpageEnabled: false,
           publicUrl: TEST_PUBLIC_URL,
+          communityName: TEST_COMMUNITY_NAME,
         },
+        mockNotifications,
       );
 
       await service.crossPostTopic({
@@ -333,6 +620,7 @@ describe("cross-post service", () => {
         title: "Short Title",
         content: longContent,
         category: "general",
+        communityDid: TEST_COMMUNITY_DID,
       });
 
       const [, , record] = mockPds.createRecord.mock.calls[0] as [
@@ -360,7 +648,9 @@ describe("cross-post service", () => {
           blueskyEnabled: true,
           frontpageEnabled: false,
           publicUrl: TEST_PUBLIC_URL,
+          communityName: TEST_COMMUNITY_NAME,
         },
+        mockNotifications,
       );
 
       await service.crossPostTopic({
@@ -369,6 +659,7 @@ describe("cross-post service", () => {
         title: "URL Test",
         content: "Content.",
         category: "general",
+        communityDid: TEST_COMMUNITY_DID,
       });
 
       const [, , record] = mockPds.createRecord.mock.calls[0] as [
@@ -379,6 +670,38 @@ describe("cross-post service", () => {
       const embed = record.embed as Record<string, unknown>;
       const external = embed.external as Record<string, unknown>;
       expect(external.uri).toBe(`${TEST_PUBLIC_URL}/topics/abc123`);
+    });
+
+    it("does not generate OG image for Frontpage-only cross-posts", async () => {
+      mockPds.createRecord.mockResolvedValue({
+        uri: TEST_FRONTPAGE_URI,
+        cid: TEST_FRONTPAGE_CID,
+      });
+
+      const service = createCrossPostService(
+        mockPds,
+        mockDb as never,
+        mockLogger as never,
+        {
+          blueskyEnabled: false,
+          frontpageEnabled: true,
+          publicUrl: TEST_PUBLIC_URL,
+          communityName: TEST_COMMUNITY_NAME,
+        },
+        mockNotifications,
+      );
+
+      await service.crossPostTopic({
+        did: TEST_DID,
+        topicUri: TEST_TOPIC_URI,
+        title: "FP Only",
+        content: "No OG needed.",
+        category: "general",
+        communityDid: TEST_COMMUNITY_DID,
+      });
+
+      // Should NOT upload a blob (Frontpage doesn't use thumbnails)
+      expect(mockPds.uploadBlob).not.toHaveBeenCalled();
     });
   });
 
@@ -419,7 +742,9 @@ describe("cross-post service", () => {
           blueskyEnabled: true,
           frontpageEnabled: true,
           publicUrl: TEST_PUBLIC_URL,
+          communityName: TEST_COMMUNITY_NAME,
         },
+        mockNotifications,
       );
 
       await service.deleteCrossPosts(TEST_TOPIC_URI, TEST_DID);
@@ -467,7 +792,9 @@ describe("cross-post service", () => {
           blueskyEnabled: true,
           frontpageEnabled: false,
           publicUrl: TEST_PUBLIC_URL,
+          communityName: TEST_COMMUNITY_NAME,
         },
+        mockNotifications,
       );
 
       // Should NOT throw
@@ -497,7 +824,9 @@ describe("cross-post service", () => {
           blueskyEnabled: true,
           frontpageEnabled: true,
           publicUrl: TEST_PUBLIC_URL,
+          communityName: TEST_COMMUNITY_NAME,
         },
+        mockNotifications,
       );
 
       await service.deleteCrossPosts(TEST_TOPIC_URI, TEST_DID);

@@ -2,6 +2,8 @@ import { eq } from "drizzle-orm";
 import type { PdsClient } from "../lib/pds-client.js";
 import type { Logger } from "../lib/logger.js";
 import type { Database } from "../db/index.js";
+import type { NotificationService } from "./notification.js";
+import { generateOgImage } from "./og-image.js";
 import { crossPosts } from "../db/schema/cross-posts.js";
 
 // ---------------------------------------------------------------------------
@@ -30,6 +32,7 @@ export interface CrossPostParams {
   title: string;
   content: string;
   category: string;
+  communityDid: string;
 }
 
 export interface CrossPostService {
@@ -41,6 +44,7 @@ export interface CrossPostConfig {
   blueskyEnabled: boolean;
   frontpageEnabled: boolean;
   publicUrl: string;
+  communityName: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -97,24 +101,65 @@ function buildTopicUrl(publicUrl: string, topicUri: string): string {
  * Create a cross-posting service that publishes topics to external platforms
  * (Bluesky, Frontpage) via the user's PDS.
  *
- * Cross-posts are fire-and-forget: failures are logged but do not block
- * topic creation. Each service is independent -- a failure in one does
- * not prevent the other from succeeding.
+ * Cross-posts are fire-and-forget: failures are logged and the user is
+ * notified, but they do not block topic creation. Each service is
+ * independent -- a failure in one does not prevent the other from succeeding.
+ *
+ * Bluesky cross-posts include a branded OG image as a thumbnail in the
+ * embed card (community name + category + topic title).
  */
 export function createCrossPostService(
   pdsClient: PdsClient,
   db: Database,
   logger: Logger,
   config: CrossPostConfig,
+  notificationService: NotificationService,
 ): CrossPostService {
+  /**
+   * Generate and upload an OG image for use as a Bluesky embed thumbnail.
+   * Returns the blob reference on success, or undefined on failure (best-effort).
+   */
+  async function generateAndUploadThumb(
+    params: CrossPostParams,
+  ): Promise<unknown> {
+    try {
+      const pngBuffer = await generateOgImage({
+        title: params.title,
+        category: params.category,
+        communityName: config.communityName,
+      });
+
+      return await pdsClient.uploadBlob(params.did, pngBuffer, "image/png");
+    } catch (err: unknown) {
+      logger.warn(
+        { err, topicUri: params.topicUri },
+        "Failed to generate or upload OG image for cross-post thumbnail",
+      );
+      return undefined;
+    }
+  }
+
   /**
    * Cross-post a topic to Bluesky as an `app.bsky.feed.post` record
    * with an `app.bsky.embed.external` embed containing a link back
-   * to the forum topic.
+   * to the forum topic and a branded OG image thumbnail.
    */
-  async function crossPostToBluesky(params: CrossPostParams): Promise<void> {
+  async function crossPostToBluesky(
+    params: CrossPostParams,
+    thumb: unknown,
+  ): Promise<void> {
     const topicUrl = buildTopicUrl(config.publicUrl, params.topicUri);
     const postText = buildBlueskyPostText(params.title, params.content);
+
+    const external: Record<string, unknown> = {
+      uri: topicUrl,
+      title: params.title,
+      description: truncate(params.content, EMBED_DESCRIPTION_LIMIT),
+    };
+
+    if (thumb !== undefined) {
+      external.thumb = thumb;
+    }
 
     const record: Record<string, unknown> = {
       $type: BLUESKY_COLLECTION,
@@ -122,11 +167,7 @@ export function createCrossPostService(
       createdAt: new Date().toISOString(),
       embed: {
         $type: "app.bsky.embed.external",
-        external: {
-          uri: topicUrl,
-          title: params.title,
-          description: truncate(params.content, EMBED_DESCRIPTION_LIMIT),
-        },
+        external,
       },
       langs: ["en"],
     };
@@ -186,11 +227,17 @@ export function createCrossPostService(
 
   return {
     async crossPostTopic(params: CrossPostParams): Promise<void> {
+      // Generate and upload OG image for Bluesky (only if Bluesky is enabled)
+      let thumb: unknown;
+      if (config.blueskyEnabled) {
+        thumb = await generateAndUploadThumb(params);
+      }
+
       const tasks: Promise<PromiseSettledResult<void>>[] = [];
 
       if (config.blueskyEnabled) {
         tasks.push(
-          crossPostToBluesky(params)
+          crossPostToBluesky(params, thumb)
             .then<PromiseSettledResult<void>>(() => ({
               status: "fulfilled" as const,
               value: undefined,
@@ -200,6 +247,19 @@ export function createCrossPostService(
                 { err, topicUri: params.topicUri, service: "bluesky" },
                 "Failed to cross-post to Bluesky",
               );
+              notificationService
+                .notifyOnCrossPostFailure({
+                  topicUri: params.topicUri,
+                  authorDid: params.did,
+                  service: "bluesky",
+                  communityDid: params.communityDid,
+                })
+                .catch((notifErr: unknown) => {
+                  logger.error(
+                    { err: notifErr, topicUri: params.topicUri },
+                    "Failed to send cross-post failure notification",
+                  );
+                });
               return {
                 status: "rejected" as const,
                 reason: err,
@@ -220,6 +280,19 @@ export function createCrossPostService(
                 { err, topicUri: params.topicUri, service: "frontpage" },
                 "Failed to cross-post to Frontpage",
               );
+              notificationService
+                .notifyOnCrossPostFailure({
+                  topicUri: params.topicUri,
+                  authorDid: params.did,
+                  service: "frontpage",
+                  communityDid: params.communityDid,
+                })
+                .catch((notifErr: unknown) => {
+                  logger.error(
+                    { err: notifErr, topicUri: params.topicUri },
+                    "Failed to send cross-post failure notification",
+                  );
+                });
               return {
                 status: "rejected" as const,
                 reason: err,
