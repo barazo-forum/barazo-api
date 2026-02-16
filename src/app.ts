@@ -34,6 +34,7 @@ import { profileRoutes } from "./routes/profiles.js";
 import { blockMuteRoutes } from "./routes/block-mute.js";
 import { onboardingRoutes } from "./routes/onboarding.js";
 import { globalFilterRoutes } from "./routes/global-filters.js";
+import { communityProfileRoutes } from "./routes/community-profiles.js";
 import { createRequireAdmin } from "./auth/require-admin.js";
 import { createRequireOperator } from "./auth/require-operator.js";
 import { OzoneService } from "./services/ozone.js";
@@ -237,6 +238,7 @@ export async function buildApp(env: Env) {
   await app.register(blockMuteRoutes());
   await app.register(onboardingRoutes());
   await app.register(globalFilterRoutes());
+  await app.register(communityProfileRoutes());
 
   // OpenAPI spec endpoint (after routes so all schemas are registered)
   app.get("/api/openapi.json", { schema: { hide: true } }, async (_request, reply) => {

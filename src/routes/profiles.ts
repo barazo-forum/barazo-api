@@ -7,6 +7,7 @@ import {
   ageDeclarationSchema,
 } from "../validation/profiles.js";
 import { users } from "../db/schema/users.js";
+import { communityProfiles } from "../db/schema/community-profiles.js";
 import { topics } from "../db/schema/topics.js";
 import { replies } from "../db/schema/replies.js";
 import { reactions } from "../db/schema/reactions.js";
@@ -862,6 +863,11 @@ export function profileRoutes(): FastifyPluginCallback {
           await tx
             .delete(topics)
             .where(eq(topics.authorDid, userDid));
+
+          // Delete community profile overrides
+          await tx
+            .delete(communityProfiles)
+            .where(eq(communityProfiles.did, userDid));
 
           // Delete community preferences
           await tx

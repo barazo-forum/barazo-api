@@ -893,10 +893,10 @@ describe("profile routes", () => {
       // Transaction should be called once
       expect(mockDb.transaction).toHaveBeenCalledOnce();
       // Multiple delete calls within transaction (reactions, notifications x2,
-      // reports, replies, topics, community prefs, user prefs, users)
+      // reports, replies, topics, community profiles, community prefs, user prefs, users)
       expect(mockDb.delete).toHaveBeenCalled();
-      // Check at least 8 delete calls (one per table)
-      expect(mockDb.delete.mock.calls.length).toBeGreaterThanOrEqual(8);
+      // Check at least 9 delete calls (one per table)
+      expect(mockDb.delete.mock.calls.length).toBeGreaterThanOrEqual(9);
     });
 
     it("returns 401 when not authenticated", async () => {
