@@ -56,7 +56,7 @@
     "drizzle-kit": "^0.31.4",
     "eslint": "catalog:",
     "supertest": "^7.1.0",
-    "testcontainers": "^10.23.0",
+    "testcontainers": "^11.11.0",
     "tsx": "^4.20.3",
     "typescript": "catalog:",
     "typescript-eslint": "catalog:",
