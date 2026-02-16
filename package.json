@@ -44,22 +44,22 @@
     "drizzle-orm": "^0.45.1",
     "fastify": "^5.7.4",
     "ioredis": "^5.6.1",
-    "multiformats": "^13.4.2",
+    "multiformats": "catalog:",
     "postgres": "^3.4.8",
     "sharp": "^0.34.5",
-    "zod": "^4.3.6"
+    "zod": "catalog:"
   },
   "devDependencies": {
     "@testcontainers/postgresql": "^10.23.0",
-    "@types/node": "^25.2.3",
-    "@vitest/coverage-v8": "^4.0.18",
+    "@types/node": "catalog:",
+    "@vitest/coverage-v8": "catalog:",
     "drizzle-kit": "^0.31.4",
-    "eslint": "^9.28.0",
+    "eslint": "catalog:",
     "supertest": "^7.1.0",
     "testcontainers": "^10.23.0",
     "tsx": "^4.20.3",
-    "typescript": "^5.9.3",
-    "typescript-eslint": "^8.55.0",
-    "vitest": "^4.0.18"
+    "typescript": "catalog:",
+    "typescript-eslint": "catalog:",
+    "vitest": "catalog:"
   }
 }
