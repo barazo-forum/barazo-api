@@ -15,10 +15,6 @@ updates:
         update-types:
           - "minor"
           - "patch"
-    # Keep major updates separate for review
-    ignore:
-      - dependency-name: "*"
-        update-types: ["version-update:semver-major"]
     # Auto-label PRs
     labels:
       - "dependencies"

@@ -78,7 +78,8 @@ export async function buildApp(env: Env) {
   const app = Fastify({
     logger: {
       level: env.LOG_LEVEL,
-      ...(env.LOG_LEVEL === "debug" || env.LOG_LEVEL === "trace"
+      ...(process.env.NODE_ENV === "development" &&
+      (env.LOG_LEVEL === "debug" || env.LOG_LEVEL === "trace")
         ? { transport: { target: "pino-pretty" } }
         : {}),
     },
