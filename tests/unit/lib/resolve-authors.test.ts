@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { resolveAuthors, type AuthorProfile } from "../../../src/lib/resolve-authors.js";
+import { resolveAuthors } from "../../../src/lib/resolve-authors.js";
 
 function createMockDb(usersRows: Record<string, unknown>[], profileRows: Record<string, unknown>[]) {
   const selectChain = {

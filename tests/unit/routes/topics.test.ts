@@ -837,7 +837,7 @@ describe("topic routes", () => {
       });
 
       expect(res.statusCode).toBe(200);
-      const body = JSON.parse(res.payload);
+      const body = JSON.parse(res.payload) as { topics: Array<{ author: unknown }> };
       expect(body.topics[0].author).toEqual({
         did: TEST_DID,
         handle: TEST_HANDLE,
