@@ -829,13 +829,40 @@ describe("reply routes", () => {
     });
 
     it("includes author profile on each reply", async () => {
-      selectChain.where.mockResolvedValueOnce([sampleTopicRow()]);
+      resetAllDbMocks();
+
+      // Mock chain for authenticated GET /api/topics/:topicUri/replies:
+      //   1. Topic lookup .where (terminal)
+      //   2. Category maturity .where (terminal)
+      //   3. User profile .where (terminal)
+      //   4. Community settings .where (terminal)
+      //   5. loadBlockMuteLists .where (terminal)
+      //   6. Replies .where (chained → .orderBy().limit())
+      //   7. resolveAuthors users .where (terminal)
+      //   8. loadMutedWords global .where (terminal)
+
+      selectChain.where.mockResolvedValueOnce([sampleTopicRow()]);          // 1: topic lookup
+      selectChain.where.mockResolvedValueOnce([{ maturityRating: "safe" }]); // 2: category maturity
+      selectChain.where.mockResolvedValueOnce([{ declaredAge: null, maturityPref: "safe" }]); // 3: user profile
+      selectChain.where.mockResolvedValueOnce([{ ageThreshold: 16 }]);       // 4: community settings
+      selectChain.where.mockResolvedValueOnce([{                             // 5: block/mute
+        blockedDids: [],
+        mutedDids: [],
+      }]);
+      // eslint-disable-next-line @typescript-eslint/no-misused-promises -- thenable mock for Drizzle chain
+      selectChain.where.mockImplementationOnce(() => selectChain);           // 6: replies .where
 
       const rows = [
         sampleReplyRow({ authorDid: TEST_DID }),
         sampleReplyRow({ authorDid: OTHER_DID, uri: `at://${OTHER_DID}/forum.barazo.topic.reply/o1`, rkey: "o1" }),
       ];
       selectChain.limit.mockResolvedValueOnce(rows);
+
+      selectChain.where.mockResolvedValueOnce([                              // 7: resolveAuthors users
+        { did: TEST_DID, handle: TEST_HANDLE, displayName: "Alice", avatarUrl: "https://cdn.example.com/alice.jpg", bannerUrl: null, bio: null },
+        { did: OTHER_DID, handle: "bob.bsky.social", displayName: "Bob", avatarUrl: null, bannerUrl: null, bio: null },
+      ]);
+      selectChain.where.mockResolvedValueOnce([]);                           // 8: loadMutedWords global
 
       const encodedTopicUri = encodeURIComponent(TEST_TOPIC_URI);
       const response = await app.inject({
@@ -847,14 +874,22 @@ describe("reply routes", () => {
       const body = response.json<{ replies: Array<{ authorDid: string; author: { did: string; handle: string; displayName: string | null; avatarUrl: string | null } }> }>();
       expect(body.replies).toHaveLength(2);
 
-      // Each reply should have an author object with the expected shape
-      for (const r of body.replies) {
-        expect(r.author).toBeDefined();
-        expect(r.author.did).toBe(r.authorDid);
-        expect(r.author).toHaveProperty("handle");
-        expect(r.author).toHaveProperty("displayName");
-        expect(r.author).toHaveProperty("avatarUrl");
-      }
+      // Verify resolved author profile data (not just DID fallback)
+      const aliceReply = body.replies.find((r) => r.authorDid === TEST_DID);
+      expect(aliceReply?.author).toEqual({
+        did: TEST_DID,
+        handle: TEST_HANDLE,
+        displayName: "Alice",
+        avatarUrl: "https://cdn.example.com/alice.jpg",
+      });
+
+      const bobReply = body.replies.find((r) => r.authorDid === OTHER_DID);
+      expect(bobReply?.author).toEqual({
+        did: OTHER_DID,
+        handle: "bob.bsky.social",
+        displayName: "Bob",
+        avatarUrl: null,
+      });
     });
 
     it("returns isMuted: false for all replies when unauthenticated", async () => {
