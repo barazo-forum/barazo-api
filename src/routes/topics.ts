@@ -8,6 +8,7 @@ import { createTopicSchema, updateTopicSchema, topicQuerySchema } from "../valid
 import { createCrossPostService } from "../services/cross-post.js";
 import { loadBlockMuteLists } from "../lib/block-mute.js";
 import { loadMutedWords, contentMatchesMutedWords } from "../lib/muted-words.js";
+import { resolveAuthors } from "../lib/resolve-authors.js";
 import {
   runAntiSpamChecks,
   loadAntiSpamSettings,
@@ -42,6 +43,15 @@ const topicJsonSchema = {
     uri: { type: "string" as const },
     rkey: { type: "string" as const },
     authorDid: { type: "string" as const },
+    author: {
+      type: "object" as const,
+      properties: {
+        did: { type: "string" as const },
+        handle: { type: "string" as const },
+        displayName: { type: ["string", "null"] as const },
+        avatarUrl: { type: ["string", "null"] as const },
+      },
+    },
     title: { type: "string" as const },
     content: { type: "string" as const },
     contentFormat: { type: ["string", "null"] as const },
@@ -673,10 +683,18 @@ export function topicRoutes(): FastifyPluginCallback {
         : undefined;
       const mutedWords = await loadMutedWords(request.user?.did, communityDid, db);
 
+      // Batch-resolve author profiles
+      const authorMap = await resolveAuthors(
+        serialized.map((t) => t.authorDid),
+        communityDid ?? null,
+        db,
+      );
+
       // Annotate muted authors and muted word matches (content still returned, just flagged)
       const mutedSet = new Set(mutedDids);
       const annotatedTopics = serialized.map((t) => ({
         ...t,
+        author: authorMap.get(t.authorDid) ?? { did: t.authorDid, handle: t.authorDid, displayName: null, avatarUrl: null },
         isMuted: mutedSet.has(t.authorDid),
         isMutedWord: contentMatchesMutedWords(t.content, mutedWords, t.title),
         ozoneLabel: ozoneMap.get(t.authorDid) ?? null,

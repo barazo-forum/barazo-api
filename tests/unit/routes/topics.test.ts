@@ -803,6 +803,48 @@ describe("topic routes", () => {
 
       await noAuthApp.close();
     });
+
+    it("includes author profile in topic response", async () => {
+      resetAllDbMocks();
+      setupMaturityMocks(true);
+
+      // Topics query (terminal via .limit)
+      selectChain.limit.mockResolvedValueOnce([
+        sampleTopicRow({ authorDid: TEST_DID }),
+      ]);
+
+      // After maturity mocks (3 .where calls consumed), 4 more .where calls follow:
+      //   4. loadBlockMuteLists .where (terminal)
+      //   5. topics .where (chained to .orderBy().limit())
+      //   6. loadMutedWords global .where (terminal)
+      //   7. resolveAuthors users .where (terminal)
+      // We must explicitly mock calls 4-7 so that:
+      //   - Call 5 returns the chain (not a Promise) for .orderBy().limit() to work
+      //   - Call 7 returns the author user row
+
+      selectChain.where.mockResolvedValueOnce([]);  // 4: loadBlockMuteLists
+      // eslint-disable-next-line @typescript-eslint/no-misused-promises -- thenable mock for Drizzle chain
+      selectChain.where.mockImplementationOnce(() => selectChain);  // 5: topics .where
+      selectChain.where.mockResolvedValueOnce([]);  // 6: loadMutedWords global
+      selectChain.where.mockResolvedValueOnce([     // 7: resolveAuthors users
+        { did: TEST_DID, handle: TEST_HANDLE, displayName: "Alice", avatarUrl: "https://cdn.example.com/alice.jpg", bannerUrl: null, bio: null },
+      ]);
+
+      const res = await app.inject({
+        method: "GET",
+        url: "/api/topics",
+        headers: { authorization: "Bearer test" },
+      });
+
+      expect(res.statusCode).toBe(200);
+      const body = JSON.parse(res.payload);
+      expect(body.topics[0].author).toEqual({
+        did: TEST_DID,
+        handle: TEST_HANDLE,
+        displayName: "Alice",
+        avatarUrl: "https://cdn.example.com/alice.jpg",
+      });
+    });
   });
 
   // =========================================================================
