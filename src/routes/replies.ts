@@ -448,6 +448,7 @@ export function replyRoutes(): FastifyPluginCallback {
     // -------------------------------------------------------------------
 
     app.get("/api/topics/:topicUri/replies", {
+      config: { rateLimit: { max: env.RATE_LIMIT_READ_ANON, timeWindow: "1 minute" } },
       preHandler: [authMiddleware.optionalAuth],
       schema: {
         tags: ["Replies"],
