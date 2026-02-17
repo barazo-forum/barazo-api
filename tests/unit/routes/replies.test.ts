@@ -828,6 +828,35 @@ describe("reply routes", () => {
       expect(normalReply?.isMuted).toBe(false);
     });
 
+    it("includes author profile on each reply", async () => {
+      selectChain.where.mockResolvedValueOnce([sampleTopicRow()]);
+
+      const rows = [
+        sampleReplyRow({ authorDid: TEST_DID }),
+        sampleReplyRow({ authorDid: OTHER_DID, uri: `at://${OTHER_DID}/forum.barazo.topic.reply/o1`, rkey: "o1" }),
+      ];
+      selectChain.limit.mockResolvedValueOnce(rows);
+
+      const encodedTopicUri = encodeURIComponent(TEST_TOPIC_URI);
+      const response = await app.inject({
+        method: "GET",
+        url: `/api/topics/${encodedTopicUri}/replies`,
+      });
+
+      expect(response.statusCode).toBe(200);
+      const body = response.json<{ replies: Array<{ authorDid: string; author: { did: string; handle: string; displayName: string | null; avatarUrl: string | null } }> }>();
+      expect(body.replies).toHaveLength(2);
+
+      // Each reply should have an author object with the expected shape
+      for (const r of body.replies) {
+        expect(r.author).toBeDefined();
+        expect(r.author.did).toBe(r.authorDid);
+        expect(r.author).toHaveProperty("handle");
+        expect(r.author).toHaveProperty("displayName");
+        expect(r.author).toHaveProperty("avatarUrl");
+      }
+    });
+
     it("returns isMuted: false for all replies when unauthenticated", async () => {
       const noAuthApp = await buildTestApp(undefined);
       // For unauthenticated users, no user profile query

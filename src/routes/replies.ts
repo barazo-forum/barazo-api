@@ -6,6 +6,7 @@ import { resolveMaxMaturity, maturityAllows } from "../lib/content-filter.js";
 import type { MaturityUser } from "../lib/content-filter.js";
 import { loadBlockMuteLists } from "../lib/block-mute.js";
 import { loadMutedWords, contentMatchesMutedWords } from "../lib/muted-words.js";
+import { resolveAuthors } from "../lib/resolve-authors.js";
 import { createReplySchema, updateReplySchema, replyQuerySchema } from "../validation/replies.js";
 import {
   runAntiSpamChecks,
@@ -40,6 +41,15 @@ const replyJsonSchema = {
     uri: { type: "string" as const },
     rkey: { type: "string" as const },
     authorDid: { type: "string" as const },
+    author: {
+      type: "object" as const,
+      properties: {
+        did: { type: "string" as const },
+        handle: { type: "string" as const },
+        displayName: { type: ["string", "null"] as const },
+        avatarUrl: { type: ["string", "null"] as const },
+      },
+    },
     content: { type: "string" as const },
     contentFormat: { type: ["string", "null"] as const },
     rootUri: { type: "string" as const },
@@ -578,6 +588,13 @@ export function replyRoutes(): FastifyPluginCallback {
         }
       }
 
+      // Batch-resolve author profiles
+      const authorMap = await resolveAuthors(
+        serialized.map((r) => r.authorDid),
+        topic.communityDid,
+        db,
+      );
+
       // Load muted words for content filtering
       const mutedWords = await loadMutedWords(request.user?.did, topic.communityDid, db);
 
@@ -585,6 +602,7 @@ export function replyRoutes(): FastifyPluginCallback {
       const mutedSet = new Set(mutedDids);
       const annotatedReplies = serialized.map((r) => ({
         ...r,
+        author: authorMap.get(r.authorDid) ?? { did: r.authorDid, handle: r.authorDid, displayName: null, avatarUrl: null },
         isMuted: mutedSet.has(r.authorDid),
         isMutedWord: contentMatchesMutedWords(r.content, mutedWords),
         ozoneLabel: ozoneMap.get(r.authorDid) ?? null,
