@@ -461,6 +461,7 @@ export function topicRoutes(): FastifyPluginCallback {
     // -------------------------------------------------------------------
 
     app.get("/api/topics", {
+      config: { rateLimit: { max: env.RATE_LIMIT_READ_ANON, timeWindow: "1 minute" } },
       preHandler: [authMiddleware.optionalAuth],
       schema: {
         tags: ["Topics"],
