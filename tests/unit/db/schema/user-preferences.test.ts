@@ -51,9 +51,9 @@ describe("userPreferences schema", () => {
     expect(columns.declaredAge.notNull).toBe(false);
   });
 
-  it("should have exactly 9 columns", () => {
+  it("should have exactly 10 columns", () => {
     const columns = getTableColumns(userPreferences);
-    expect(Object.keys(columns)).toHaveLength(9);
+    expect(Object.keys(columns)).toHaveLength(10);
   });
 
   it("should have default values for maturityLevel, mutedWords, blockedDids, mutedDids, crossPost*, updatedAt", () => {

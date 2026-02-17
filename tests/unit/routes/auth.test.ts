@@ -6,6 +6,7 @@ import type { SessionService, SessionWithToken, Session } from "../../../src/aut
 import type { Env } from "../../../src/config/env.js";
 import { authRoutes } from "../../../src/routes/auth.js";
 import type { HandleResolver } from "../../../src/lib/handle-resolver.js";
+import { BARAZO_BASE_SCOPES, BARAZO_CROSSPOST_SCOPES, FALLBACK_SCOPE } from "../../../src/auth/scopes.js";
 
 // ---------------------------------------------------------------------------
 // Mock env (minimal subset needed by auth routes)
@@ -22,9 +23,32 @@ const mockEnv = {
 // Standalone mock functions (avoids @typescript-eslint/unbound-method)
 // ---------------------------------------------------------------------------
 
+// Database mock functions
+const dbSelectFn = vi.fn();
+const dbInsertFn = vi.fn();
+const dbFromFn = vi.fn();
+const dbWhereFn = vi.fn();
+const dbValuesFn = vi.fn();
+const dbOnConflictDoUpdateFn = vi.fn();
+
+function createMockDb() {
+  // Default: no preferences found (crossPostScopesGranted = false)
+  dbWhereFn.mockResolvedValue([]);
+  dbFromFn.mockReturnValue({ where: dbWhereFn });
+  dbSelectFn.mockReturnValue({ from: dbFromFn });
+  dbOnConflictDoUpdateFn.mockResolvedValue(undefined);
+  dbValuesFn.mockReturnValue({ onConflictDoUpdate: dbOnConflictDoUpdateFn });
+  dbInsertFn.mockReturnValue({ values: dbValuesFn });
+
+  return {
+    select: dbSelectFn,
+    insert: dbInsertFn,
+  };
+}
+
 // OAuth client mock functions
 const authorizeFn = vi.fn<(...args: unknown[]) => Promise<URL>>();
-const callbackFn = vi.fn<(...args: unknown[]) => Promise<{ session: { did: string }; state: string | null }>>();
+const callbackFn = vi.fn<(...args: unknown[]) => Promise<{ session: { did: string; tokenSet?: { scope?: string } }; state: string | null }>>();
 
 // Session service mock functions
 const createSessionFn = vi.fn<(...args: unknown[]) => Promise<SessionWithToken>>();
@@ -111,6 +135,7 @@ describe("auth routes", () => {
     app.decorate("sessionService", mockSessionService);
     app.decorate("handleResolver", mockHandleResolver);
     app.decorate("profileSync", { syncProfile: vi.fn().mockResolvedValue({ displayName: null, avatarUrl: null, bannerUrl: null, bio: null }) });
+    app.decorate("db", createMockDb());
 
     // Register auth routes (cast needed because mock is not full NodeOAuthClient)
     await app.register(
@@ -125,6 +150,13 @@ describe("auth routes", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    // Reset db mocks to default behavior
+    dbWhereFn.mockResolvedValue([]);
+    dbFromFn.mockReturnValue({ where: dbWhereFn });
+    dbSelectFn.mockReturnValue({ from: dbFromFn });
+    dbOnConflictDoUpdateFn.mockResolvedValue(undefined);
+    dbValuesFn.mockReturnValue({ onConflictDoUpdate: dbOnConflictDoUpdateFn });
+    dbInsertFn.mockReturnValue({ values: dbValuesFn });
   });
 
   // =========================================================================
@@ -146,7 +178,7 @@ describe("auth routes", () => {
       expect(body.url).toBe(redirectUrl.toString());
       expect(authorizeFn).toHaveBeenCalledWith(
         "alice.bsky.social",
-        { scope: "atproto transition:generic" },
+        { scope: BARAZO_BASE_SCOPES },
       );
     });
 
@@ -511,6 +543,141 @@ describe("auth routes", () => {
       expect(body.error).toBe("Service temporarily unavailable");
     });
   });
+
+  // =========================================================================
+  // OAuth scope refinement
+  // =========================================================================
+
+  describe("granular scope fallback", () => {
+    it("falls back to transition:generic when granular scopes are rejected", async () => {
+      const fallbackUrl = new URL("https://pds.example.com/oauth/authorize?code=fallback");
+      // First call (granular) fails, second call (fallback) succeeds
+      authorizeFn
+        .mockRejectedValueOnce(new Error("Unsupported scope"))
+        .mockResolvedValueOnce(fallbackUrl);
+
+      const response = await app.inject({
+        method: "GET",
+        url: "/api/auth/login?handle=alice.bsky.social",
+      });
+
+      expect(response.statusCode).toBe(200);
+      const body = response.json<{ url: string }>();
+      expect(body.url).toBe(fallbackUrl.toString());
+
+      // First call with granular scopes
+      expect(authorizeFn).toHaveBeenNthCalledWith(
+        1,
+        "alice.bsky.social",
+        { scope: BARAZO_BASE_SCOPES },
+      );
+      // Second call with fallback
+      expect(authorizeFn).toHaveBeenNthCalledWith(
+        2,
+        "alice.bsky.social",
+        { scope: FALLBACK_SCOPE },
+      );
+    });
+
+    it("requests cross-post scopes when crosspost=true", async () => {
+      const redirectUrl = new URL("https://pds.example.com/oauth/authorize?code=abc");
+      authorizeFn.mockResolvedValueOnce(redirectUrl);
+
+      const response = await app.inject({
+        method: "GET",
+        url: "/api/auth/login?handle=alice.bsky.social&crosspost=true",
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(authorizeFn).toHaveBeenCalledWith(
+        "alice.bsky.social",
+        { scope: BARAZO_CROSSPOST_SCOPES },
+      );
+    });
+  });
+
+  describe("GET /api/auth/crosspost-authorize", () => {
+    it("requires authentication", async () => {
+      const response = await app.inject({
+        method: "GET",
+        url: "/api/auth/crosspost-authorize",
+      });
+
+      expect(response.statusCode).toBe(401);
+    });
+
+    it("returns redirect URL with cross-post scopes", async () => {
+      const mockSession = makeMockSession();
+      validateAccessTokenFn.mockResolvedValueOnce(mockSession);
+
+      const redirectUrl = new URL("https://pds.example.com/oauth/authorize?scope=crosspost");
+      authorizeFn.mockResolvedValueOnce(redirectUrl);
+
+      const response = await app.inject({
+        method: "GET",
+        url: "/api/auth/crosspost-authorize",
+        headers: { authorization: `Bearer ${TEST_ACCESS_TOKEN}` },
+      });
+
+      expect(response.statusCode).toBe(200);
+      const body = response.json<{ url: string }>();
+      expect(body.url).toBe(redirectUrl.toString());
+      expect(authorizeFn).toHaveBeenCalledWith(
+        TEST_HANDLE,
+        { scope: BARAZO_CROSSPOST_SCOPES },
+      );
+    });
+  });
+
+  describe("crossPostScopesGranted in responses", () => {
+    it("/me returns crossPostScopesGranted from user preferences", async () => {
+      const mockSession = makeMockSession();
+      validateAccessTokenFn.mockResolvedValueOnce(mockSession);
+      dbWhereFn.mockResolvedValueOnce([{ crossPostScopesGranted: true }]);
+
+      const response = await app.inject({
+        method: "GET",
+        url: "/api/auth/me",
+        headers: { authorization: `Bearer ${TEST_ACCESS_TOKEN}` },
+      });
+
+      expect(response.statusCode).toBe(200);
+      const body = response.json<{ crossPostScopesGranted: boolean }>();
+      expect(body.crossPostScopesGranted).toBe(true);
+    });
+
+    it("/me defaults crossPostScopesGranted to false when no preferences", async () => {
+      const mockSession = makeMockSession();
+      validateAccessTokenFn.mockResolvedValueOnce(mockSession);
+      dbWhereFn.mockResolvedValueOnce([]);
+
+      const response = await app.inject({
+        method: "GET",
+        url: "/api/auth/me",
+        headers: { authorization: `Bearer ${TEST_ACCESS_TOKEN}` },
+      });
+
+      expect(response.statusCode).toBe(200);
+      const body = response.json<{ crossPostScopesGranted: boolean }>();
+      expect(body.crossPostScopesGranted).toBe(false);
+    });
+
+    it("/refresh returns crossPostScopesGranted", async () => {
+      const mockSession = makeMockSessionWithToken();
+      refreshSessionFn.mockResolvedValueOnce(mockSession);
+      dbWhereFn.mockResolvedValueOnce([{ crossPostScopesGranted: true }]);
+
+      const response = await app.inject({
+        method: "POST",
+        url: "/api/auth/refresh",
+        cookies: { barazo_refresh: TEST_SID },
+      });
+
+      expect(response.statusCode).toBe(200);
+      const body = response.json<{ crossPostScopesGranted: boolean }>();
+      expect(body.crossPostScopesGranted).toBe(true);
+    });
+  });
 });
 
 // ===========================================================================
@@ -535,6 +702,7 @@ describe("auth routes (production mode)", () => {
     prodApp.decorate("sessionService", mockSessionService);
     prodApp.decorate("handleResolver", mockHandleResolver);
     prodApp.decorate("profileSync", { syncProfile: vi.fn().mockResolvedValue({ displayName: null, avatarUrl: null, bannerUrl: null, bio: null }) });
+    prodApp.decorate("db", createMockDb());
     await prodApp.register(
       authRoutes(mockOAuthClient as Parameters<typeof authRoutes>[0]),
     );
@@ -547,6 +715,9 @@ describe("auth routes (production mode)", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    dbWhereFn.mockResolvedValue([]);
+    dbFromFn.mockReturnValue({ where: dbWhereFn });
+    dbSelectFn.mockReturnValue({ from: dbFromFn });
   });
 
   it("sets secure cookie in production mode", async () => {

@@ -24,7 +24,14 @@ const MENTION_REGEX = /@([a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA
 // Types
 // ---------------------------------------------------------------------------
 
-export type NotificationType = "reply" | "reaction" | "mention" | "mod_action" | "cross_post_failed";
+export type NotificationType = "reply" | "reaction" | "mention" | "mod_action" | "cross_post_failed" | "cross_post_revoked";
+
+export interface CrossPostScopeRevokedNotificationParams {
+  /** DID of the user whose cross-post scopes were revoked (notification recipient). */
+  authorDid: string;
+  /** Community DID. */
+  communityDid: string;
+}
 
 export interface NotificationService {
   notifyOnReply(params: ReplyNotificationParams): Promise<void>;
@@ -32,6 +39,7 @@ export interface NotificationService {
   notifyOnModAction(params: ModActionNotificationParams): Promise<void>;
   notifyOnMentions(params: MentionNotificationParams): Promise<void>;
   notifyOnCrossPostFailure(params: CrossPostFailureNotificationParams): Promise<void>;
+  notifyOnCrossPostScopeRevoked(params: CrossPostScopeRevokedNotificationParams): Promise<void>;
 }
 
 export interface ReplyNotificationParams {
@@ -305,6 +313,27 @@ export function createNotificationService(
         logger.error(
           { err, topicUri: params.topicUri, service: params.service },
           "Failed to generate cross-post failure notification",
+        );
+      }
+    },
+
+    async notifyOnCrossPostScopeRevoked(
+      params: CrossPostScopeRevokedNotificationParams,
+    ): Promise<void> {
+      try {
+        // Use communityDid as actorDid since this is a system-generated
+        // notification (avoids self-notification suppression)
+        await db.insert(notifications).values({
+          recipientDid: params.authorDid,
+          type: "cross_post_revoked",
+          subjectUri: params.communityDid,
+          actorDid: params.communityDid,
+          communityDid: params.communityDid,
+        });
+      } catch (err: unknown) {
+        logger.error(
+          { err, authorDid: params.authorDid },
+          "Failed to generate cross-post scope revoked notification",
         );
       }
     },

@@ -4,6 +4,7 @@ import type { Env } from "../config/env.js";
 import type { Cache } from "../cache/index.js";
 import type { Logger } from "../lib/logger.js";
 import { ValkeyStateStore, ValkeySessionStore } from "./oauth-stores.js";
+import { BARAZO_BASE_SCOPES } from "./scopes.js";
 
 const LOCK_KEY_PREFIX = "barazo:oauth:lock:";
 const LOCK_TTL_SECONDS = 10;
@@ -23,8 +24,7 @@ function isLoopbackMode(clientId: string): boolean {
  * and scope directly in the client_id URL as query parameters.
  */
 function buildLoopbackClientId(redirectUri: string): string {
-  const scope = "atproto transition:generic";
-  return `http://localhost?redirect_uri=${encodeURIComponent(redirectUri)}&scope=${encodeURIComponent(scope)}`;
+  return `http://localhost?redirect_uri=${encodeURIComponent(redirectUri)}&scope=${encodeURIComponent(BARAZO_BASE_SCOPES)}`;
 }
 
 /**
@@ -99,7 +99,7 @@ export function createOAuthClient(
       client_id: clientId,
       client_uri: loopback ? "http://localhost" : env.OAUTH_CLIENT_ID.replace(/\/oauth-client-metadata\.json$/, ""),
       redirect_uris: [env.OAUTH_REDIRECT_URI],
-      scope: "atproto transition:generic",
+      scope: BARAZO_BASE_SCOPES,
       grant_types: ["authorization_code", "refresh_token"],
       response_types: ["code"],
       application_type: "web",

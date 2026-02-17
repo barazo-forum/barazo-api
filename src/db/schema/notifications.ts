@@ -13,7 +13,7 @@ export const notifications = pgTable(
     id: serial("id").primaryKey(),
     recipientDid: text("recipient_did").notNull(),
     type: text("type", {
-      enum: ["reply", "reaction", "mention", "mod_action", "global_report", "cross_post_failed"],
+      enum: ["reply", "reaction", "mention", "mod_action", "global_report", "cross_post_failed", "cross_post_revoked"],
     }).notNull(),
     subjectUri: text("subject_uri").notNull(),
     actorDid: text("actor_did").notNull(),

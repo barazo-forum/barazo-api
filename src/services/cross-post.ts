@@ -5,6 +5,7 @@ import type { Database } from "../db/index.js";
 import type { NotificationService } from "./notification.js";
 import { generateOgImage } from "./og-image.js";
 import { crossPosts } from "../db/schema/cross-posts.js";
+import { userPreferences } from "../db/schema/user-preferences.js";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -172,11 +173,19 @@ export function createCrossPostService(
       langs: ["en"],
     };
 
-    const result = await pdsClient.createRecord(
-      params.did,
-      BLUESKY_COLLECTION,
-      record,
-    );
+    let result: { uri: string; cid: string };
+    try {
+      result = await pdsClient.createRecord(
+        params.did,
+        BLUESKY_COLLECTION,
+        record,
+      );
+    } catch (err: unknown) {
+      if (isScopeError(err)) {
+        await handleScopeRevocation(params.did, params.communityDid);
+      }
+      throw err;
+    }
 
     await db.insert(crossPosts).values({
       topicUri: params.topicUri,
@@ -205,11 +214,19 @@ export function createCrossPostService(
       createdAt: new Date().toISOString(),
     };
 
-    const result = await pdsClient.createRecord(
-      params.did,
-      FRONTPAGE_COLLECTION,
-      record,
-    );
+    let result: { uri: string; cid: string };
+    try {
+      result = await pdsClient.createRecord(
+        params.did,
+        FRONTPAGE_COLLECTION,
+        record,
+      );
+    } catch (err: unknown) {
+      if (isScopeError(err)) {
+        await handleScopeRevocation(params.did, params.communityDid);
+      }
+      throw err;
+    }
 
     await db.insert(crossPosts).values({
       topicUri: params.topicUri,
@@ -225,8 +242,55 @@ export function createCrossPostService(
     );
   }
 
+  /**
+   * Detect whether an error from the PDS indicates insufficient scope (403).
+   */
+  function isScopeError(err: unknown): boolean {
+    if (err !== null && typeof err === "object" && "status" in err) {
+      return (err as { status: number }).status === 403;
+    }
+    return false;
+  }
+
+  /**
+   * Reset the cross-post scopes flag and notify the user when the PDS
+   * rejects a cross-post due to insufficient scope / revoked authorization.
+   */
+  async function handleScopeRevocation(did: string, communityDid: string): Promise<void> {
+    try {
+      await db
+        .update(userPreferences)
+        .set({ crossPostScopesGranted: false, updatedAt: new Date() })
+        .where(eq(userPreferences.did, did));
+
+      await notificationService.notifyOnCrossPostScopeRevoked({
+        authorDid: did,
+        communityDid,
+      });
+    } catch (revokeErr: unknown) {
+      logger.error(
+        { err: revokeErr, did },
+        "Failed to handle cross-post scope revocation",
+      );
+    }
+  }
+
   return {
     async crossPostTopic(params: CrossPostParams): Promise<void> {
+      // Check if user has cross-post scopes granted before attempting
+      const prefRows = await db
+        .select({ crossPostScopesGranted: userPreferences.crossPostScopesGranted })
+        .from(userPreferences)
+        .where(eq(userPreferences.did, params.did));
+
+      if (!(prefRows[0]?.crossPostScopesGranted ?? false)) {
+        logger.info(
+          { did: params.did, topicUri: params.topicUri },
+          "Skipping cross-post: user has not authorized cross-post scopes",
+        );
+        return;
+      }
+
       // Generate and upload OG image for Bluesky (only if Bluesky is enabled)
       let thumb: unknown;
       if (config.blueskyEnabled) {

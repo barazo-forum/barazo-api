@@ -1,0 +1,1 @@
+ALTER TABLE "user_preferences" ADD COLUMN "cross_post_scopes_granted" boolean DEFAULT false NOT NULL;

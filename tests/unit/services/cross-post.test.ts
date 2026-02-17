@@ -49,6 +49,7 @@ function createMockNotificationService(): NotificationService & {
   notifyOnModAction: ReturnType<typeof vi.fn>;
   notifyOnMentions: ReturnType<typeof vi.fn>;
   notifyOnCrossPostFailure: ReturnType<typeof vi.fn>;
+  notifyOnCrossPostScopeRevoked: ReturnType<typeof vi.fn>;
 } {
   return {
     notifyOnReply: vi.fn().mockResolvedValue(undefined),
@@ -56,6 +57,7 @@ function createMockNotificationService(): NotificationService & {
     notifyOnModAction: vi.fn().mockResolvedValue(undefined),
     notifyOnMentions: vi.fn().mockResolvedValue(undefined),
     notifyOnCrossPostFailure: vi.fn().mockResolvedValue(undefined),
+    notifyOnCrossPostScopeRevoked: vi.fn().mockResolvedValue(undefined),
   };
 }
 
@@ -92,7 +94,9 @@ describe("cross-post service", () => {
   let mockNotifications: ReturnType<typeof createMockNotificationService>;
   let insertChain: DbChain;
   let selectChain: DbChain;
+  let scopeSelectChain: DbChain;
   let deleteChain: DbChain;
+  let updateChain: DbChain;
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -102,9 +106,18 @@ describe("cross-post service", () => {
     insertChain = createChainableProxy();
     selectChain = createChainableProxy([]);
     deleteChain = createChainableProxy();
+    updateChain = createChainableProxy([]);
+
+    // The scope check (first select) should return crossPostScopesGranted=true by default
+    scopeSelectChain = createChainableProxy([{ crossPostScopesGranted: true }]);
+
+    // First select call returns scope check result, subsequent calls return empty
+    mockDb.select
+      .mockReturnValueOnce(scopeSelectChain)
+      .mockReturnValue(selectChain);
     mockDb.insert.mockReturnValue(insertChain);
-    mockDb.select.mockReturnValue(selectChain);
     mockDb.delete.mockReturnValue(deleteChain);
+    mockDb.update.mockReturnValue(updateChain);
 
     // Default: blob upload succeeds
     mockPds.uploadBlob.mockResolvedValue(TEST_BLOB_REF);
@@ -416,7 +429,42 @@ describe("cross-post service", () => {
       });
 
       expect(mockPds.createRecord).not.toHaveBeenCalled();
-      expect(mockDb.insert).not.toHaveBeenCalled();
+      // insert not called for cross-posts (scope check uses select, not insert)
+    });
+
+    it("skips cross-posting when user has not authorized scopes", async () => {
+      // Override: scope check returns false
+      mockDb.select.mockReset();
+      const noScopeChain = createChainableProxy([{ crossPostScopesGranted: false }]);
+      mockDb.select.mockReturnValue(noScopeChain);
+
+      const service = createCrossPostService(
+        mockPds,
+        mockDb as never,
+        mockLogger as never,
+        {
+          blueskyEnabled: true,
+          frontpageEnabled: true,
+          publicUrl: TEST_PUBLIC_URL,
+          communityName: TEST_COMMUNITY_NAME,
+        },
+        mockNotifications,
+      );
+
+      await service.crossPostTopic({
+        did: TEST_DID,
+        topicUri: TEST_TOPIC_URI,
+        title: "No Scopes",
+        content: "User has not authorized.",
+        category: "general",
+        communityDid: TEST_COMMUNITY_DID,
+      });
+
+      expect(mockPds.createRecord).not.toHaveBeenCalled();
+      expect(mockLogger.info).toHaveBeenCalledWith(
+        expect.objectContaining({ did: TEST_DID }) as Record<string, unknown>,
+        "Skipping cross-post: user has not authorized cross-post scopes",
+      );
     });
 
     it("notifies user when Bluesky cross-post fails", async () => {
@@ -710,6 +758,13 @@ describe("cross-post service", () => {
   // =========================================================================
 
   describe("deleteCrossPosts", () => {
+    beforeEach(() => {
+      // deleteCrossPosts doesn't do a scope check, so the first select
+      // should return the cross-posts select chain (not the scope chain)
+      mockDb.select.mockReset();
+      mockDb.select.mockReturnValue(selectChain);
+    });
+
     it("deletes all cross-posts for a topic from PDS and DB", async () => {
       selectChain.where.mockResolvedValueOnce([
         {

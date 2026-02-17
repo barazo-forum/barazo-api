@@ -1,6 +1,14 @@
 import { z } from "zod/v4";
+import { eq } from "drizzle-orm";
 import type { FastifyPluginCallback } from "fastify";
 import type { NodeOAuthClient } from "@atproto/oauth-client-node";
+import {
+  BARAZO_BASE_SCOPES,
+  BARAZO_CROSSPOST_SCOPES,
+  FALLBACK_SCOPE,
+  hasCrossPostScopes,
+} from "../auth/scopes.js";
+import { userPreferences } from "../db/schema/user-preferences.js";
 
 // ---------------------------------------------------------------------------
 // Zod schemas for request validation
@@ -8,6 +16,7 @@ import type { NodeOAuthClient } from "@atproto/oauth-client-node";
 
 const loginQuerySchema = z.object({
   handle: z.string().trim().min(1),
+  crosspost: z.enum(["true", "false"]).optional(),
 });
 
 const callbackQuerySchema = z.object({
@@ -60,12 +69,28 @@ export function authRoutes(
         return reply.status(400).send({ error: "Invalid handle" });
       }
 
-      const { handle } = parsed.data;
+      const { handle, crosspost } = parsed.data;
+
+      const requestedScope = crosspost === "true"
+        ? BARAZO_CROSSPOST_SCOPES
+        : BARAZO_BASE_SCOPES;
 
       try {
-        const redirectUrl = await oauthClient.authorize(handle, {
-          scope: "atproto transition:generic",
-        });
+        let redirectUrl: URL;
+        try {
+          redirectUrl = await oauthClient.authorize(handle, {
+            scope: requestedScope,
+          });
+        } catch {
+          // PDS may not support granular scopes -- fall back to transition:generic
+          app.log.warn(
+            { handle, requestedScope },
+            "Granular scopes rejected by PDS, falling back to transition:generic",
+          );
+          redirectUrl = await oauthClient.authorize(handle, {
+            scope: FALLBACK_SCOPE,
+          });
+        }
         return await reply.status(200).send({ url: redirectUrl.toString() });
       } catch (err: unknown) {
         app.log.error({ err, handle }, "OAuth authorize failed");
@@ -107,6 +132,22 @@ export function authRoutes(
         // Fire-and-forget profile sync from PDS (never blocks auth flow)
         void app.profileSync.syncProfile(did);
 
+        // Detect cross-post scope grant and persist to user preferences.
+        // The tokenSet scope field reflects what the PDS actually granted.
+        const grantedScope = (result.session as { tokenSet?: { scope?: string } }).tokenSet?.scope ?? "";
+        if (hasCrossPostScopes(grantedScope)) {
+          void app.db
+            .insert(userPreferences)
+            .values({ did, crossPostScopesGranted: true })
+            .onConflictDoUpdate({
+              target: userPreferences.did,
+              set: { crossPostScopesGranted: true, updatedAt: new Date() },
+            })
+            .catch((dbErr: unknown) => {
+              app.log.error({ err: dbErr, did }, "Failed to persist cross-post scope grant");
+            });
+        }
+
         // Set refresh cookie (sameSite lax to survive cross-site redirect from PDS)
         void reply.setCookie(COOKIE_NAME, session.sid, {
           httpOnly: true,
@@ -128,6 +169,46 @@ export function authRoutes(
         const errorUrl = new URL("/auth/callback", frontendOrigin);
         errorUrl.searchParams.set("error", "OAuth callback failed");
         return await reply.redirect(errorUrl.toString(), 302);
+      }
+    });
+
+    // -------------------------------------------------------------------
+    // GET /api/auth/crosspost-authorize
+    // -------------------------------------------------------------------
+
+    app.get("/api/auth/crosspost-authorize", {
+      config: { rateLimit: { max: env.RATE_LIMIT_AUTH, timeWindow: "1 minute" } },
+    }, async (request, reply) => {
+      const authHeader = request.headers.authorization;
+      if (!authHeader || !authHeader.startsWith("Bearer ")) {
+        return reply.status(401).send({ error: "Authentication required" });
+      }
+
+      const token = authHeader.slice("Bearer ".length);
+      const session = await sessionService.validateAccessToken(token);
+      if (!session) {
+        return await reply.status(401).send({ error: "Invalid or expired token" });
+      }
+
+      try {
+        let redirectUrl: URL;
+        try {
+          redirectUrl = await oauthClient.authorize(session.handle, {
+            scope: BARAZO_CROSSPOST_SCOPES,
+          });
+        } catch {
+          app.log.warn(
+            { handle: session.handle },
+            "Granular cross-post scopes rejected by PDS, falling back to transition:generic",
+          );
+          redirectUrl = await oauthClient.authorize(session.handle, {
+            scope: FALLBACK_SCOPE,
+          });
+        }
+        return await reply.status(200).send({ url: redirectUrl.toString() });
+      } catch (err: unknown) {
+        app.log.error({ err, handle: session.handle }, "Cross-post authorize failed");
+        return await reply.status(502).send({ error: "Failed to initiate cross-post authorization" });
       }
     });
 
@@ -158,11 +239,18 @@ export function authRoutes(
           maxAge: sessionTtl,
         });
 
+        // Query cross-post scope status from user preferences
+        const prefRows = await app.db
+          .select({ crossPostScopesGranted: userPreferences.crossPostScopesGranted })
+          .from(userPreferences)
+          .where(eq(userPreferences.did, session.did));
+
         return await reply.status(200).send({
           accessToken: session.accessToken,
           expiresAt: session.accessTokenExpiresAt,
           did: session.did,
           handle: session.handle,
+          crossPostScopesGranted: prefRows[0]?.crossPostScopesGranted ?? false,
         });
       } catch (err: unknown) {
         app.log.error({ err }, "Session refresh failed");
@@ -211,9 +299,16 @@ export function authRoutes(
           return await reply.status(401).send({ error: "Invalid or expired token" });
         }
 
+        // Query cross-post scope status from user preferences
+        const mePrefRows = await app.db
+          .select({ crossPostScopesGranted: userPreferences.crossPostScopesGranted })
+          .from(userPreferences)
+          .where(eq(userPreferences.did, session.did));
+
         return await reply.status(200).send({
           did: session.did,
           handle: session.handle,
+          crossPostScopesGranted: mePrefRows[0]?.crossPostScopesGranted ?? false,
         });
       } catch (err: unknown) {
         app.log.error({ err }, "Token validation failed");

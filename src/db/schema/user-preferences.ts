@@ -26,6 +26,7 @@ export const userPreferences = pgTable("user_preferences", {
   mutedDids: jsonb("muted_dids").$type<string[]>().notNull().default([]),
   crossPostBluesky: boolean("cross_post_bluesky").notNull().default(false),
   crossPostFrontpage: boolean("cross_post_frontpage").notNull().default(false),
+  crossPostScopesGranted: boolean("cross_post_scopes_granted").notNull().default(false),
   updatedAt: timestamp("updated_at", { withTimezone: true })
     .notNull()
     .defaultNow(),

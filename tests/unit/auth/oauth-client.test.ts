@@ -117,7 +117,7 @@ describe("createOAuthClient", () => {
       expect(clientId).toContain("redirect_uri=");
       expect(clientId).toContain("scope=");
       expect(clientId).toContain(encodeURIComponent("http://127.0.0.1:3000/api/auth/callback"));
-      expect(clientId).toContain(encodeURIComponent("atproto transition:generic"));
+      expect(clientId).toContain(encodeURIComponent("atproto repo:forum.barazo.topic.post repo:forum.barazo.topic.reply repo:forum.barazo.interaction.reaction"));
     });
 
     it("uses production client_id when not starting with http://localhost", () => {
@@ -154,7 +154,7 @@ describe("createOAuthClient", () => {
       };
 
       expect(metadata.client_name).toBe("Barazo Forum");
-      expect(metadata.scope).toBe("atproto transition:generic");
+      expect(metadata.scope).toBe("atproto repo:forum.barazo.topic.post repo:forum.barazo.topic.reply repo:forum.barazo.interaction.reaction");
       expect(metadata.grant_types).toEqual(["authorization_code", "refresh_token"]);
       expect(metadata.response_types).toEqual(["code"]);
       expect(metadata.application_type).toBe("web");
