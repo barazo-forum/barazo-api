@@ -843,7 +843,7 @@ describe('topic routes', () => {
       //   - Call 7 returns the author user row
 
       selectChain.where.mockResolvedValueOnce([]) // 4: loadBlockMuteLists
-       
+
       selectChain.where.mockImplementationOnce(() => selectChain) // 5: topics .where
       selectChain.where.mockResolvedValueOnce([]) // 6: loadMutedWords global
       selectChain.where.mockResolvedValueOnce([

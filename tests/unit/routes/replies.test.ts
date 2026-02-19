@@ -894,7 +894,7 @@ describe('reply routes', () => {
           mutedDids: [],
         },
       ])
-       
+      // eslint-disable-next-line @typescript-eslint/no-misused-promises -- thenable mock for Drizzle chain
       selectChain.where.mockImplementationOnce(() => selectChain) // 6: replies .where
 
       const rows = [
