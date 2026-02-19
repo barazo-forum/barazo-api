@@ -226,6 +226,11 @@ async function buildTestApp(user?: RequestUser): Promise<FastifyInstance> {
   app.decorate("sessionService", {} as SessionService);
   app.decorate("setupService", {} as SetupService);
   app.decorate("cache", {} as never);
+  app.decorate("interactionGraphService", {
+    recordReply: vi.fn().mockResolvedValue(undefined),
+    recordReaction: vi.fn().mockResolvedValue(undefined),
+    recordCoParticipation: vi.fn().mockResolvedValue(undefined),
+  } as never);
   app.decorateRequest("user", undefined as RequestUser | undefined);
 
   // Register BOTH route sets so we can test cross-endpoint behavior

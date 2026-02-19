@@ -19,7 +19,10 @@ export interface DbChain {
   onConflictDoNothing: MockFn;
   set: MockFn;
   from: MockFn;
+  leftJoin: MockFn;
   where: MockFn;
+  groupBy: MockFn;
+  having: MockFn;
   orderBy: MockFn;
   limit: MockFn;
   returning: MockFn;
@@ -44,7 +47,10 @@ export function createChainableProxy(terminalResult: unknown = []): DbChain {
     onConflictDoNothing: vi.fn(),
     set: vi.fn(),
     from: vi.fn(),
+    leftJoin: vi.fn(),
     where: vi.fn(),
+    groupBy: vi.fn(),
+    having: vi.fn(),
     orderBy: vi.fn(),
     limit: vi.fn(),
     returning: vi.fn(),
@@ -60,7 +66,7 @@ export function createChainableProxy(terminalResult: unknown = []): DbChain {
 
   const methods: (keyof DbChain)[] = [
     "values", "onConflictDoUpdate", "onConflictDoNothing",
-    "set", "from",
+    "set", "from", "leftJoin",
   ];
   for (const m of methods) {
     chain[m].mockImplementation(() => chain);
@@ -77,6 +83,11 @@ export function createChainableProxy(terminalResult: unknown = []): DbChain {
 
   // eslint-disable-next-line @typescript-eslint/no-misused-promises -- Intentionally thenable mock for Drizzle chain
   chain.where.mockImplementation(() => makeThenable());
+
+  // groupBy chains to having; having is terminal (thenable)
+  chain.groupBy.mockImplementation(() => chain);
+  // eslint-disable-next-line @typescript-eslint/no-misused-promises -- Intentionally thenable mock for Drizzle chain
+  chain.having.mockImplementation(() => makeThenable());
 
   return chain;
 }

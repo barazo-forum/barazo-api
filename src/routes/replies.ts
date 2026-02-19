@@ -424,6 +424,19 @@ export function replyRoutes(): FastifyPluginCallback {
           }).catch((err: unknown) => {
             app.log.error({ err, replyUri: result.uri }, "Mention notification failed");
           });
+
+          // Fire-and-forget: record interaction graph edges
+          app.interactionGraphService
+            .recordReply(user.did, topic.authorDid, topic.communityDid)
+            .catch((err: unknown) => {
+              app.log.warn({ err, replyUri: result.uri }, "Interaction graph recordReply failed");
+            });
+
+          app.interactionGraphService
+            .recordCoParticipation(decodedTopicUri, topic.communityDid)
+            .catch((err: unknown) => {
+              app.log.warn({ err, topicUri: decodedTopicUri }, "Interaction graph recordCoParticipation failed");
+            });
         }
 
         return await reply.status(201).send({

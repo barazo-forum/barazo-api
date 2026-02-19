@@ -204,10 +204,11 @@ export function reactionRoutes(): FastifyPluginCallback {
       // Verify subject exists and belongs to the same community
       const collection = getCollectionFromUri(subjectUri);
       let subjectExists = false;
+      let subjectAuthorDid: string | null = null;
 
       if (collection === TOPIC_COLLECTION) {
         const topicRows = await db
-          .select({ uri: topics.uri })
+          .select({ uri: topics.uri, authorDid: topics.authorDid })
           .from(topics)
           .where(
             and(
@@ -216,9 +217,10 @@ export function reactionRoutes(): FastifyPluginCallback {
             ),
           );
         subjectExists = topicRows.length > 0;
+        subjectAuthorDid = topicRows[0]?.authorDid ?? null;
       } else if (collection === REPLY_COLLECTION) {
         const replyRows = await db
-          .select({ uri: replies.uri })
+          .select({ uri: replies.uri, authorDid: replies.authorDid })
           .from(replies)
           .where(
             and(
@@ -227,6 +229,7 @@ export function reactionRoutes(): FastifyPluginCallback {
             ),
           );
         subjectExists = replyRows.length > 0;
+        subjectAuthorDid = replyRows[0]?.authorDid ?? null;
       }
 
       if (!subjectExists) {
@@ -307,6 +310,15 @@ export function reactionRoutes(): FastifyPluginCallback {
         }).catch((err: unknown) => {
           app.log.error({ err, subjectUri }, "Reaction notification failed");
         });
+
+        // Fire-and-forget: record interaction graph edge
+        if (subjectAuthorDid) {
+          app.interactionGraphService
+            .recordReaction(user.did, subjectAuthorDid, communityDid)
+            .catch((err: unknown) => {
+              app.log.warn({ err, subjectUri }, "Interaction graph recordReaction failed");
+            });
+        }
 
         return await reply.status(201).send({
           uri: result.uri,

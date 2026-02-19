@@ -37,6 +37,7 @@ import { onboardingRoutes } from "./routes/onboarding.js";
 import { globalFilterRoutes } from "./routes/global-filters.js";
 import { communityProfileRoutes } from "./routes/community-profiles.js";
 import { uploadRoutes } from "./routes/uploads.js";
+import { adminSybilRoutes } from "./routes/admin-sybil.js";
 import { createRequireAdmin } from "./auth/require-admin.js";
 import { createRequireOperator } from "./auth/require-operator.js";
 import { OzoneService } from "./services/ozone.js";
@@ -51,6 +52,10 @@ import { createLocalStorage } from "./lib/storage.js";
 import type { StorageService } from "./lib/storage.js";
 import type { Database } from "./db/index.js";
 import type { Cache } from "./cache/index.js";
+import { createInteractionGraphService } from "./services/interaction-graph.js";
+import type { InteractionGraphService } from "./services/interaction-graph.js";
+import { createTrustGraphService } from "./services/trust-graph.js";
+import type { TrustGraphService } from "./services/trust-graph.js";
 
 // Extend Fastify types with decorated properties
 declare module "fastify" {
@@ -69,6 +74,8 @@ declare module "fastify" {
     ozoneService: OzoneService | null;
     profileSync: ProfileSyncService;
     storage: StorageService;
+    interactionGraphService: InteractionGraphService;
+    trustGraphService: TrustGraphService;
   }
 }
 
@@ -196,6 +203,14 @@ export async function buildApp(env: Env) {
   const storage = createLocalStorage(env.UPLOAD_DIR, uploadBaseUrl, app.log);
   app.decorate("storage", storage);
 
+  // Interaction graph service (records reply/reaction/co-participation edges)
+  const interactionGraphService = createInteractionGraphService(db, app.log);
+  app.decorate("interactionGraphService", interactionGraphService);
+
+  // Trust graph service (EigenTrust computation + score lookup)
+  const trustGraphService = createTrustGraphService(db, app.log);
+  app.decorate("trustGraphService", trustGraphService);
+
   // Ozone labeler service (opt-in, only if URL is configured)
   let ozoneService: OzoneService | null = null;
   if (env.OZONE_LABELER_URL) {
@@ -258,6 +273,7 @@ export async function buildApp(env: Env) {
   await app.register(globalFilterRoutes());
   await app.register(communityProfileRoutes());
   await app.register(uploadRoutes());
+  await app.register(adminSybilRoutes());
 
   // OpenAPI spec endpoint (after routes so all schemas are registered)
   app.get("/api/openapi.json", { schema: { hide: true } }, async (_request, reply) => {

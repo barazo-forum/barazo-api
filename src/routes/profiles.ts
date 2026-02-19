@@ -18,6 +18,11 @@ import {
   userPreferences,
   userCommunityPreferences,
 } from "../db/schema/user-preferences.js";
+import { computeClusterDiversityFactor } from "../services/cluster-diversity.js";
+import { sybilClusterMembers } from "../db/schema/sybil-cluster-members.js";
+import { sybilClusters } from "../db/schema/sybil-clusters.js";
+import { interactionGraph } from "../db/schema/interaction-graph.js";
+import { pdsTrustFactors } from "../db/schema/pds-trust-factors.js";
 
 // ---------------------------------------------------------------------------
 // OpenAPI JSON Schema definitions
@@ -365,9 +370,91 @@ export function profileRoutes(): FastifyPluginCallback {
           (reactionsOnTopicsResult[0]?.count ?? 0) +
           (reactionsOnRepliesResult[0]?.count ?? 0);
 
-        // Reputation formula: (topics * 5) + (replies * 2) + (reactions_received * 1)
-        const reputation =
+        // Base reputation formula: (topics * 5) + (replies * 2) + (reactions_received * 1)
+        const baseReputation =
           topicCount * 5 + replyCount * 2 + reactionsReceived * 1;
+
+        // Trust-weighted reputation: multiply by voter trust score, PDS trust factor, and cluster diversity factor
+        const voterTrustScore = await app.trustGraphService
+          .getTrustScore(user.did, null)
+          .catch(() => 0.1);
+
+        // Look up PDS trust factor from user's handle domain
+        let pdsTrustFactor = 0.3; // Default for unknown PDS
+        try {
+          const handleParts = user.handle.split(".");
+          // Extract host: "alice.bsky.social" -> "bsky.social", "alice.example.com" -> "example.com"
+          const pdsHost = handleParts.length > 1
+            ? handleParts.slice(1).join(".")
+            : user.handle;
+
+          const pdsRows = await db
+            .select({ trustFactor: pdsTrustFactors.trustFactor })
+            .from(pdsTrustFactors)
+            .where(eq(pdsTrustFactors.pdsHost, pdsHost));
+
+          const pdsRow = pdsRows[0];
+          if (pdsRow) {
+            pdsTrustFactor = pdsRow.trustFactor;
+          }
+        } catch {
+          // Non-critical: default to 0.3 for unknown PDS
+        }
+
+        // Check if user is in a flagged sybil cluster
+        let inFlaggedCluster = false;
+        let externalInteractionCount = 0;
+        try {
+          const memberRows = await db
+            .select({ clusterId: sybilClusterMembers.clusterId })
+            .from(sybilClusterMembers)
+            .where(eq(sybilClusterMembers.did, user.did));
+
+          if (memberRows.length > 0) {
+            const clusterIds = memberRows.map((r) => r.clusterId);
+            const flaggedRows = await db
+              .select({ id: sybilClusters.id })
+              .from(sybilClusters)
+              .where(
+                and(
+                  sql`${sybilClusters.id} = ANY(${clusterIds})`,
+                  eq(sybilClusters.status, "flagged"),
+                ),
+              );
+            inFlaggedCluster = flaggedRows.length > 0;
+
+            if (inFlaggedCluster) {
+              // Count distinct external DIDs this user interacts with
+              const externalRows = await db
+                .select({
+                  count: sql<number>`count(DISTINCT ${interactionGraph.targetDid})::int`,
+                })
+                .from(interactionGraph)
+                .where(
+                  and(
+                    eq(interactionGraph.sourceDid, user.did),
+                    sql`${interactionGraph.targetDid} NOT IN (
+                      SELECT ${sybilClusterMembers.did}
+                      FROM ${sybilClusterMembers}
+                      WHERE ${sybilClusterMembers.clusterId} = ANY(${clusterIds})
+                    )`,
+                  ),
+                );
+              externalInteractionCount = externalRows[0]?.count ?? 0;
+            }
+          }
+        } catch {
+          // Non-critical: default to no cluster adjustment
+        }
+
+        const clusterDiversityFactor = computeClusterDiversityFactor(
+          inFlaggedCluster,
+          externalInteractionCount,
+        );
+
+        const reputation = Math.round(
+          baseReputation * voterTrustScore * pdsTrustFactor * clusterDiversityFactor,
+        );
 
         // Count distinct communities the user has contributed to
         const topicCommResult = await db

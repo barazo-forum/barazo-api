@@ -189,6 +189,12 @@ async function buildTestApp(user?: RequestUser): Promise<FastifyInstance> {
   app.decorate("sessionService", {} as SessionService);
   app.decorate("setupService", {} as SetupService);
   app.decorate("cache", {} as never);
+  app.decorate("trustGraphService", {
+    computeTrustScores: vi.fn().mockResolvedValue({
+      totalNodes: 0, totalEdges: 0, iterations: 0, converged: true, durationMs: 0,
+    }),
+    getTrustScore: vi.fn().mockResolvedValue(1.0),
+  } as never);
   app.decorateRequest("user", undefined as RequestUser | undefined);
 
   // Override the logger so we can capture log calls
@@ -430,6 +436,8 @@ describe("profile routes", () => {
       selectChain.where.mockResolvedValueOnce([{ count: 4 }]);
       // Reactions on replies: 6
       selectChain.where.mockResolvedValueOnce([{ count: 6 }]);
+      // PDS trust factor lookup (returns 1.0 so it doesn't affect the base formula)
+      selectChain.where.mockResolvedValueOnce([{ trustFactor: 1.0 }]);
       // selectDistinct for topic communities and reply communities
       selectDistinctChain.where.mockResolvedValueOnce([]);
       selectDistinctChain.where.mockResolvedValueOnce([]);
@@ -475,6 +483,8 @@ describe("profile routes", () => {
       selectChain.where.mockResolvedValueOnce([{ count: 0 }]);
       selectChain.where.mockResolvedValueOnce([{ count: 0 }]);
       selectChain.where.mockResolvedValueOnce([{ count: 0 }]);
+      // PDS trust factor lookup
+      selectChain.where.mockResolvedValueOnce([{ trustFactor: 1.0 }]);
       // selectDistinct for topic communities and reply communities
       selectDistinctChain.where.mockResolvedValueOnce([]);
       selectDistinctChain.where.mockResolvedValueOnce([]);
@@ -501,6 +511,8 @@ describe("profile routes", () => {
       selectChain.where.mockResolvedValueOnce([{ count: 4 }]);
       // Reactions on replies: 6
       selectChain.where.mockResolvedValueOnce([{ count: 6 }]);
+      // PDS trust factor lookup
+      selectChain.where.mockResolvedValueOnce([{ trustFactor: 1.0 }]);
       // Distinct communities from topics
       selectDistinctChain.where.mockResolvedValueOnce([
         { communityDid: "did:plc:comm-a" },
@@ -543,6 +555,8 @@ describe("profile routes", () => {
       selectChain.where.mockResolvedValueOnce([{ count: 0 }]);
       // Reactions on replies: 0
       selectChain.where.mockResolvedValueOnce([{ count: 0 }]);
+      // PDS trust factor lookup
+      selectChain.where.mockResolvedValueOnce([{ trustFactor: 1.0 }]);
       // Topic communities -- user created topics only in comm-a
       selectDistinctChain.where.mockResolvedValueOnce([
         { communityDid: "did:plc:comm-a" },
