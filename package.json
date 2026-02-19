@@ -25,7 +25,10 @@
     "test:integration": "vitest run --config vitest.config.integration.ts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
-    "db:studio": "drizzle-kit studio"
+    "db:studio": "drizzle-kit studio",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "prepare": "husky"
   },
   "dependencies": {
     "@atproto/api": "^0.18.21",
@@ -51,11 +54,16 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
+    "@commitlint/cli": "catalog:",
+    "@commitlint/config-conventional": "catalog:",
     "@testcontainers/postgresql": "^11.11.0",
     "@types/node": "^25.2.3",
     "@vitest/coverage-v8": "^4.0.18",
     "drizzle-kit": "^0.31.9",
     "eslint": "^9.39.2",
+    "husky": "catalog:",
+    "lint-staged": "catalog:",
+    "prettier": "catalog:",
     "supertest": "^7.1.0",
     "testcontainers": "^11.11.0",
     "tsx": "^4.20.3",
