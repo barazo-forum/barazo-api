@@ -1,4 +1,4 @@
-import { z } from "zod/v4";
+import { z } from 'zod/v4'
 
 // ---------------------------------------------------------------------------
 // Query schemas
@@ -15,11 +15,11 @@ export const notificationQuerySchema = z.object({
   cursor: z.string().optional(),
   unreadOnly: z
     .string()
-    .transform((val) => val === "true")
+    .transform((val) => val === 'true')
     .optional(),
-});
+})
 
-export type NotificationQueryInput = z.infer<typeof notificationQuerySchema>;
+export type NotificationQueryInput = z.infer<typeof notificationQuerySchema>
 
 // ---------------------------------------------------------------------------
 // Body schemas
@@ -29,6 +29,6 @@ export type NotificationQueryInput = z.infer<typeof notificationQuerySchema>;
 export const markReadSchema = z.object({
   notificationId: z.number().int().positive().optional(),
   all: z.boolean().optional(),
-});
+})
 
-export type MarkReadInput = z.infer<typeof markReadSchema>;
+export type MarkReadInput = z.infer<typeof markReadSchema>

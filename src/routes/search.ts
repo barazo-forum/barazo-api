@@ -1,97 +1,97 @@
-import { sql } from "drizzle-orm";
-import type { FastifyPluginCallback } from "fastify";
-import { badRequest } from "../lib/api-errors.js";
-import { loadMutedWords, contentMatchesMutedWords } from "../lib/muted-words.js";
-import { createEmbeddingService } from "../services/embedding.js";
-import { searchQuerySchema } from "../validation/search.js";
-import type { Database } from "../db/index.js";
+import { sql } from 'drizzle-orm'
+import type { FastifyPluginCallback } from 'fastify'
+import { badRequest } from '../lib/api-errors.js'
+import { loadMutedWords, contentMatchesMutedWords } from '../lib/muted-words.js'
+import { createEmbeddingService } from '../services/embedding.js'
+import { searchQuerySchema } from '../validation/search.js'
+import type { Database } from '../db/index.js'
 
 // ---------------------------------------------------------------------------
 // OpenAPI JSON Schema definitions
 // ---------------------------------------------------------------------------
 
 const searchResultJsonSchema = {
-  type: "object" as const,
+  type: 'object' as const,
   properties: {
-    type: { type: "string" as const, enum: ["topic", "reply"] },
-    uri: { type: "string" as const },
-    rkey: { type: "string" as const },
-    authorDid: { type: "string" as const },
-    title: { type: ["string", "null"] as const },
-    content: { type: "string" as const },
-    category: { type: ["string", "null"] as const },
-    communityDid: { type: "string" as const },
-    replyCount: { type: ["integer", "null"] as const },
-    reactionCount: { type: "integer" as const },
-    createdAt: { type: "string" as const, format: "date-time" as const },
-    rank: { type: "number" as const },
-    rootUri: { type: ["string", "null"] as const },
-    rootTitle: { type: ["string", "null"] as const },
-    isMutedWord: { type: "boolean" as const },
+    type: { type: 'string' as const, enum: ['topic', 'reply'] },
+    uri: { type: 'string' as const },
+    rkey: { type: 'string' as const },
+    authorDid: { type: 'string' as const },
+    title: { type: ['string', 'null'] as const },
+    content: { type: 'string' as const },
+    category: { type: ['string', 'null'] as const },
+    communityDid: { type: 'string' as const },
+    replyCount: { type: ['integer', 'null'] as const },
+    reactionCount: { type: 'integer' as const },
+    createdAt: { type: 'string' as const, format: 'date-time' as const },
+    rank: { type: 'number' as const },
+    rootUri: { type: ['string', 'null'] as const },
+    rootTitle: { type: ['string', 'null'] as const },
+    isMutedWord: { type: 'boolean' as const },
   },
-};
+}
 
 const errorJsonSchema = {
-  type: "object" as const,
+  type: 'object' as const,
   properties: {
-    error: { type: "string" as const },
+    error: { type: 'string' as const },
   },
-};
+}
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
 interface TopicSearchRow {
-  [key: string]: unknown;
-  uri: string;
-  rkey: string;
-  author_did: string;
-  title: string;
-  content: string;
-  category: string;
-  community_did: string;
-  reply_count: number;
-  reaction_count: number;
-  created_at: Date;
-  rank: number;
+  [key: string]: unknown
+  uri: string
+  rkey: string
+  author_did: string
+  title: string
+  content: string
+  category: string
+  community_did: string
+  reply_count: number
+  reaction_count: number
+  created_at: Date
+  rank: number
 }
 
 interface ReplySearchRow {
-  [key: string]: unknown;
-  uri: string;
-  rkey: string;
-  author_did: string;
-  content: string;
-  community_did: string;
-  reaction_count: number;
-  created_at: Date;
-  root_uri: string;
-  root_title: string | null;
-  rank: number;
+  [key: string]: unknown
+  uri: string
+  rkey: string
+  author_did: string
+  content: string
+  community_did: string
+  reaction_count: number
+  created_at: Date
+  root_uri: string
+  root_title: string | null
+  rank: number
 }
 
 interface CountRow {
-  [key: string]: unknown;
-  count: string;
+  [key: string]: unknown
+  count: string
 }
 
 interface SearchResultItem {
-  type: "topic" | "reply";
-  uri: string;
-  rkey: string;
-  authorDid: string;
-  title: string | null;
-  content: string;
-  category: string | null;
-  communityDid: string;
-  replyCount: number | null;
-  reactionCount: number;
-  createdAt: string;
-  rank: number;
-  rootUri: string | null;
-  rootTitle: string | null;
-  isMutedWord?: boolean;
+  type: 'topic' | 'reply'
+  uri: string
+  rkey: string
+  authorDid: string
+  title: string | null
+  content: string
+  category: string | null
+  communityDid: string
+  replyCount: number | null
+  reactionCount: number
+  createdAt: string
+  rank: number
+  rootUri: string | null
+  rootTitle: string | null
+  isMutedWord?: boolean
 }
 
 // ---------------------------------------------------------------------------
@@ -104,34 +104,33 @@ interface SearchResultItem {
  */
 function createSnippet(content: string, maxLength = 300): string {
   if (content.length <= maxLength) {
-    return content;
+    return content
   }
-  return content.slice(0, maxLength) + "...";
+  return content.slice(0, maxLength) + '...'
 }
 
 /**
  * Encode a search cursor from rank + uri.
  */
 function encodeCursor(rank: number, uri: string): string {
-  return Buffer.from(JSON.stringify({ rank, uri })).toString("base64");
+  return Buffer.from(JSON.stringify({ rank, uri })).toString('base64')
 }
 
 /**
  * Decode a search cursor. Returns null if invalid.
  */
-function decodeCursor(
-  cursor: string,
-): { rank: number; uri: string } | null {
+function decodeCursor(cursor: string): { rank: number; uri: string } | null {
   try {
-    const decoded = JSON.parse(
-      Buffer.from(cursor, "base64").toString("utf-8"),
-    ) as Record<string, unknown>;
-    if (typeof decoded.rank === "number" && typeof decoded.uri === "string") {
-      return { rank: decoded.rank, uri: decoded.uri };
+    const decoded = JSON.parse(Buffer.from(cursor, 'base64').toString('utf-8')) as Record<
+      string,
+      unknown
+    >
+    if (typeof decoded.rank === 'number' && typeof decoded.uri === 'string') {
+      return { rank: decoded.rank, uri: decoded.uri }
     }
-    return null;
+    return null
   } catch {
-    return null;
+    return null
   }
 }
 
@@ -143,35 +142,35 @@ function decodeCursor(
 function reciprocalRankFusion(
   fulltextResults: SearchResultItem[],
   vectorResults: SearchResultItem[],
-  k = 60,
+  k = 60
 ): SearchResultItem[] {
-  const scores = new Map<string, { score: number; item: SearchResultItem }>();
+  const scores = new Map<string, { score: number; item: SearchResultItem }>()
 
   // Score full-text results by their position (rank = position, 1-indexed)
   for (let i = 0; i < fulltextResults.length; i++) {
-    const item = fulltextResults[i];
-    if (!item) continue;
-    const rrfScore = 1.0 / (k + i + 1);
-    scores.set(item.uri, { score: rrfScore, item });
+    const item = fulltextResults[i]
+    if (!item) continue
+    const rrfScore = 1.0 / (k + i + 1)
+    scores.set(item.uri, { score: rrfScore, item })
   }
 
   // Score vector results by their position
   for (let i = 0; i < vectorResults.length; i++) {
-    const item = vectorResults[i];
-    if (!item) continue;
-    const rrfScore = 1.0 / (k + i + 1);
-    const existing = scores.get(item.uri);
+    const item = vectorResults[i]
+    if (!item) continue
+    const rrfScore = 1.0 / (k + i + 1)
+    const existing = scores.get(item.uri)
     if (existing) {
-      existing.score += rrfScore;
+      existing.score += rrfScore
     } else {
-      scores.set(item.uri, { score: rrfScore, item });
+      scores.set(item.uri, { score: rrfScore, item })
     }
   }
 
   // Sort by RRF score descending
   return Array.from(scores.values())
     .sort((a, b) => b.score - a.score)
-    .map((entry) => ({ ...entry.item, rank: entry.score }));
+    .map((entry) => ({ ...entry.item, rank: entry.score }))
 }
 
 // ---------------------------------------------------------------------------
@@ -185,189 +184,125 @@ function reciprocalRankFusion(
  */
 export function searchRoutes(): FastifyPluginCallback {
   return (app, _opts, done) => {
-    const { db, env, authMiddleware } = app;
+    const { db, env, authMiddleware } = app
 
     const embeddingService = createEmbeddingService(
       env.EMBEDDING_URL,
       env.AI_EMBEDDING_DIMENSIONS,
-      app.log,
-    );
+      app.log
+    )
 
     // -------------------------------------------------------------------
     // GET /api/search (public, optionalAuth)
     // -------------------------------------------------------------------
 
-    app.get("/api/search", {
-      preHandler: [authMiddleware.optionalAuth],
-      schema: {
-        tags: ["Search"],
-        summary: "Search topics and replies",
-        querystring: {
-          type: "object",
-          required: ["q"],
-          properties: {
-            q: { type: "string", minLength: 1, maxLength: 500 },
-            category: { type: "string" },
-            author: { type: "string" },
-            dateFrom: { type: "string", format: "date-time" },
-            dateTo: { type: "string", format: "date-time" },
-            type: {
-              type: "string",
-              enum: ["topics", "replies", "all"],
-              default: "all",
-            },
-            limit: { type: "string" },
-            cursor: { type: "string" },
-          },
-        },
-        response: {
-          200: {
-            type: "object",
+    app.get(
+      '/api/search',
+      {
+        preHandler: [authMiddleware.optionalAuth],
+        schema: {
+          tags: ['Search'],
+          summary: 'Search topics and replies',
+          querystring: {
+            type: 'object',
+            required: ['q'],
             properties: {
-              results: {
-                type: "array",
-                items: searchResultJsonSchema,
+              q: { type: 'string', minLength: 1, maxLength: 500 },
+              category: { type: 'string' },
+              author: { type: 'string' },
+              dateFrom: { type: 'string', format: 'date-time' },
+              dateTo: { type: 'string', format: 'date-time' },
+              type: {
+                type: 'string',
+                enum: ['topics', 'replies', 'all'],
+                default: 'all',
               },
-              cursor: { type: ["string", "null"] },
-              total: { type: "integer" },
-              searchMode: {
-                type: "string",
-                enum: ["fulltext", "hybrid"],
-              },
+              limit: { type: 'string' },
+              cursor: { type: 'string' },
             },
           },
-          400: errorJsonSchema,
+          response: {
+            200: {
+              type: 'object',
+              properties: {
+                results: {
+                  type: 'array',
+                  items: searchResultJsonSchema,
+                },
+                cursor: { type: ['string', 'null'] },
+                total: { type: 'integer' },
+                searchMode: {
+                  type: 'string',
+                  enum: ['fulltext', 'hybrid'],
+                },
+              },
+            },
+            400: errorJsonSchema,
+          },
         },
       },
-    }, async (request, reply) => {
-      const parsed = searchQuerySchema.safeParse(request.query);
-      if (!parsed.success) {
-        throw badRequest("Invalid search parameters");
-      }
-
-      const {
-        q: query,
-        category,
-        author,
-        dateFrom,
-        dateTo,
-        type: searchType,
-        limit,
-        cursor,
-      } = parsed.data;
-
-      // Parse cursor for pagination
-      let cursorRank: number | undefined;
-      let cursorUri: string | undefined;
-      if (cursor) {
-        const decoded = decodeCursor(cursor);
-        if (decoded) {
-          cursorRank = decoded.rank;
-          cursorUri = decoded.uri;
+      async (request, reply) => {
+        const parsed = searchQuerySchema.safeParse(request.query)
+        if (!parsed.success) {
+          throw badRequest('Invalid search parameters')
         }
-      }
 
-      // Determine search mode
-      let searchMode: "fulltext" | "hybrid" = "fulltext";
-      let queryEmbedding: number[] | null = null;
-
-      if (embeddingService.isEnabled()) {
-        queryEmbedding = await embeddingService.generateEmbedding(query);
-        if (queryEmbedding) {
-          searchMode = "hybrid";
-        }
-      }
-
-      const allResults: SearchResultItem[] = [];
-
-      // -----------------------------------------------------------------
-      // Full-text search: topics
-      // -----------------------------------------------------------------
-      if (searchType === "topics" || searchType === "all") {
-        const topicResults = await searchTopicsFulltext(db, query, {
+        const {
+          q: query,
           category,
           author,
           dateFrom,
           dateTo,
-          cursorRank,
-          cursorUri,
-        }, limit + 1);
+          type: searchType,
+          limit,
+          cursor,
+        } = parsed.data
 
-        for (const row of topicResults) {
-          allResults.push({
-            type: "topic",
-            uri: row.uri,
-            rkey: row.rkey,
-            authorDid: row.author_did,
-            title: row.title,
-            content: createSnippet(row.content),
-            category: row.category,
-            communityDid: row.community_did,
-            replyCount: row.reply_count,
-            reactionCount: row.reaction_count,
-            createdAt: row.created_at instanceof Date
-              ? row.created_at.toISOString()
-              : String(row.created_at),
-            rank: row.rank,
-            rootUri: null,
-            rootTitle: null,
-          });
+        // Parse cursor for pagination
+        let cursorRank: number | undefined
+        let cursorUri: string | undefined
+        if (cursor) {
+          const decoded = decodeCursor(cursor)
+          if (decoded) {
+            cursorRank = decoded.rank
+            cursorUri = decoded.uri
+          }
         }
-      }
 
-      // -----------------------------------------------------------------
-      // Full-text search: replies
-      // -----------------------------------------------------------------
-      if (searchType === "replies" || searchType === "all") {
-        const replyResults = await searchRepliesFulltext(db, query, {
-          author,
-          dateFrom,
-          dateTo,
-          cursorRank,
-          cursorUri,
-        }, limit + 1);
+        // Determine search mode
+        let searchMode: 'fulltext' | 'hybrid' = 'fulltext'
+        let queryEmbedding: number[] | null = null
 
-        for (const row of replyResults) {
-          allResults.push({
-            type: "reply",
-            uri: row.uri,
-            rkey: row.rkey,
-            authorDid: row.author_did,
-            title: null,
-            content: createSnippet(row.content),
-            category: null,
-            communityDid: row.community_did,
-            replyCount: null,
-            reactionCount: row.reaction_count,
-            createdAt: row.created_at instanceof Date
-              ? row.created_at.toISOString()
-              : String(row.created_at),
-            rank: row.rank,
-            rootUri: row.root_uri,
-            rootTitle: row.root_title,
-          });
+        if (embeddingService.isEnabled()) {
+          queryEmbedding = await embeddingService.generateEmbedding(query)
+          if (queryEmbedding) {
+            searchMode = 'hybrid'
+          }
         }
-      }
 
-      // -----------------------------------------------------------------
-      // Hybrid search: merge with vector results via RRF
-      // -----------------------------------------------------------------
-      let mergedResults: SearchResultItem[];
+        const allResults: SearchResultItem[] = []
 
-      if (searchMode === "hybrid" && queryEmbedding) {
-        const vectorResults: SearchResultItem[] = [];
+        // -----------------------------------------------------------------
+        // Full-text search: topics
+        // -----------------------------------------------------------------
+        if (searchType === 'topics' || searchType === 'all') {
+          const topicResults = await searchTopicsFulltext(
+            db,
+            query,
+            {
+              category,
+              author,
+              dateFrom,
+              dateTo,
+              cursorRank,
+              cursorUri,
+            },
+            limit + 1
+          )
 
-        if (searchType === "topics" || searchType === "all") {
-          const vecTopics = await searchTopicsVector(db, queryEmbedding, {
-            category,
-            author,
-            dateFrom,
-            dateTo,
-          }, limit);
-
-          for (const row of vecTopics) {
-            vectorResults.push({
-              type: "topic",
+          for (const row of topicResults) {
+            allResults.push({
+              type: 'topic',
               uri: row.uri,
               rkey: row.rkey,
               authorDid: row.author_did,
@@ -377,26 +312,37 @@ export function searchRoutes(): FastifyPluginCallback {
               communityDid: row.community_did,
               replyCount: row.reply_count,
               reactionCount: row.reaction_count,
-              createdAt: row.created_at instanceof Date
-                ? row.created_at.toISOString()
-                : String(row.created_at),
+              createdAt:
+                row.created_at instanceof Date
+                  ? row.created_at.toISOString()
+                  : String(row.created_at),
               rank: row.rank,
               rootUri: null,
               rootTitle: null,
-            });
+            })
           }
         }
 
-        if (searchType === "replies" || searchType === "all") {
-          const vecReplies = await searchRepliesVector(db, queryEmbedding, {
-            author,
-            dateFrom,
-            dateTo,
-          }, limit);
+        // -----------------------------------------------------------------
+        // Full-text search: replies
+        // -----------------------------------------------------------------
+        if (searchType === 'replies' || searchType === 'all') {
+          const replyResults = await searchRepliesFulltext(
+            db,
+            query,
+            {
+              author,
+              dateFrom,
+              dateTo,
+              cursorRank,
+              cursorUri,
+            },
+            limit + 1
+          )
 
-          for (const row of vecReplies) {
-            vectorResults.push({
-              type: "reply",
+          for (const row of replyResults) {
+            allResults.push({
+              type: 'reply',
               uri: row.uri,
               rkey: row.rkey,
               authorDid: row.author_did,
@@ -406,75 +352,148 @@ export function searchRoutes(): FastifyPluginCallback {
               communityDid: row.community_did,
               replyCount: null,
               reactionCount: row.reaction_count,
-              createdAt: row.created_at instanceof Date
-                ? row.created_at.toISOString()
-                : String(row.created_at),
+              createdAt:
+                row.created_at instanceof Date
+                  ? row.created_at.toISOString()
+                  : String(row.created_at),
               rank: row.rank,
               rootUri: row.root_uri,
               rootTitle: row.root_title,
-            });
+            })
           }
         }
 
-        mergedResults = reciprocalRankFusion(allResults, vectorResults);
-      } else {
-        // Full-text only: sort all results by rank descending
-        mergedResults = allResults.sort((a, b) => b.rank - a.rank);
-      }
+        // -----------------------------------------------------------------
+        // Hybrid search: merge with vector results via RRF
+        // -----------------------------------------------------------------
+        let mergedResults: SearchResultItem[]
 
-      // -----------------------------------------------------------------
-      // Pagination
-      // -----------------------------------------------------------------
-      const hasMore = mergedResults.length > limit;
-      const pageResults = hasMore
-        ? mergedResults.slice(0, limit)
-        : mergedResults;
+        if (searchMode === 'hybrid' && queryEmbedding) {
+          const vectorResults: SearchResultItem[] = []
 
-      let nextCursor: string | null = null;
-      if (hasMore) {
-        const lastResult = pageResults[pageResults.length - 1];
-        if (lastResult) {
-          nextCursor = encodeCursor(lastResult.rank, lastResult.uri);
+          if (searchType === 'topics' || searchType === 'all') {
+            const vecTopics = await searchTopicsVector(
+              db,
+              queryEmbedding,
+              {
+                category,
+                author,
+                dateFrom,
+                dateTo,
+              },
+              limit
+            )
+
+            for (const row of vecTopics) {
+              vectorResults.push({
+                type: 'topic',
+                uri: row.uri,
+                rkey: row.rkey,
+                authorDid: row.author_did,
+                title: row.title,
+                content: createSnippet(row.content),
+                category: row.category,
+                communityDid: row.community_did,
+                replyCount: row.reply_count,
+                reactionCount: row.reaction_count,
+                createdAt:
+                  row.created_at instanceof Date
+                    ? row.created_at.toISOString()
+                    : String(row.created_at),
+                rank: row.rank,
+                rootUri: null,
+                rootTitle: null,
+              })
+            }
+          }
+
+          if (searchType === 'replies' || searchType === 'all') {
+            const vecReplies = await searchRepliesVector(
+              db,
+              queryEmbedding,
+              {
+                author,
+                dateFrom,
+                dateTo,
+              },
+              limit
+            )
+
+            for (const row of vecReplies) {
+              vectorResults.push({
+                type: 'reply',
+                uri: row.uri,
+                rkey: row.rkey,
+                authorDid: row.author_did,
+                title: null,
+                content: createSnippet(row.content),
+                category: null,
+                communityDid: row.community_did,
+                replyCount: null,
+                reactionCount: row.reaction_count,
+                createdAt:
+                  row.created_at instanceof Date
+                    ? row.created_at.toISOString()
+                    : String(row.created_at),
+                rank: row.rank,
+                rootUri: row.root_uri,
+                rootTitle: row.root_title,
+              })
+            }
+          }
+
+          mergedResults = reciprocalRankFusion(allResults, vectorResults)
+        } else {
+          // Full-text only: sort all results by rank descending
+          mergedResults = allResults.sort((a, b) => b.rank - a.rank)
         }
+
+        // -----------------------------------------------------------------
+        // Pagination
+        // -----------------------------------------------------------------
+        const hasMore = mergedResults.length > limit
+        const pageResults = hasMore ? mergedResults.slice(0, limit) : mergedResults
+
+        let nextCursor: string | null = null
+        if (hasMore) {
+          const lastResult = pageResults[pageResults.length - 1]
+          if (lastResult) {
+            nextCursor = encodeCursor(lastResult.rank, lastResult.uri)
+          }
+        }
+
+        // Count total results (separate query for accurate count)
+        let total = pageResults.length
+        if (hasMore) {
+          total = await countSearchResults(db, query, {
+            category,
+            author,
+            dateFrom,
+            dateTo,
+            searchType,
+          })
+        }
+
+        // Muted word annotation: flag matching content for client-side collapsing
+        const communityDid = env.COMMUNITY_MODE === 'single' ? env.COMMUNITY_DID : undefined
+        const mutedWords = await loadMutedWords(request.user?.did, communityDid, db)
+
+        const annotatedResults = pageResults.map((r) => ({
+          ...r,
+          isMutedWord: contentMatchesMutedWords(r.content, mutedWords, r.title ?? undefined),
+        }))
+
+        return reply.status(200).send({
+          results: annotatedResults,
+          cursor: nextCursor,
+          total,
+          searchMode,
+        })
       }
+    )
 
-      // Count total results (separate query for accurate count)
-      let total = pageResults.length;
-      if (hasMore) {
-        total = await countSearchResults(db, query, {
-          category,
-          author,
-          dateFrom,
-          dateTo,
-          searchType,
-        });
-      }
-
-      // Muted word annotation: flag matching content for client-side collapsing
-      const communityDid = env.COMMUNITY_MODE === "single"
-        ? env.COMMUNITY_DID
-        : undefined;
-      const mutedWords = await loadMutedWords(request.user?.did, communityDid, db);
-
-      const annotatedResults = pageResults.map((r) => ({
-        ...r,
-        isMutedWord: contentMatchesMutedWords(
-          r.content,
-          mutedWords,
-          r.title ?? undefined,
-        ),
-      }));
-
-      return reply.status(200).send({
-        results: annotatedResults,
-        cursor: nextCursor,
-        total,
-        searchMode,
-      });
-    });
-
-    done();
-  };
+    done()
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -482,12 +501,12 @@ export function searchRoutes(): FastifyPluginCallback {
 // ---------------------------------------------------------------------------
 
 interface SearchFilters {
-  category?: string | undefined;
-  author?: string | undefined;
-  dateFrom?: string | undefined;
-  dateTo?: string | undefined;
-  cursorRank?: number | undefined;
-  cursorUri?: string | undefined;
+  category?: string | undefined
+  author?: string | undefined
+  dateFrom?: string | undefined
+  dateTo?: string | undefined
+  cursorRank?: number | undefined
+  cursorUri?: string | undefined
 }
 
 /**
@@ -497,32 +516,32 @@ async function searchTopicsFulltext(
   db: Database,
   query: string,
   filters: SearchFilters,
-  fetchLimit: number,
+  fetchLimit: number
 ): Promise<TopicSearchRow[]> {
   const conditions: ReturnType<typeof sql>[] = [
     sql`search_vector @@ websearch_to_tsquery('english', ${query})`,
     sql`is_mod_deleted = false`,
-  ];
+  ]
 
   if (filters.category) {
-    conditions.push(sql`category = ${filters.category}`);
+    conditions.push(sql`category = ${filters.category}`)
   }
   if (filters.author) {
-    conditions.push(sql`author_did = ${filters.author}`);
+    conditions.push(sql`author_did = ${filters.author}`)
   }
   if (filters.dateFrom) {
-    conditions.push(sql`created_at >= ${filters.dateFrom}::timestamptz`);
+    conditions.push(sql`created_at >= ${filters.dateFrom}::timestamptz`)
   }
   if (filters.dateTo) {
-    conditions.push(sql`created_at <= ${filters.dateTo}::timestamptz`);
+    conditions.push(sql`created_at <= ${filters.dateTo}::timestamptz`)
   }
   if (filters.cursorRank !== undefined && filters.cursorUri) {
     conditions.push(
-      sql`(ts_rank_cd(search_vector, websearch_to_tsquery('english', ${query})), uri) < (${filters.cursorRank}, ${filters.cursorUri})`,
-    );
+      sql`(ts_rank_cd(search_vector, websearch_to_tsquery('english', ${query})), uri) < (${filters.cursorRank}, ${filters.cursorUri})`
+    )
   }
 
-  const whereClause = sql.join(conditions, sql` AND `);
+  const whereClause = sql.join(conditions, sql` AND `)
 
   const result = await db.execute(sql`
     SELECT
@@ -533,9 +552,9 @@ async function searchTopicsFulltext(
     WHERE ${whereClause}
     ORDER BY rank DESC, created_at DESC
     LIMIT ${fetchLimit}
-  `);
+  `)
 
-  return result as unknown as TopicSearchRow[];
+  return result as unknown as TopicSearchRow[]
 }
 
 /**
@@ -545,29 +564,29 @@ async function searchTopicsFulltext(
 async function searchRepliesFulltext(
   db: Database,
   query: string,
-  filters: Omit<SearchFilters, "category">,
-  fetchLimit: number,
+  filters: Omit<SearchFilters, 'category'>,
+  fetchLimit: number
 ): Promise<ReplySearchRow[]> {
   const conditions: ReturnType<typeof sql>[] = [
     sql`r.search_vector @@ websearch_to_tsquery('english', ${query})`,
-  ];
+  ]
 
   if (filters.author) {
-    conditions.push(sql`r.author_did = ${filters.author}`);
+    conditions.push(sql`r.author_did = ${filters.author}`)
   }
   if (filters.dateFrom) {
-    conditions.push(sql`r.created_at >= ${filters.dateFrom}::timestamptz`);
+    conditions.push(sql`r.created_at >= ${filters.dateFrom}::timestamptz`)
   }
   if (filters.dateTo) {
-    conditions.push(sql`r.created_at <= ${filters.dateTo}::timestamptz`);
+    conditions.push(sql`r.created_at <= ${filters.dateTo}::timestamptz`)
   }
   if (filters.cursorRank !== undefined && filters.cursorUri) {
     conditions.push(
-      sql`(ts_rank_cd(r.search_vector, websearch_to_tsquery('english', ${query})), r.uri) < (${filters.cursorRank}, ${filters.cursorUri})`,
-    );
+      sql`(ts_rank_cd(r.search_vector, websearch_to_tsquery('english', ${query})), r.uri) < (${filters.cursorRank}, ${filters.cursorUri})`
+    )
   }
 
-  const whereClause = sql.join(conditions, sql` AND `);
+  const whereClause = sql.join(conditions, sql` AND `)
 
   const result = await db.execute(sql`
     SELECT
@@ -580,9 +599,9 @@ async function searchRepliesFulltext(
     WHERE ${whereClause}
     ORDER BY rank DESC, r.created_at DESC
     LIMIT ${fetchLimit}
-  `);
+  `)
 
-  return result as unknown as ReplySearchRow[];
+  return result as unknown as ReplySearchRow[]
 }
 
 /**
@@ -592,31 +611,31 @@ async function searchRepliesFulltext(
 async function searchTopicsVector(
   db: Database,
   queryEmbedding: number[],
-  filters: Omit<SearchFilters, "cursorRank" | "cursorUri">,
-  fetchLimit: number,
+  filters: Omit<SearchFilters, 'cursorRank' | 'cursorUri'>,
+  fetchLimit: number
 ): Promise<TopicSearchRow[]> {
-  const embeddingStr = `[${queryEmbedding.join(",")}]`;
+  const embeddingStr = `[${queryEmbedding.join(',')}]`
 
   const conditions: ReturnType<typeof sql>[] = [
     sql`embedding IS NOT NULL`,
     sql`is_mod_deleted = false`,
     sql`embedding <=> ${embeddingStr}::vector < 0.5`,
-  ];
+  ]
 
   if (filters.category) {
-    conditions.push(sql`category = ${filters.category}`);
+    conditions.push(sql`category = ${filters.category}`)
   }
   if (filters.author) {
-    conditions.push(sql`author_did = ${filters.author}`);
+    conditions.push(sql`author_did = ${filters.author}`)
   }
   if (filters.dateFrom) {
-    conditions.push(sql`created_at >= ${filters.dateFrom}::timestamptz`);
+    conditions.push(sql`created_at >= ${filters.dateFrom}::timestamptz`)
   }
   if (filters.dateTo) {
-    conditions.push(sql`created_at <= ${filters.dateTo}::timestamptz`);
+    conditions.push(sql`created_at <= ${filters.dateTo}::timestamptz`)
   }
 
-  const whereClause = sql.join(conditions, sql` AND `);
+  const whereClause = sql.join(conditions, sql` AND `)
 
   const result = await db.execute(sql`
     SELECT
@@ -627,9 +646,9 @@ async function searchTopicsVector(
     WHERE ${whereClause}
     ORDER BY embedding <=> ${embeddingStr}::vector ASC
     LIMIT ${fetchLimit}
-  `);
+  `)
 
-  return result as unknown as TopicSearchRow[];
+  return result as unknown as TopicSearchRow[]
 }
 
 /**
@@ -639,27 +658,27 @@ async function searchTopicsVector(
 async function searchRepliesVector(
   db: Database,
   queryEmbedding: number[],
-  filters: Omit<SearchFilters, "category" | "cursorRank" | "cursorUri">,
-  fetchLimit: number,
+  filters: Omit<SearchFilters, 'category' | 'cursorRank' | 'cursorUri'>,
+  fetchLimit: number
 ): Promise<ReplySearchRow[]> {
-  const embeddingStr = `[${queryEmbedding.join(",")}]`;
+  const embeddingStr = `[${queryEmbedding.join(',')}]`
 
   const conditions: ReturnType<typeof sql>[] = [
     sql`r.embedding IS NOT NULL`,
     sql`r.embedding <=> ${embeddingStr}::vector < 0.5`,
-  ];
+  ]
 
   if (filters.author) {
-    conditions.push(sql`r.author_did = ${filters.author}`);
+    conditions.push(sql`r.author_did = ${filters.author}`)
   }
   if (filters.dateFrom) {
-    conditions.push(sql`r.created_at >= ${filters.dateFrom}::timestamptz`);
+    conditions.push(sql`r.created_at >= ${filters.dateFrom}::timestamptz`)
   }
   if (filters.dateTo) {
-    conditions.push(sql`r.created_at <= ${filters.dateTo}::timestamptz`);
+    conditions.push(sql`r.created_at <= ${filters.dateTo}::timestamptz`)
   }
 
-  const whereClause = sql.join(conditions, sql` AND `);
+  const whereClause = sql.join(conditions, sql` AND `)
 
   const result = await db.execute(sql`
     SELECT
@@ -672,9 +691,9 @@ async function searchRepliesVector(
     WHERE ${whereClause}
     ORDER BY r.embedding <=> ${embeddingStr}::vector ASC
     LIMIT ${fetchLimit}
-  `);
+  `)
 
-  return result as unknown as ReplySearchRow[];
+  return result as unknown as ReplySearchRow[]
 }
 
 /**
@@ -684,72 +703,72 @@ async function countSearchResults(
   db: Database,
   query: string,
   filters: {
-    category?: string | undefined;
-    author?: string | undefined;
-    dateFrom?: string | undefined;
-    dateTo?: string | undefined;
-    searchType: "topics" | "replies" | "all";
-  },
+    category?: string | undefined
+    author?: string | undefined
+    dateFrom?: string | undefined
+    dateTo?: string | undefined
+    searchType: 'topics' | 'replies' | 'all'
+  }
 ): Promise<number> {
-  let total = 0;
+  let total = 0
 
-  if (filters.searchType === "topics" || filters.searchType === "all") {
+  if (filters.searchType === 'topics' || filters.searchType === 'all') {
     const conditions: ReturnType<typeof sql>[] = [
       sql`search_vector @@ websearch_to_tsquery('english', ${query})`,
       sql`is_mod_deleted = false`,
-    ];
+    ]
 
     if (filters.category) {
-      conditions.push(sql`category = ${filters.category}`);
+      conditions.push(sql`category = ${filters.category}`)
     }
     if (filters.author) {
-      conditions.push(sql`author_did = ${filters.author}`);
+      conditions.push(sql`author_did = ${filters.author}`)
     }
     if (filters.dateFrom) {
-      conditions.push(sql`created_at >= ${filters.dateFrom}::timestamptz`);
+      conditions.push(sql`created_at >= ${filters.dateFrom}::timestamptz`)
     }
     if (filters.dateTo) {
-      conditions.push(sql`created_at <= ${filters.dateTo}::timestamptz`);
+      conditions.push(sql`created_at <= ${filters.dateTo}::timestamptz`)
     }
 
-    const whereClause = sql.join(conditions, sql` AND `);
+    const whereClause = sql.join(conditions, sql` AND `)
 
     const result = await db.execute(sql`
       SELECT COUNT(*) AS count
       FROM topics
       WHERE ${whereClause}
-    `);
+    `)
 
-    const rows = result as unknown as CountRow[];
-    total += Number(rows[0]?.count ?? 0);
+    const rows = result as unknown as CountRow[]
+    total += Number(rows[0]?.count ?? 0)
   }
 
-  if (filters.searchType === "replies" || filters.searchType === "all") {
+  if (filters.searchType === 'replies' || filters.searchType === 'all') {
     const conditions: ReturnType<typeof sql>[] = [
       sql`search_vector @@ websearch_to_tsquery('english', ${query})`,
-    ];
+    ]
 
     if (filters.author) {
-      conditions.push(sql`author_did = ${filters.author}`);
+      conditions.push(sql`author_did = ${filters.author}`)
     }
     if (filters.dateFrom) {
-      conditions.push(sql`created_at >= ${filters.dateFrom}::timestamptz`);
+      conditions.push(sql`created_at >= ${filters.dateFrom}::timestamptz`)
     }
     if (filters.dateTo) {
-      conditions.push(sql`created_at <= ${filters.dateTo}::timestamptz`);
+      conditions.push(sql`created_at <= ${filters.dateTo}::timestamptz`)
     }
 
-    const whereClause = sql.join(conditions, sql` AND `);
+    const whereClause = sql.join(conditions, sql` AND `)
 
     const result = await db.execute(sql`
       SELECT COUNT(*) AS count
       FROM replies
       WHERE ${whereClause}
-    `);
+    `)
 
-    const rows = result as unknown as CountRow[];
-    total += Number(rows[0]?.count ?? 0);
+    const rows = result as unknown as CountRow[]
+    total += Number(rows[0]?.count ?? 0)
   }
 
-  return total;
+  return total
 }

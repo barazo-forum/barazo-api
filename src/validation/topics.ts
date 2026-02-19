@@ -1,4 +1,4 @@
-import { z } from "zod/v4";
+import { z } from 'zod/v4'
 
 // ---------------------------------------------------------------------------
 // Self-label schemas (com.atproto.label.defs#selfLabels)
@@ -6,11 +6,11 @@ import { z } from "zod/v4";
 
 const selfLabelSchema = z.object({
   val: z.string().max(128),
-});
+})
 
 const selfLabelsSchema = z.object({
   values: z.array(selfLabelSchema).max(10),
-});
+})
 
 // ---------------------------------------------------------------------------
 // Request schemas
@@ -21,55 +21,44 @@ export const createTopicSchema = z.object({
   title: z
     .string()
     .trim()
-    .min(1, "Title is required")
-    .max(200, "Title must be at most 200 characters"),
+    .min(1, 'Title is required')
+    .max(200, 'Title must be at most 200 characters'),
   content: z
     .string()
-    .min(1, "Content is required")
-    .max(100000, "Content must be at most 100,000 characters"),
-  category: z
-    .string()
-    .trim()
-    .min(1, "Category is required"),
+    .min(1, 'Content is required')
+    .max(100000, 'Content must be at most 100,000 characters'),
+  category: z.string().trim().min(1, 'Category is required'),
   tags: z
-    .array(
-      z.string().trim().min(1).max(30, "Tag must be at most 30 characters"),
-    )
-    .max(5, "At most 5 tags allowed")
+    .array(z.string().trim().min(1).max(30, 'Tag must be at most 30 characters'))
+    .max(5, 'At most 5 tags allowed')
     .optional(),
   labels: selfLabelsSchema.optional(),
-});
+})
 
-export type CreateTopicInput = z.infer<typeof createTopicSchema>;
+export type CreateTopicInput = z.infer<typeof createTopicSchema>
 
 /** Schema for updating an existing topic (all fields optional). */
 export const updateTopicSchema = z.object({
   title: z
     .string()
     .trim()
-    .min(1, "Title must not be empty")
-    .max(200, "Title must be at most 200 characters")
+    .min(1, 'Title must not be empty')
+    .max(200, 'Title must be at most 200 characters')
     .optional(),
   content: z
     .string()
-    .min(1, "Content must not be empty")
-    .max(100000, "Content must be at most 100,000 characters")
+    .min(1, 'Content must not be empty')
+    .max(100000, 'Content must be at most 100,000 characters')
     .optional(),
-  category: z
-    .string()
-    .trim()
-    .min(1, "Category must not be empty")
-    .optional(),
+  category: z.string().trim().min(1, 'Category must not be empty').optional(),
   tags: z
-    .array(
-      z.string().trim().min(1).max(30, "Tag must be at most 30 characters"),
-    )
-    .max(5, "At most 5 tags allowed")
+    .array(z.string().trim().min(1).max(30, 'Tag must be at most 30 characters'))
+    .max(5, 'At most 5 tags allowed')
     .optional(),
   labels: selfLabelsSchema.optional(),
-});
+})
 
-export type UpdateTopicInput = z.infer<typeof updateTopicSchema>;
+export type UpdateTopicInput = z.infer<typeof updateTopicSchema>
 
 // ---------------------------------------------------------------------------
 // Query schemas
@@ -86,9 +75,9 @@ export const topicQuerySchema = z.object({
     .default(25),
   category: z.string().optional(),
   tag: z.string().optional(),
-});
+})
 
-export type TopicQueryInput = z.infer<typeof topicQuerySchema>;
+export type TopicQueryInput = z.infer<typeof topicQuerySchema>
 
 // ---------------------------------------------------------------------------
 // Response schemas (for OpenAPI documentation)
@@ -112,14 +101,14 @@ export const topicResponseSchema = z.object({
   lastActivityAt: z.string(),
   createdAt: z.string(),
   indexedAt: z.string(),
-});
+})
 
-export type TopicResponse = z.infer<typeof topicResponseSchema>;
+export type TopicResponse = z.infer<typeof topicResponseSchema>
 
 /** Schema for a paginated topic list response. */
 export const topicListResponseSchema = z.object({
   topics: z.array(topicResponseSchema),
   cursor: z.string().nullable(),
-});
+})
 
-export type TopicListResponse = z.infer<typeof topicListResponseSchema>;
+export type TopicListResponse = z.infer<typeof topicListResponseSchema>

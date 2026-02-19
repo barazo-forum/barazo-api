@@ -610,11 +610,7 @@
         "reactions_author_subject_type_uniq": {
           "name": "reactions_author_subject_type_uniq",
           "nullsNotDistinct": false,
-          "columns": [
-            "author_did",
-            "subject_uri",
-            "type"
-          ]
+          "columns": ["author_did", "subject_uri", "type"]
         }
       },
       "policies": {},

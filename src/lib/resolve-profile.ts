@@ -1,26 +1,26 @@
 export interface SourceProfile {
-  did: string;
-  handle: string;
-  displayName: string | null;
-  avatarUrl: string | null;
-  bannerUrl: string | null;
-  bio: string | null;
+  did: string
+  handle: string
+  displayName: string | null
+  avatarUrl: string | null
+  bannerUrl: string | null
+  bio: string | null
 }
 
 export interface CommunityOverride {
-  displayName: string | null;
-  avatarUrl: string | null;
-  bannerUrl: string | null;
-  bio: string | null;
+  displayName: string | null
+  avatarUrl: string | null
+  bannerUrl: string | null
+  bio: string | null
 }
 
 export interface ResolvedProfile {
-  did: string;
-  handle: string;
-  displayName: string | null;
-  avatarUrl: string | null;
-  bannerUrl: string | null;
-  bio: string | null;
+  did: string
+  handle: string
+  displayName: string | null
+  avatarUrl: string | null
+  bannerUrl: string | null
+  bio: string | null
 }
 
 /**
@@ -29,7 +29,7 @@ export interface ResolvedProfile {
  */
 export function resolveProfile(
   source: SourceProfile,
-  override: CommunityOverride | null,
+  override: CommunityOverride | null
 ): ResolvedProfile {
   if (!override) {
     return {
@@ -39,7 +39,7 @@ export function resolveProfile(
       avatarUrl: source.avatarUrl,
       bannerUrl: source.bannerUrl,
       bio: source.bio,
-    };
+    }
   }
 
   return {
@@ -49,5 +49,5 @@ export function resolveProfile(
     avatarUrl: override.avatarUrl ?? source.avatarUrl,
     bannerUrl: override.bannerUrl ?? source.bannerUrl,
     bio: override.bio ?? source.bio,
-  };
+  }
 }

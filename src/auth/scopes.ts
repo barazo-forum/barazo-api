@@ -11,18 +11,17 @@
 
 /** Base scopes for core Barazo forum operations (read/write own forum records). */
 export const BARAZO_BASE_SCOPES =
-  "atproto repo:forum.barazo.topic.post repo:forum.barazo.topic.reply repo:forum.barazo.interaction.reaction";
+  'atproto repo:forum.barazo.topic.post repo:forum.barazo.topic.reply repo:forum.barazo.interaction.reaction'
 
 /** Additional scopes needed for cross-posting to Bluesky and Frontpage. */
 export const CROSSPOST_ADDITIONAL_SCOPES =
-  "repo:app.bsky.feed.post?action=create repo:fyi.frontpage.post?action=create blob:image/*";
+  'repo:app.bsky.feed.post?action=create repo:fyi.frontpage.post?action=create blob:image/*'
 
 /** Combined scopes for base + cross-posting. */
-export const BARAZO_CROSSPOST_SCOPES =
-  `${BARAZO_BASE_SCOPES} ${CROSSPOST_ADDITIONAL_SCOPES}`;
+export const BARAZO_CROSSPOST_SCOPES = `${BARAZO_BASE_SCOPES} ${CROSSPOST_ADDITIONAL_SCOPES}`
 
 /** Legacy fallback for PDS implementations that don't support granular scopes. */
-export const FALLBACK_SCOPE = "atproto transition:generic";
+export const FALLBACK_SCOPE = 'atproto transition:generic'
 
 /**
  * Check whether a granted scope string includes cross-post permissions.
@@ -31,17 +30,14 @@ export const FALLBACK_SCOPE = "atproto transition:generic";
  */
 export function hasCrossPostScopes(scope: string): boolean {
   if (isFallbackScope(scope)) {
-    return true;
+    return true
   }
-  return (
-    scope.includes("repo:app.bsky.feed.post") &&
-    scope.includes("repo:fyi.frontpage.post")
-  );
+  return scope.includes('repo:app.bsky.feed.post') && scope.includes('repo:fyi.frontpage.post')
 }
 
 /**
  * Check whether a scope string is the legacy `transition:generic` fallback.
  */
 export function isFallbackScope(scope: string): boolean {
-  return scope.includes("transition:generic");
+  return scope.includes('transition:generic')
 }

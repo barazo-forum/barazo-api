@@ -1,4 +1,4 @@
-import type { Logger } from "../lib/logger.js";
+import type { Logger } from '../lib/logger.js'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -6,14 +6,14 @@ import type { Logger } from "../lib/logger.js";
 
 export interface EmbeddingService {
   /** Generate an embedding vector for the given text. Returns null on failure or when disabled. */
-  generateEmbedding(text: string): Promise<number[] | null>;
+  generateEmbedding(text: string): Promise<number[] | null>
   /** Whether the embedding service is configured and available. */
-  isEnabled(): boolean;
+  isEnabled(): boolean
 }
 
 /** OpenAI-compatible embedding response. */
 interface EmbeddingResponse {
-  data: ReadonlyArray<{ embedding: number[] }>;
+  data: ReadonlyArray<{ embedding: number[] }>
 }
 
 // ---------------------------------------------------------------------------
@@ -33,53 +33,53 @@ interface EmbeddingResponse {
 export function createEmbeddingService(
   embeddingUrl: string | undefined,
   dimensions: number,
-  logger: Logger,
+  logger: Logger
 ): EmbeddingService {
-  const enabled = typeof embeddingUrl === "string" && embeddingUrl.length > 0;
+  const enabled = typeof embeddingUrl === 'string' && embeddingUrl.length > 0
 
   return {
     isEnabled(): boolean {
-      return enabled;
+      return enabled
     },
 
     async generateEmbedding(text: string): Promise<number[] | null> {
       if (!enabled || !embeddingUrl) {
-        return null;
+        return null
       }
 
       try {
         const response = await fetch(embeddingUrl, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             input: text,
-            model: "default",
+            model: 'default',
             dimensions,
           }),
           signal: AbortSignal.timeout(10_000),
-        });
+        })
 
         if (!response.ok) {
           logger.warn(
             { status: response.status, url: embeddingUrl },
-            "Embedding API returned non-OK status",
-          );
-          return null;
+            'Embedding API returned non-OK status'
+          )
+          return null
         }
 
-        const body = (await response.json()) as EmbeddingResponse;
-        const embedding = body.data[0]?.embedding;
+        const body = (await response.json()) as EmbeddingResponse
+        const embedding = body.data[0]?.embedding
 
         if (!Array.isArray(embedding) || embedding.length === 0) {
-          logger.warn("Embedding API returned empty or invalid embedding");
-          return null;
+          logger.warn('Embedding API returned empty or invalid embedding')
+          return null
         }
 
-        return embedding;
+        return embedding
       } catch (err: unknown) {
-        logger.warn({ err }, "Failed to generate embedding");
-        return null;
+        logger.warn({ err }, 'Failed to generate embedding')
+        return null
       }
     },
-  };
+  }
 }

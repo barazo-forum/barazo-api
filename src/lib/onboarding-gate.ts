@@ -1,10 +1,13 @@
-import { eq, and } from "drizzle-orm";
-import { communityOnboardingFields, userOnboardingResponses } from "../db/schema/onboarding-fields.js";
-import type { Database } from "../db/index.js";
+import { eq, and } from 'drizzle-orm'
+import {
+  communityOnboardingFields,
+  userOnboardingResponses,
+} from '../db/schema/onboarding-fields.js'
+import type { Database } from '../db/index.js'
 
 export interface OnboardingCheckResult {
-  complete: boolean;
-  missingFields: { id: string; label: string; fieldType: string }[];
+  complete: boolean
+  missingFields: { id: string; label: string; fieldType: string }[]
 }
 
 /**
@@ -15,7 +18,7 @@ export interface OnboardingCheckResult {
 export async function checkOnboardingComplete(
   db: Database,
   did: string,
-  communityDid: string,
+  communityDid: string
 ): Promise<OnboardingCheckResult> {
   // Get mandatory fields for this community
   const fields = await db
@@ -24,12 +27,12 @@ export async function checkOnboardingComplete(
     .where(
       and(
         eq(communityOnboardingFields.communityDid, communityDid),
-        eq(communityOnboardingFields.isMandatory, true),
-      ),
-    );
+        eq(communityOnboardingFields.isMandatory, true)
+      )
+    )
 
   if (fields.length === 0) {
-    return { complete: true, missingFields: [] };
+    return { complete: true, missingFields: [] }
   }
 
   // Get user's responses for this community
@@ -39,18 +42,18 @@ export async function checkOnboardingComplete(
     .where(
       and(
         eq(userOnboardingResponses.did, did),
-        eq(userOnboardingResponses.communityDid, communityDid),
-      ),
-    );
+        eq(userOnboardingResponses.communityDid, communityDid)
+      )
+    )
 
-  const answeredFieldIds = new Set(responses.map((r) => r.fieldId));
+  const answeredFieldIds = new Set(responses.map((r) => r.fieldId))
 
   const missingFields = fields
     .filter((f) => !answeredFieldIds.has(f.id))
-    .map((f) => ({ id: f.id, label: f.label, fieldType: f.fieldType }));
+    .map((f) => ({ id: f.id, label: f.label, fieldType: f.fieldType }))
 
   return {
     complete: missingFields.length === 0,
     missingFields,
-  };
+  }
 }

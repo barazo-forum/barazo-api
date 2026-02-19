@@ -1,22 +1,18 @@
-import { and, eq, inArray } from "drizzle-orm";
-import type { Database } from "../db/index.js";
-import { users } from "../db/schema/users.js";
-import { communityProfiles } from "../db/schema/community-profiles.js";
-import {
-  resolveProfile,
-  type SourceProfile,
-  type CommunityOverride,
-} from "./resolve-profile.js";
+import { and, eq, inArray } from 'drizzle-orm'
+import type { Database } from '../db/index.js'
+import { users } from '../db/schema/users.js'
+import { communityProfiles } from '../db/schema/community-profiles.js'
+import { resolveProfile, type SourceProfile, type CommunityOverride } from './resolve-profile.js'
 
 /**
  * Compact author profile for embedding in topic/reply responses.
  * Intentionally excludes bannerUrl and bio to keep payloads small.
  */
 export interface AuthorProfile {
-  did: string;
-  handle: string;
-  displayName: string | null;
-  avatarUrl: string | null;
+  did: string
+  handle: string
+  displayName: string | null
+  avatarUrl: string | null
 }
 
 /**
@@ -30,11 +26,11 @@ export interface AuthorProfile {
 export async function resolveAuthors(
   dids: string[],
   communityDid: string | null,
-  db: Database,
+  db: Database
 ): Promise<Map<string, AuthorProfile>> {
-  const uniqueDids = [...new Set(dids)];
+  const uniqueDids = [...new Set(dids)]
   if (uniqueDids.length === 0) {
-    return new Map();
+    return new Map()
   }
 
   // Batch query 1: source profiles from users table
@@ -48,15 +44,15 @@ export async function resolveAuthors(
       bio: users.bio,
     })
     .from(users)
-    .where(inArray(users.did, uniqueDids));
+    .where(inArray(users.did, uniqueDids))
 
-  const sourceMap = new Map<string, SourceProfile>();
+  const sourceMap = new Map<string, SourceProfile>()
   for (const row of userRows) {
-    sourceMap.set(row.did, row);
+    sourceMap.set(row.did, row)
   }
 
   // Batch query 2: community profile overrides (only when community context exists)
-  const overrideMap = new Map<string, CommunityOverride>();
+  const overrideMap = new Map<string, CommunityOverride>()
   if (communityDid) {
     const overrideRows = await db
       .select({
@@ -70,9 +66,9 @@ export async function resolveAuthors(
       .where(
         and(
           inArray(communityProfiles.did, uniqueDids),
-          eq(communityProfiles.communityDid, communityDid),
-        ),
-      );
+          eq(communityProfiles.communityDid, communityDid)
+        )
+      )
 
     for (const row of overrideRows) {
       overrideMap.set(row.did, {
@@ -80,12 +76,12 @@ export async function resolveAuthors(
         avatarUrl: row.avatarUrl,
         bannerUrl: row.bannerUrl,
         bio: row.bio,
-      });
+      })
     }
   }
 
   // Merge: resolve each DID using resolveProfile, then project to AuthorProfile
-  const result = new Map<string, AuthorProfile>();
+  const result = new Map<string, AuthorProfile>()
   for (const did of uniqueDids) {
     const source = sourceMap.get(did) ?? {
       did,
@@ -94,17 +90,17 @@ export async function resolveAuthors(
       avatarUrl: null,
       bannerUrl: null,
       bio: null,
-    };
+    }
 
-    const resolved = resolveProfile(source, overrideMap.get(did) ?? null);
+    const resolved = resolveProfile(source, overrideMap.get(did) ?? null)
 
     result.set(did, {
       did: resolved.did,
       handle: resolved.handle,
       displayName: resolved.displayName,
       avatarUrl: resolved.avatarUrl,
-    });
+    })
   }
 
-  return result;
+  return result
 }

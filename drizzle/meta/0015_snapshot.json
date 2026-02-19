@@ -632,11 +632,7 @@
         "reactions_author_subject_type_uniq": {
           "name": "reactions_author_subject_type_uniq",
           "nullsNotDistinct": false,
-          "columns": [
-            "author_did",
-            "subject_uri",
-            "type"
-          ]
+          "columns": ["author_did", "subject_uri", "type"]
         }
       },
       "policies": {},
@@ -947,12 +943,8 @@
           "name": "categories_parent_id_fk",
           "tableFrom": "categories",
           "tableTo": "categories",
-          "columnsFrom": [
-            "parent_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["parent_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         }
@@ -1511,10 +1503,7 @@
       "compositePrimaryKeys": {
         "user_community_preferences_did_community_did_pk": {
           "name": "user_community_preferences_did_community_did_pk",
-          "columns": [
-            "did",
-            "community_did"
-          ]
+          "columns": ["did", "community_did"]
         }
       },
       "uniqueConstraints": {},

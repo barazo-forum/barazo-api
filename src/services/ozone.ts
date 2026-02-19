@@ -1,124 +1,119 @@
-import { eq, and } from "drizzle-orm";
-import type { Database } from "../db/index.js";
-import type { Cache } from "../cache/index.js";
-import type { Logger } from "../lib/logger.js";
-import { ozoneLabels } from "../db/schema/ozone-labels.js";
+import { eq, and } from 'drizzle-orm'
+import type { Database } from '../db/index.js'
+import type { Cache } from '../cache/index.js'
+import type { Logger } from '../lib/logger.js'
+import { ozoneLabels } from '../db/schema/ozone-labels.js'
 
-const CACHE_TTL = 3600; // 1 hour
-const CACHE_PREFIX = "ozone:labels:";
-const INITIAL_RECONNECT_MS = 1000;
-const MAX_RECONNECT_MS = 60000;
-const SPAM_LABELS = new Set(["spam", "!hide"]);
+const CACHE_TTL = 3600 // 1 hour
+const CACHE_PREFIX = 'ozone:labels:'
+const INITIAL_RECONNECT_MS = 1000
+const MAX_RECONNECT_MS = 60000
+const SPAM_LABELS = new Set(['spam', '!hide'])
 
 interface LabelEvent {
-  seq: number;
-  labels: Label[];
+  seq: number
+  labels: Label[]
 }
 
 interface Label {
-  src: string;
-  uri: string;
-  val: string;
-  neg?: boolean;
-  cts: string;
-  exp?: string;
+  src: string
+  uri: string
+  val: string
+  neg?: boolean
+  cts: string
+  exp?: string
 }
 
 interface CachedLabel {
-  val: string;
-  src: string;
-  neg: boolean;
+  val: string
+  src: string
+  neg: boolean
 }
 
 export class OzoneService {
-  private ws: WebSocket | null = null;
-  private reconnectMs = INITIAL_RECONNECT_MS;
-  private stopping = false;
+  private ws: WebSocket | null = null
+  private reconnectMs = INITIAL_RECONNECT_MS
+  private stopping = false
 
   constructor(
     private db: Database,
     private cache: Cache,
     private logger: Logger,
-    private labelerUrl: string,
+    private labelerUrl: string
   ) {}
 
   start(): void {
-    this.stopping = false;
-    this.connect();
+    this.stopping = false
+    this.connect()
   }
 
   stop(): void {
-    this.stopping = true;
+    this.stopping = true
     if (this.ws) {
-      this.ws.close();
-      this.ws = null;
+      this.ws.close()
+      this.ws = null
     }
   }
 
   private connect(): void {
-    if (this.stopping) return;
+    if (this.stopping) return
 
-    const wsUrl = this.labelerUrl
-      .replace(/^https?:/, "wss:")
-      .replace(/\/$/, "");
-    const url = `${wsUrl}/xrpc/com.atproto.label.subscribeLabels`;
+    const wsUrl = this.labelerUrl.replace(/^https?:/, 'wss:').replace(/\/$/, '')
+    const url = `${wsUrl}/xrpc/com.atproto.label.subscribeLabels`
 
-    this.logger.info({ url }, "Connecting to Ozone labeler");
+    this.logger.info({ url }, 'Connecting to Ozone labeler')
 
     try {
-      this.ws = new WebSocket(url);
+      this.ws = new WebSocket(url)
     } catch (err) {
-      this.logger.warn({ err }, "Failed to create Ozone WebSocket");
-      this.scheduleReconnect();
-      return;
+      this.logger.warn({ err }, 'Failed to create Ozone WebSocket')
+      this.scheduleReconnect()
+      return
     }
 
-    this.ws.addEventListener("open", () => {
-      this.logger.info("Connected to Ozone labeler");
-      this.reconnectMs = INITIAL_RECONNECT_MS;
-    });
+    this.ws.addEventListener('open', () => {
+      this.logger.info('Connected to Ozone labeler')
+      this.reconnectMs = INITIAL_RECONNECT_MS
+    })
 
-    this.ws.addEventListener("message", (event) => {
-      void this.handleMessage(event.data);
-    });
+    this.ws.addEventListener('message', (event) => {
+      void this.handleMessage(event.data)
+    })
 
-    this.ws.addEventListener("close", () => {
-      this.logger.info("Ozone labeler connection closed");
-      this.scheduleReconnect();
-    });
+    this.ws.addEventListener('close', () => {
+      this.logger.info('Ozone labeler connection closed')
+      this.scheduleReconnect()
+    })
 
-    this.ws.addEventListener("error", (event) => {
-      this.logger.warn({ event }, "Ozone labeler WebSocket error");
-    });
+    this.ws.addEventListener('error', (event) => {
+      this.logger.warn({ event }, 'Ozone labeler WebSocket error')
+    })
   }
 
   private scheduleReconnect(): void {
-    if (this.stopping) return;
+    if (this.stopping) return
 
-    this.logger.info(
-      { reconnectMs: this.reconnectMs },
-      "Scheduling Ozone labeler reconnect",
-    );
+    this.logger.info({ reconnectMs: this.reconnectMs }, 'Scheduling Ozone labeler reconnect')
 
     setTimeout(() => {
-      this.connect();
-    }, this.reconnectMs);
+      this.connect()
+    }, this.reconnectMs)
 
-    this.reconnectMs = Math.min(this.reconnectMs * 2, MAX_RECONNECT_MS);
+    this.reconnectMs = Math.min(this.reconnectMs * 2, MAX_RECONNECT_MS)
   }
 
   private async handleMessage(data: unknown): Promise<void> {
     try {
-      const text = typeof data === "string" ? data : String(data);
-      const event = JSON.parse(text) as LabelEvent;
+      const text = typeof data === 'string' ? data : String(data)
+      const event = JSON.parse(text) as LabelEvent
 
-      if (!Array.isArray(event.labels)) return;
+      if (!Array.isArray(event.labels)) return
 
       for (const label of event.labels) {
-        await this.processLabel(label);
+        await this.processLabel(label)
       }
     } catch (err) {
-      this.logger.warn({ err }, "Failed to process Ozone label event");
+      this.logger.warn({ err }, 'Failed to process Ozone label event')
     }
   }
 
@@ -131,9 +126,9 @@ export class OzoneService {
           and(
             eq(ozoneLabels.src, label.src),
             eq(ozoneLabels.uri, label.uri),
-            eq(ozoneLabels.val, label.val),
-          ),
-        );
+            eq(ozoneLabels.val, label.val)
+          )
+        )
     } else {
       // Upsert the label
       await this.db
@@ -154,12 +149,12 @@ export class OzoneService {
             exp: label.exp ? new Date(label.exp) : undefined,
             indexedAt: new Date(),
           },
-        });
+        })
     }
 
     // Invalidate cache for this URI
     try {
-      await this.cache.del(`${CACHE_PREFIX}${label.uri}`);
+      await this.cache.del(`${CACHE_PREFIX}${label.uri}`)
     } catch {
       // Non-critical
     }
@@ -170,13 +165,13 @@ export class OzoneService {
    * Results are cached in Valkey for 1 hour.
    */
   async getLabels(uri: string): Promise<CachedLabel[]> {
-    const cacheKey = `${CACHE_PREFIX}${uri}`;
+    const cacheKey = `${CACHE_PREFIX}${uri}`
 
     // Try cache first
     try {
-      const cached = await this.cache.get(cacheKey);
+      const cached = await this.cache.get(cacheKey)
       if (cached) {
-        return JSON.parse(cached) as CachedLabel[];
+        return JSON.parse(cached) as CachedLabel[]
       }
     } catch {
       // Fall through to DB
@@ -189,42 +184,37 @@ export class OzoneService {
         neg: ozoneLabels.neg,
       })
       .from(ozoneLabels)
-      .where(
-        and(
-          eq(ozoneLabels.uri, uri),
-          eq(ozoneLabels.neg, false),
-        ),
-      );
+      .where(and(eq(ozoneLabels.uri, uri), eq(ozoneLabels.neg, false)))
 
     const labels: CachedLabel[] = rows.map((r) => ({
       val: r.val,
       src: r.src,
       neg: r.neg,
-    }));
+    }))
 
     // Cache result
     try {
-      await this.cache.set(cacheKey, JSON.stringify(labels), "EX", CACHE_TTL);
+      await this.cache.set(cacheKey, JSON.stringify(labels), 'EX', CACHE_TTL)
     } catch {
       // Non-critical
     }
 
-    return labels;
+    return labels
   }
 
   /**
    * Check if a URI has a specific label value.
    */
   async hasLabel(uri: string, val: string): Promise<boolean> {
-    const labels = await this.getLabels(uri);
-    return labels.some((l) => l.val === val);
+    const labels = await this.getLabels(uri)
+    return labels.some((l) => l.val === val)
   }
 
   /**
    * Check if a DID or URI has any spam-related labels (spam, !hide).
    */
   async isSpamLabeled(didOrUri: string): Promise<boolean> {
-    const labels = await this.getLabels(didOrUri);
-    return labels.some((l) => SPAM_LABELS.has(l.val));
+    const labels = await this.getLabels(didOrUri)
+    return labels.some((l) => SPAM_LABELS.has(l.val))
   }
 }

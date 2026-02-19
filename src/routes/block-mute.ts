@@ -1,34 +1,34 @@
-import { eq } from "drizzle-orm";
-import type { FastifyPluginCallback } from "fastify";
-import { badRequest } from "../lib/api-errors.js";
-import { didParamSchema } from "../validation/block-mute.js";
-import { userPreferences } from "../db/schema/user-preferences.js";
+import { eq } from 'drizzle-orm'
+import type { FastifyPluginCallback } from 'fastify'
+import { badRequest } from '../lib/api-errors.js'
+import { didParamSchema } from '../validation/block-mute.js'
+import { userPreferences } from '../db/schema/user-preferences.js'
 
 // ---------------------------------------------------------------------------
 // OpenAPI JSON Schema definitions
 // ---------------------------------------------------------------------------
 
 const errorJsonSchema = {
-  type: "object" as const,
+  type: 'object' as const,
   properties: {
-    error: { type: "string" as const },
+    error: { type: 'string' as const },
   },
-};
+}
 
 const successJsonSchema = {
-  type: "object" as const,
+  type: 'object' as const,
   properties: {
-    success: { type: "boolean" as const },
+    success: { type: 'boolean' as const },
   },
-};
+}
 
 const didParamJsonSchema = {
-  type: "object" as const,
-  required: ["did"],
+  type: 'object' as const,
+  required: ['did'],
   properties: {
-    did: { type: "string" as const },
+    did: { type: 'string' as const },
   },
-};
+}
 
 // ---------------------------------------------------------------------------
 // Block/mute action routes plugin
@@ -44,19 +44,19 @@ const didParamJsonSchema = {
  */
 export function blockMuteRoutes(): FastifyPluginCallback {
   return (app, _opts, done) => {
-    const { db, authMiddleware } = app;
+    const { db, authMiddleware } = app
 
     // -------------------------------------------------------------------
     // POST /api/users/me/block/:did (auth required)
     // -------------------------------------------------------------------
 
     app.post(
-      "/api/users/me/block/:did",
+      '/api/users/me/block/:did',
       {
         preHandler: [authMiddleware.requireAuth],
         schema: {
-          tags: ["Block & Mute"],
-          summary: "Block a user by DID",
+          tags: ['Block & Mute'],
+          summary: 'Block a user by DID',
           security: [{ bearerAuth: [] }],
           params: didParamJsonSchema,
           response: {
@@ -67,39 +67,35 @@ export function blockMuteRoutes(): FastifyPluginCallback {
         },
       },
       async (request, reply) => {
-        const requestUser = request.user;
+        const requestUser = request.user
         if (!requestUser) {
-          return reply
-            .status(401)
-            .send({ error: "Authentication required" });
+          return reply.status(401).send({ error: 'Authentication required' })
         }
 
         const paramResult = didParamSchema.safeParse({
-          did: decodeURIComponent(
-            (request.params as { did: string }).did,
-          ),
-        });
+          did: decodeURIComponent((request.params as { did: string }).did),
+        })
         if (!paramResult.success) {
-          throw badRequest("Invalid DID format");
+          throw badRequest('Invalid DID format')
         }
-        const targetDid = paramResult.data.did;
+        const targetDid = paramResult.data.did
 
         // Read current preferences
         const rows = await db
           .select()
           .from(userPreferences)
-          .where(eq(userPreferences.did, requestUser.did));
+          .where(eq(userPreferences.did, requestUser.did))
 
-        const prefs = rows[0];
-        const currentBlocked: string[] = prefs?.blockedDids ?? [];
+        const prefs = rows[0]
+        const currentBlocked: string[] = prefs?.blockedDids ?? []
 
         // Idempotent: if already blocked, return success
         if (currentBlocked.includes(targetDid)) {
-          return reply.status(200).send({ success: true });
+          return reply.status(200).send({ success: true })
         }
 
-        const newBlocked = [...currentBlocked, targetDid];
-        const now = new Date();
+        const newBlocked = [...currentBlocked, targetDid]
+        const now = new Date()
 
         // Upsert preferences with updated blockedDids
         await db
@@ -115,23 +111,23 @@ export function blockMuteRoutes(): FastifyPluginCallback {
               blockedDids: newBlocked,
               updatedAt: now,
             },
-          });
+          })
 
-        return reply.status(200).send({ success: true });
-      },
-    );
+        return reply.status(200).send({ success: true })
+      }
+    )
 
     // -------------------------------------------------------------------
     // DELETE /api/users/me/block/:did (auth required)
     // -------------------------------------------------------------------
 
     app.delete(
-      "/api/users/me/block/:did",
+      '/api/users/me/block/:did',
       {
         preHandler: [authMiddleware.requireAuth],
         schema: {
-          tags: ["Block & Mute"],
-          summary: "Unblock a user by DID",
+          tags: ['Block & Mute'],
+          summary: 'Unblock a user by DID',
           security: [{ bearerAuth: [] }],
           params: didParamJsonSchema,
           response: {
@@ -142,33 +138,29 @@ export function blockMuteRoutes(): FastifyPluginCallback {
         },
       },
       async (request, reply) => {
-        const requestUser = request.user;
+        const requestUser = request.user
         if (!requestUser) {
-          return reply
-            .status(401)
-            .send({ error: "Authentication required" });
+          return reply.status(401).send({ error: 'Authentication required' })
         }
 
         const paramResult = didParamSchema.safeParse({
-          did: decodeURIComponent(
-            (request.params as { did: string }).did,
-          ),
-        });
+          did: decodeURIComponent((request.params as { did: string }).did),
+        })
         if (!paramResult.success) {
-          throw badRequest("Invalid DID format");
+          throw badRequest('Invalid DID format')
         }
-        const targetDid = paramResult.data.did;
+        const targetDid = paramResult.data.did
 
         // Read current preferences
         const rows = await db
           .select()
           .from(userPreferences)
-          .where(eq(userPreferences.did, requestUser.did));
+          .where(eq(userPreferences.did, requestUser.did))
 
-        const prefs = rows[0];
-        const currentBlocked: string[] = prefs?.blockedDids ?? [];
-        const newBlocked = currentBlocked.filter((d) => d !== targetDid);
-        const now = new Date();
+        const prefs = rows[0]
+        const currentBlocked: string[] = prefs?.blockedDids ?? []
+        const newBlocked = currentBlocked.filter((d) => d !== targetDid)
+        const now = new Date()
 
         // Upsert preferences with updated blockedDids
         await db
@@ -184,23 +176,23 @@ export function blockMuteRoutes(): FastifyPluginCallback {
               blockedDids: newBlocked,
               updatedAt: now,
             },
-          });
+          })
 
-        return reply.status(200).send({ success: true });
-      },
-    );
+        return reply.status(200).send({ success: true })
+      }
+    )
 
     // -------------------------------------------------------------------
     // POST /api/users/me/mute/:did (auth required)
     // -------------------------------------------------------------------
 
     app.post(
-      "/api/users/me/mute/:did",
+      '/api/users/me/mute/:did',
       {
         preHandler: [authMiddleware.requireAuth],
         schema: {
-          tags: ["Block & Mute"],
-          summary: "Mute a user by DID",
+          tags: ['Block & Mute'],
+          summary: 'Mute a user by DID',
           security: [{ bearerAuth: [] }],
           params: didParamJsonSchema,
           response: {
@@ -211,39 +203,35 @@ export function blockMuteRoutes(): FastifyPluginCallback {
         },
       },
       async (request, reply) => {
-        const requestUser = request.user;
+        const requestUser = request.user
         if (!requestUser) {
-          return reply
-            .status(401)
-            .send({ error: "Authentication required" });
+          return reply.status(401).send({ error: 'Authentication required' })
         }
 
         const paramResult = didParamSchema.safeParse({
-          did: decodeURIComponent(
-            (request.params as { did: string }).did,
-          ),
-        });
+          did: decodeURIComponent((request.params as { did: string }).did),
+        })
         if (!paramResult.success) {
-          throw badRequest("Invalid DID format");
+          throw badRequest('Invalid DID format')
         }
-        const targetDid = paramResult.data.did;
+        const targetDid = paramResult.data.did
 
         // Read current preferences
         const rows = await db
           .select()
           .from(userPreferences)
-          .where(eq(userPreferences.did, requestUser.did));
+          .where(eq(userPreferences.did, requestUser.did))
 
-        const prefs = rows[0];
-        const currentMuted: string[] = prefs?.mutedDids ?? [];
+        const prefs = rows[0]
+        const currentMuted: string[] = prefs?.mutedDids ?? []
 
         // Idempotent: if already muted, return success
         if (currentMuted.includes(targetDid)) {
-          return reply.status(200).send({ success: true });
+          return reply.status(200).send({ success: true })
         }
 
-        const newMuted = [...currentMuted, targetDid];
-        const now = new Date();
+        const newMuted = [...currentMuted, targetDid]
+        const now = new Date()
 
         // Upsert preferences with updated mutedDids
         await db
@@ -259,23 +247,23 @@ export function blockMuteRoutes(): FastifyPluginCallback {
               mutedDids: newMuted,
               updatedAt: now,
             },
-          });
+          })
 
-        return reply.status(200).send({ success: true });
-      },
-    );
+        return reply.status(200).send({ success: true })
+      }
+    )
 
     // -------------------------------------------------------------------
     // DELETE /api/users/me/mute/:did (auth required)
     // -------------------------------------------------------------------
 
     app.delete(
-      "/api/users/me/mute/:did",
+      '/api/users/me/mute/:did',
       {
         preHandler: [authMiddleware.requireAuth],
         schema: {
-          tags: ["Block & Mute"],
-          summary: "Unmute a user by DID",
+          tags: ['Block & Mute'],
+          summary: 'Unmute a user by DID',
           security: [{ bearerAuth: [] }],
           params: didParamJsonSchema,
           response: {
@@ -286,33 +274,29 @@ export function blockMuteRoutes(): FastifyPluginCallback {
         },
       },
       async (request, reply) => {
-        const requestUser = request.user;
+        const requestUser = request.user
         if (!requestUser) {
-          return reply
-            .status(401)
-            .send({ error: "Authentication required" });
+          return reply.status(401).send({ error: 'Authentication required' })
         }
 
         const paramResult = didParamSchema.safeParse({
-          did: decodeURIComponent(
-            (request.params as { did: string }).did,
-          ),
-        });
+          did: decodeURIComponent((request.params as { did: string }).did),
+        })
         if (!paramResult.success) {
-          throw badRequest("Invalid DID format");
+          throw badRequest('Invalid DID format')
         }
-        const targetDid = paramResult.data.did;
+        const targetDid = paramResult.data.did
 
         // Read current preferences
         const rows = await db
           .select()
           .from(userPreferences)
-          .where(eq(userPreferences.did, requestUser.did));
+          .where(eq(userPreferences.did, requestUser.did))
 
-        const prefs = rows[0];
-        const currentMuted: string[] = prefs?.mutedDids ?? [];
-        const newMuted = currentMuted.filter((d) => d !== targetDid);
-        const now = new Date();
+        const prefs = rows[0]
+        const currentMuted: string[] = prefs?.mutedDids ?? []
+        const newMuted = currentMuted.filter((d) => d !== targetDid)
+        const now = new Date()
 
         // Upsert preferences with updated mutedDids
         await db
@@ -328,12 +312,12 @@ export function blockMuteRoutes(): FastifyPluginCallback {
               mutedDids: newMuted,
               updatedAt: now,
             },
-          });
+          })
 
-        return reply.status(200).send({ success: true });
-      },
-    );
+        return reply.status(200).send({ success: true })
+      }
+    )
 
-    done();
-  };
+    done()
+  }
 }

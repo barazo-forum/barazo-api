@@ -11,12 +11,12 @@
  * Fastify uses `statusCode` on thrown errors to set the response status.
  */
 export class ApiError extends Error {
-  readonly statusCode: number;
+  readonly statusCode: number
 
   constructor(statusCode: number, message: string) {
-    super(message);
-    this.statusCode = statusCode;
-    this.name = "ApiError";
+    super(message)
+    this.statusCode = statusCode
+    this.name = 'ApiError'
   }
 }
 
@@ -26,7 +26,7 @@ export class ApiError extends Error {
  * @param message - Human-readable description of what was not found.
  */
 export function notFound(message: string): ApiError {
-  return new ApiError(404, message);
+  return new ApiError(404, message)
 }
 
 /**
@@ -35,7 +35,7 @@ export function notFound(message: string): ApiError {
  * @param message - Human-readable reason for the denial.
  */
 export function forbidden(message: string): ApiError {
-  return new ApiError(403, message);
+  return new ApiError(403, message)
 }
 
 /**
@@ -44,7 +44,7 @@ export function forbidden(message: string): ApiError {
  * @param message - Human-readable description of the validation failure.
  */
 export function badRequest(message: string): ApiError {
-  return new ApiError(400, message);
+  return new ApiError(400, message)
 }
 
 /**
@@ -53,7 +53,7 @@ export function badRequest(message: string): ApiError {
  * @param message - Human-readable description of the conflict.
  */
 export function conflict(message: string): ApiError {
-  return new ApiError(409, message);
+  return new ApiError(409, message)
 }
 
 /**
@@ -62,5 +62,5 @@ export function conflict(message: string): ApiError {
  * @param message - Human-readable description of the rate limit violation.
  */
 export function tooManyRequests(message: string): ApiError {
-  return new ApiError(429, message);
+  return new ApiError(429, message)
 }

@@ -9,17 +9,17 @@ The AppView backend for Barazo. Subscribes to AT Protocol firehose, indexes `for
 
 ## Tech Stack
 
-| Component | Technology |
-|-----------|-----------|
-| Runtime | Node.js 24 LTS / TypeScript (strict) |
-| Framework | Fastify |
-| Protocol | @atproto/api, @atproto/oauth-client-node, @atproto/tap |
-| Database | PostgreSQL 16 (Drizzle ORM, Drizzle Kit migrations) |
-| Cache | Valkey |
-| Testing | Vitest + Supertest |
-| Logging | Pino (structured) |
-| Monitoring | GlitchTip (Sentry SDK-compatible) |
-| Security | Helmet + Zod + DOMPurify + rate limiting |
+| Component  | Technology                                             |
+| ---------- | ------------------------------------------------------ |
+| Runtime    | Node.js 24 LTS / TypeScript (strict)                   |
+| Framework  | Fastify                                                |
+| Protocol   | @atproto/api, @atproto/oauth-client-node, @atproto/tap |
+| Database   | PostgreSQL 16 (Drizzle ORM, Drizzle Kit migrations)    |
+| Cache      | Valkey                                                 |
+| Testing    | Vitest + Supertest                                     |
+| Logging    | Pino (structured)                                      |
+| Monitoring | GlitchTip (Sentry SDK-compatible)                      |
+| Security   | Helmet + Zod + DOMPurify + rate limiting               |
 
 ## What This Repo Does
 

@@ -1,4 +1,4 @@
-import { z } from "zod/v4";
+import { z } from 'zod/v4'
 
 // ---------------------------------------------------------------------------
 // Query schemas
@@ -8,13 +8,13 @@ import { z } from "zod/v4";
 export const searchQuerySchema = z.object({
   q: z
     .string()
-    .min(1, "Search query is required")
-    .max(500, "Search query must be at most 500 characters"),
+    .min(1, 'Search query is required')
+    .max(500, 'Search query must be at most 500 characters'),
   category: z.string().optional(),
   author: z.string().optional(),
   dateFrom: z.iso.datetime().optional(),
   dateTo: z.iso.datetime().optional(),
-  type: z.enum(["topics", "replies", "all"]).default("all"),
+  type: z.enum(['topics', 'replies', 'all']).default('all'),
   limit: z
     .string()
     .transform((val) => Number(val))
@@ -22,9 +22,9 @@ export const searchQuerySchema = z.object({
     .optional()
     .default(25),
   cursor: z.string().optional(),
-});
+})
 
-export type SearchQueryInput = z.infer<typeof searchQuerySchema>;
+export type SearchQueryInput = z.infer<typeof searchQuerySchema>
 
 // ---------------------------------------------------------------------------
 // Response schemas (for OpenAPI documentation)
@@ -32,7 +32,7 @@ export type SearchQueryInput = z.infer<typeof searchQuerySchema>;
 
 /** Schema describing a single search result in API responses. */
 export const searchResultSchema = z.object({
-  type: z.enum(["topic", "reply"]),
+  type: z.enum(['topic', 'reply']),
   uri: z.string(),
   rkey: z.string(),
   authorDid: z.string(),
@@ -47,16 +47,16 @@ export const searchResultSchema = z.object({
   // Reply-specific context
   rootUri: z.string().nullable(),
   rootTitle: z.string().nullable(),
-});
+})
 
-export type SearchResult = z.infer<typeof searchResultSchema>;
+export type SearchResult = z.infer<typeof searchResultSchema>
 
 /** Schema for the search response. */
 export const searchResponseSchema = z.object({
   results: z.array(searchResultSchema),
   cursor: z.string().nullable(),
   total: z.number(),
-  searchMode: z.enum(["fulltext", "hybrid"]),
-});
+  searchMode: z.enum(['fulltext', 'hybrid']),
+})
 
-export type SearchResponse = z.infer<typeof searchResponseSchema>;
+export type SearchResponse = z.infer<typeof searchResponseSchema>

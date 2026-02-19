@@ -28,19 +28,19 @@ The AppView backend for Barazo forums. Handles authentication, forum CRUD, fireh
 
 ## Tech Stack
 
-| Component | Technology |
-|-----------|-----------|
-| Runtime | Node.js 24 LTS / TypeScript (strict mode) |
-| Framework | Fastify 5 |
-| Protocol | @atproto/api, @atproto/oauth-client-node, @atproto/tap |
-| Database | PostgreSQL 16 + pgvector (Drizzle ORM, Drizzle Kit migrations) |
-| Cache | Valkey (via ioredis) |
-| Validation | Zod 4 |
-| Testing | Vitest 4 + Supertest + Testcontainers |
-| Logging | Pino (structured) |
-| Monitoring | GlitchTip (self-hosted, Sentry SDK-compatible) |
-| Security | Helmet + DOMPurify + rate limiting + CSP/HSTS |
-| API docs | @fastify/swagger + Scalar |
+| Component  | Technology                                                     |
+| ---------- | -------------------------------------------------------------- |
+| Runtime    | Node.js 24 LTS / TypeScript (strict mode)                      |
+| Framework  | Fastify 5                                                      |
+| Protocol   | @atproto/api, @atproto/oauth-client-node, @atproto/tap         |
+| Database   | PostgreSQL 16 + pgvector (Drizzle ORM, Drizzle Kit migrations) |
+| Cache      | Valkey (via ioredis)                                           |
+| Validation | Zod 4                                                          |
+| Testing    | Vitest 4 + Supertest + Testcontainers                          |
+| Logging    | Pino (structured)                                              |
+| Monitoring | GlitchTip (self-hosted, Sentry SDK-compatible)                 |
+| Security   | Helmet + DOMPurify + rate limiting + CSP/HSTS                  |
+| API docs   | @fastify/swagger + Scalar                                      |
 
 ---
 
@@ -48,23 +48,23 @@ The AppView backend for Barazo forums. Handles authentication, forum CRUD, fireh
 
 15 route modules across 74 source files:
 
-| Module | File | Functionality |
-|--------|------|---------------|
-| Auth | `auth.ts` | AT Protocol OAuth sign-in with any PDS |
-| OAuth Metadata | `oauth-metadata.ts` | OAuth discovery metadata endpoint |
-| Health | `health.ts` | Health check |
-| Topics | `topics.ts` | CRUD, sorting (chronological / reactions / trending), cross-posting to Bluesky + Frontpage, self-labels |
-| Replies | `replies.ts` | CRUD threaded replies, self-labels |
-| Categories | `categories.ts` | CRUD with maturity ratings (SFW / Mature / Adult), parent-child hierarchy |
-| Reactions | `reactions.ts` | Configurable reaction types per community |
-| Search | `search.ts` | Full-text search (PostgreSQL tsvector + GIN index), optional semantic search via `EMBEDDING_URL` |
-| Profiles | `profiles.ts` | User profiles with PDS sync, cross-community reputation, age declaration |
-| Notifications | `notifications.ts` | In-app and email notification system |
-| Moderation | `moderation.ts` | Lock, pin, delete, ban, content reporting, first-post queue, word/phrase blocklists, link spam detection, mod action log |
-| Admin Settings | `admin-settings.ts` | Community settings, maturity rating, branding, jurisdiction + age threshold configuration |
-| Block / Mute | `block-mute.ts` | Block and mute users (portable via PDS records) |
-| Onboarding | `onboarding.ts` | Admin-configurable community onboarding fields, user response submission and status tracking |
-| Setup | `setup.ts` | Initial community setup wizard |
+| Module         | File                | Functionality                                                                                                            |
+| -------------- | ------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| Auth           | `auth.ts`           | AT Protocol OAuth sign-in with any PDS                                                                                   |
+| OAuth Metadata | `oauth-metadata.ts` | OAuth discovery metadata endpoint                                                                                        |
+| Health         | `health.ts`         | Health check                                                                                                             |
+| Topics         | `topics.ts`         | CRUD, sorting (chronological / reactions / trending), cross-posting to Bluesky + Frontpage, self-labels                  |
+| Replies        | `replies.ts`        | CRUD threaded replies, self-labels                                                                                       |
+| Categories     | `categories.ts`     | CRUD with maturity ratings (SFW / Mature / Adult), parent-child hierarchy                                                |
+| Reactions      | `reactions.ts`      | Configurable reaction types per community                                                                                |
+| Search         | `search.ts`         | Full-text search (PostgreSQL tsvector + GIN index), optional semantic search via `EMBEDDING_URL`                         |
+| Profiles       | `profiles.ts`       | User profiles with PDS sync, cross-community reputation, age declaration                                                 |
+| Notifications  | `notifications.ts`  | In-app and email notification system                                                                                     |
+| Moderation     | `moderation.ts`     | Lock, pin, delete, ban, content reporting, first-post queue, word/phrase blocklists, link spam detection, mod action log |
+| Admin Settings | `admin-settings.ts` | Community settings, maturity rating, branding, jurisdiction + age threshold configuration                                |
+| Block / Mute   | `block-mute.ts`     | Block and mute users (portable via PDS records)                                                                          |
+| Onboarding     | `onboarding.ts`     | Admin-configurable community onboarding fields, user response submission and status tracking                             |
+| Setup          | `setup.ts`          | Initial community setup wizard                                                                                           |
 
 ---
 
@@ -72,29 +72,30 @@ The AppView backend for Barazo forums. Handles authentication, forum CRUD, fireh
 
 15 schema modules (Drizzle ORM):
 
-| Schema | Purpose |
-|--------|---------|
-| `users.ts` | User accounts synced from PDS |
-| `topics.ts` | Forum topics with maturity, self-labels |
-| `replies.ts` | Threaded replies |
-| `categories.ts` | Category hierarchy with maturity ratings |
-| `reactions.ts` | Reaction records |
-| `reports.ts` | Content reports |
-| `notifications.ts` | Notification records |
-| `moderation-actions.ts` | Moderation action log |
-| `cross-posts.ts` | Bluesky + Frontpage cross-post tracking |
+| Schema                  | Purpose                                                  |
+| ----------------------- | -------------------------------------------------------- |
+| `users.ts`              | User accounts synced from PDS                            |
+| `topics.ts`             | Forum topics with maturity, self-labels                  |
+| `replies.ts`            | Threaded replies                                         |
+| `categories.ts`         | Category hierarchy with maturity ratings                 |
+| `reactions.ts`          | Reaction records                                         |
+| `reports.ts`            | Content reports                                          |
+| `notifications.ts`      | Notification records                                     |
+| `moderation-actions.ts` | Moderation action log                                    |
+| `cross-posts.ts`        | Bluesky + Frontpage cross-post tracking                  |
 | `community-settings.ts` | Per-community configuration, jurisdiction, age threshold |
-| `user-preferences.ts` | Global and per-community user preferences |
-| `onboarding-fields.ts` | Admin-defined onboarding fields and user responses |
-| `tracked-repos.ts` | AT Protocol repo tracking state |
-| `firehose.ts` | Firehose cursor and subscription state |
-| `index.ts` | Schema barrel export |
+| `user-preferences.ts`   | Global and per-community user preferences                |
+| `onboarding-fields.ts`  | Admin-defined onboarding fields and user responses       |
+| `tracked-repos.ts`      | AT Protocol repo tracking state                          |
+| `firehose.ts`           | Firehose cursor and subscription state                   |
+| `index.ts`              | Schema barrel export                                     |
 
 ---
 
 ## Features
 
 **AT Protocol integration:**
+
 - OAuth authentication with any AT Protocol PDS
 - Firehose subscription via Tap, filtered for `forum.barazo.*` collections
 - Record validation (Zod) before indexing
@@ -106,6 +107,7 @@ The AppView backend for Barazo forums. Handles authentication, forum CRUD, fireh
 - Two operating modes: single-forum or global aggregator (`COMMUNITY_MODE=global`)
 
 **Forum core:**
+
 - Topics CRUD with sorting (chronological, reactions, trending)
 - Threaded replies CRUD
 - Categories with parent-child hierarchy and per-category maturity ratings
@@ -118,6 +120,7 @@ The AppView backend for Barazo forums. Handles authentication, forum CRUD, fireh
 - User preferences (global and per-community)
 
 **Content maturity and age gating:**
+
 - Three-tier content maturity system: SFW, Mature, Adult
 - Maturity ratings at both forum and category level
 - Content maturity filtering based on user age declaration
@@ -125,6 +128,7 @@ The AppView backend for Barazo forums. Handles authentication, forum CRUD, fireh
 - Admin-configurable jurisdiction country and age threshold
 
 **Moderation:**
+
 - Content reporting system
 - First-post moderation queue
 - Word and phrase blocklists
@@ -135,6 +139,7 @@ The AppView backend for Barazo forums. Handles authentication, forum CRUD, fireh
 - GDPR-compliant account deletion (identity event handling)
 
 **Community administration:**
+
 - Admin settings panel (name, description, branding, colors)
 - Community setup wizard
 - Admin-configurable onboarding fields (text, select, checkbox, etc.)
@@ -142,9 +147,11 @@ The AppView backend for Barazo forums. Handles authentication, forum CRUD, fireh
 - Jurisdiction and age threshold configuration
 
 **Plugin system:**
+
 - Plugin-aware route architecture across all modules
 
 **Security:**
+
 - Zod validation on all API endpoints
 - DOMPurify output sanitization on all user-generated content
 - Helmet security headers (CSP, HSTS)
@@ -213,6 +220,7 @@ pnpm typecheck      # TypeScript strict mode check
 See [CONTRIBUTING.md](https://github.com/barazo-forum/.github/blob/main/CONTRIBUTING.md) for branching strategy, commit format, and code review process.
 
 **Key standards:**
+
 - TypeScript strict mode (no `any`, no `@ts-ignore`)
 - All endpoints validate input with Zod schemas
 - All user content sanitized with DOMPurify
@@ -233,12 +241,12 @@ See [barazo-deploy](https://github.com/barazo-forum/barazo-deploy) for full depl
 
 ## Related Repositories
 
-| Repository | Description | License |
-|------------|-------------|---------|
-| [barazo-web](https://github.com/barazo-forum/barazo-web) | Forum frontend (Next.js, Tailwind) | MIT |
-| [barazo-lexicons](https://github.com/barazo-forum/barazo-lexicons) | AT Protocol lexicon schemas + generated types | MIT |
-| [barazo-deploy](https://github.com/barazo-forum/barazo-deploy) | Docker Compose deployment templates | MIT |
-| [barazo-website](https://github.com/barazo-forum/barazo-website) | Marketing + documentation site | MIT |
+| Repository                                                         | Description                                   | License |
+| ------------------------------------------------------------------ | --------------------------------------------- | ------- |
+| [barazo-web](https://github.com/barazo-forum/barazo-web)           | Forum frontend (Next.js, Tailwind)            | MIT     |
+| [barazo-lexicons](https://github.com/barazo-forum/barazo-lexicons) | AT Protocol lexicon schemas + generated types | MIT     |
+| [barazo-deploy](https://github.com/barazo-forum/barazo-deploy)     | Docker Compose deployment templates           | MIT     |
+| [barazo-website](https://github.com/barazo-forum/barazo-website)   | Marketing + documentation site                | MIT     |
 
 ---
 

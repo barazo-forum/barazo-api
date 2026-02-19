@@ -1,14 +1,14 @@
-import { eq } from "drizzle-orm";
-import type { Database } from "../db/index.js";
-import { userPreferences } from "../db/schema/user-preferences.js";
+import { eq } from 'drizzle-orm'
+import type { Database } from '../db/index.js'
+import { userPreferences } from '../db/schema/user-preferences.js'
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
 export interface BlockMuteLists {
-  blockedDids: string[];
-  mutedDids: string[];
+  blockedDids: string[]
+  mutedDids: string[]
 }
 
 // ---------------------------------------------------------------------------
@@ -27,10 +27,10 @@ export interface BlockMuteLists {
  */
 export async function loadBlockMuteLists(
   userDid: string | undefined,
-  db: Database,
+  db: Database
 ): Promise<BlockMuteLists> {
   if (!userDid) {
-    return { blockedDids: [], mutedDids: [] };
+    return { blockedDids: [], mutedDids: [] }
   }
 
   const rows = await db
@@ -39,11 +39,11 @@ export async function loadBlockMuteLists(
       mutedDids: userPreferences.mutedDids,
     })
     .from(userPreferences)
-    .where(eq(userPreferences.did, userDid));
+    .where(eq(userPreferences.did, userDid))
 
-  const prefs = rows[0];
+  const prefs = rows[0]
   return {
     blockedDids: prefs?.blockedDids ?? [],
     mutedDids: prefs?.mutedDids ?? [],
-  };
+  }
 }

@@ -1,9 +1,6 @@
-import { eq, and } from "drizzle-orm";
-import type { Database } from "../db/index.js";
-import {
-  userPreferences,
-  userCommunityPreferences,
-} from "../db/schema/user-preferences.js";
+import { eq, and } from 'drizzle-orm'
+import type { Database } from '../db/index.js'
+import { userPreferences, userCommunityPreferences } from '../db/schema/user-preferences.js'
 
 // ---------------------------------------------------------------------------
 // Loader
@@ -21,23 +18,23 @@ import {
 export async function loadMutedWords(
   userDid: string | undefined,
   communityDid: string | undefined,
-  db: Database,
+  db: Database
 ): Promise<string[]> {
   if (!userDid) {
-    return [];
+    return []
   }
 
   // Fetch global muted words
   const globalRows = await db
     .select({ mutedWords: userPreferences.mutedWords })
     .from(userPreferences)
-    .where(eq(userPreferences.did, userDid));
+    .where(eq(userPreferences.did, userDid))
 
-  const globalWords: string[] = globalRows[0]?.mutedWords ?? [];
+  const globalWords: string[] = globalRows[0]?.mutedWords ?? []
 
   // If no community context, return global only
   if (!communityDid) {
-    return globalWords;
+    return globalWords
   }
 
   // Fetch per-community override
@@ -47,20 +44,19 @@ export async function loadMutedWords(
     .where(
       and(
         eq(userCommunityPreferences.did, userDid),
-        eq(userCommunityPreferences.communityDid, communityDid),
-      ),
-    );
+        eq(userCommunityPreferences.communityDid, communityDid)
+      )
+    )
 
-  const communityWords: string[] | null =
-    communityRows[0]?.mutedWords ?? null;
+  const communityWords: string[] | null = communityRows[0]?.mutedWords ?? null
 
   // null = no override, use global only
   if (communityWords === null) {
-    return globalWords;
+    return globalWords
   }
 
   // Merge and deduplicate (union of global + community)
-  return [...new Set([...globalWords, ...communityWords])];
+  return [...new Set([...globalWords, ...communityWords])]
 }
 
 // ---------------------------------------------------------------------------
@@ -72,7 +68,7 @@ export async function loadMutedWords(
  * match inside a RegExp.
  */
 function escapeRegex(str: string): string {
-  return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
 /**
@@ -91,20 +87,20 @@ function escapeRegex(str: string): string {
 export function contentMatchesMutedWords(
   content: string,
   mutedWords: string[],
-  title?: string,
+  title?: string
 ): boolean {
-  if (mutedWords.length === 0) return false;
+  if (mutedWords.length === 0) return false
 
-  const text = title ? `${title} ${content}` : content;
-  if (text.length === 0) return false;
+  const text = title ? `${title} ${content}` : content
+  if (text.length === 0) return false
 
   for (const word of mutedWords) {
-    const escaped = escapeRegex(word);
-    const pattern = new RegExp(`(?:^|\\b|(?<=\\W))${escaped}(?:$|\\b|(?=\\W))`, "i");
+    const escaped = escapeRegex(word)
+    const pattern = new RegExp(`(?:^|\\b|(?<=\\W))${escaped}(?:$|\\b|(?=\\W))`, 'i')
     if (pattern.test(text)) {
-      return true;
+      return true
     }
   }
 
-  return false;
+  return false
 }

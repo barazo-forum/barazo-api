@@ -1,13 +1,13 @@
-import sharp from "sharp";
+import sharp from 'sharp'
 
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 
-const OG_WIDTH = 1200;
-const OG_HEIGHT = 630;
-const MAX_TITLE_LINES = 3;
-const MAX_CHARS_PER_LINE = 38;
+const OG_WIDTH = 1200
+const OG_HEIGHT = 630
+const MAX_TITLE_LINES = 3
+const MAX_CHARS_PER_LINE = 38
 
 // ---------------------------------------------------------------------------
 // Helpers (exported for testing)
@@ -18,11 +18,11 @@ const MAX_CHARS_PER_LINE = 38;
  */
 export function escapeXml(text: string): string {
   return text
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&apos;");
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;')
 }
 
 /**
@@ -30,51 +30,47 @@ export function escapeXml(text: string): string {
  * limited to `maxLines` total. If truncated, the last line ends with
  * an ellipsis character.
  */
-export function wrapText(
-  text: string,
-  maxCharsPerLine: number,
-  maxLines: number,
-): string[] {
-  const words = text.split(/\s+/).filter((w) => w.length > 0);
+export function wrapText(text: string, maxCharsPerLine: number, maxLines: number): string[] {
+  const words = text.split(/\s+/).filter((w) => w.length > 0)
   if (words.length === 0) {
-    return [];
+    return []
   }
 
-  const lines: string[] = [];
-  let currentLine = "";
+  const lines: string[] = []
+  let currentLine = ''
 
   for (const word of words) {
     if (lines.length >= maxLines) {
-      break;
+      break
     }
 
-    const testLine = currentLine ? `${currentLine} ${word}` : word;
+    const testLine = currentLine ? `${currentLine} ${word}` : word
     if (testLine.length > maxCharsPerLine && currentLine) {
-      lines.push(currentLine);
-      currentLine = word;
+      lines.push(currentLine)
+      currentLine = word
     } else {
-      currentLine = testLine;
+      currentLine = testLine
     }
   }
 
   if (currentLine && lines.length < maxLines) {
-    lines.push(currentLine);
+    lines.push(currentLine)
   }
 
   // Check if text was truncated
-  const joinedLength = lines.join(" ").length;
-  const fullLength = words.join(" ").length;
+  const joinedLength = lines.join(' ').length
+  const fullLength = words.join(' ').length
   if (fullLength > joinedLength && lines.length > 0) {
-    const lastIdx = lines.length - 1;
-    const lastLine = lines[lastIdx] ?? "";
+    const lastIdx = lines.length - 1
+    const lastLine = lines[lastIdx] ?? ''
     if (lastLine.length > maxCharsPerLine - 1) {
-      lines[lastIdx] = lastLine.slice(0, maxCharsPerLine - 1) + "\u2026";
+      lines[lastIdx] = lastLine.slice(0, maxCharsPerLine - 1) + '\u2026'
     } else {
-      lines[lastIdx] = lastLine + "\u2026";
+      lines[lastIdx] = lastLine + '\u2026'
     }
   }
 
-  return lines;
+  return lines
 }
 
 // ---------------------------------------------------------------------------
@@ -82,9 +78,9 @@ export function wrapText(
 // ---------------------------------------------------------------------------
 
 export interface OgImageParams {
-  title: string;
-  category: string;
-  communityName: string;
+  title: string
+  category: string
+  communityName: string
 }
 
 /**
@@ -98,25 +94,25 @@ export interface OgImageParams {
  * - Barazo branding footer
  */
 export function generateOgSvg(params: OgImageParams): string {
-  const titleLines = wrapText(params.title, MAX_CHARS_PER_LINE, MAX_TITLE_LINES);
-  const categoryText = escapeXml(params.category.toUpperCase());
-  const communityText = escapeXml(params.communityName);
+  const titleLines = wrapText(params.title, MAX_CHARS_PER_LINE, MAX_TITLE_LINES)
+  const categoryText = escapeXml(params.category.toUpperCase())
+  const communityText = escapeXml(params.communityName)
 
   // Estimate category badge width (~11px per char + 32px padding)
-  const categoryWidth = String(Math.max(categoryText.length * 11 + 32, 60));
-  const categoryTextX = String(60 + 16);
-  const categoryTextY = String(60 + 24);
-  const footerY = String(OG_HEIGHT - 40);
-  const brandingX = String(OG_WIDTH - 60);
-  const width = String(OG_WIDTH);
-  const height = String(OG_HEIGHT);
+  const categoryWidth = String(Math.max(categoryText.length * 11 + 32, 60))
+  const categoryTextX = String(60 + 16)
+  const categoryTextY = String(60 + 24)
+  const footerY = String(OG_HEIGHT - 40)
+  const brandingX = String(OG_WIDTH - 60)
+  const width = String(OG_WIDTH)
+  const height = String(OG_HEIGHT)
 
   const titleSvg = titleLines
     .map(
       (line, i) =>
-        `<text x="60" y="${String(280 + i * 60)}" font-family="sans-serif" font-size="48" font-weight="bold" fill="white">${escapeXml(line)}</text>`,
+        `<text x="60" y="${String(280 + i * 60)}" font-family="sans-serif" font-size="48" font-weight="bold" fill="white">${escapeXml(line)}</text>`
     )
-    .join("\n    ");
+    .join('\n    ')
 
   return `<svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">
   <rect width="${width}" height="${height}" fill="#1c1b22"/>
@@ -134,7 +130,7 @@ export function generateOgSvg(params: OgImageParams): string {
   <!-- Barazo branding -->
   <text x="60" y="${footerY}" font-family="sans-serif" font-size="18" fill="#6b7280">Powered by Barazo</text>
   <text x="${brandingX}" y="${footerY}" font-family="sans-serif" font-size="18" fill="#6b7280" text-anchor="end">barazo.forum</text>
-</svg>`;
+</svg>`
 }
 
 // ---------------------------------------------------------------------------
@@ -148,6 +144,6 @@ export function generateOgSvg(params: OgImageParams): string {
  * Bluesky's `app.bsky.embed.external` records.
  */
 export async function generateOgImage(params: OgImageParams): Promise<Buffer> {
-  const svg = generateOgSvg(params);
-  return sharp(Buffer.from(svg)).png().toBuffer();
+  const svg = generateOgSvg(params)
+  return sharp(Buffer.from(svg)).png().toBuffer()
 }

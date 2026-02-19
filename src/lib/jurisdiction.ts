@@ -57,23 +57,23 @@ export const JURISDICTION_AGE_THRESHOLDS: Readonly<Record<string, number>> = {
   NZ: 13,
   JP: 13,
   KR: 14,
-} as const;
+} as const
 
 /** Default age threshold when country is not listed or not set. */
-export const DEFAULT_AGE_THRESHOLD = 16;
+export const DEFAULT_AGE_THRESHOLD = 16
 
 /**
  * Get the age threshold for a given country code.
  * Returns the country-specific threshold if known, otherwise the default (16).
  */
 export function getAgeThreshold(countryCode: string | null | undefined): number {
-  if (!countryCode) return DEFAULT_AGE_THRESHOLD;
-  return JURISDICTION_AGE_THRESHOLDS[countryCode.toUpperCase()] ?? DEFAULT_AGE_THRESHOLD;
+  if (!countryCode) return DEFAULT_AGE_THRESHOLD
+  return JURISDICTION_AGE_THRESHOLDS[countryCode.toUpperCase()] ?? DEFAULT_AGE_THRESHOLD
 }
 
 /**
  * Get a sorted list of all supported country codes.
  */
 export function getSupportedCountries(): string[] {
-  return Object.keys(JURISDICTION_AGE_THRESHOLDS).sort();
+  return Object.keys(JURISDICTION_AGE_THRESHOLDS).sort()
 }

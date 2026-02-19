@@ -1,58 +1,54 @@
-import { z } from "zod/v4";
-import { maturityRatingSchema } from "./categories.js";
-import { reactionSetSchema } from "./reactions.js";
+import { z } from 'zod/v4'
+import { maturityRatingSchema } from './categories.js'
+import { reactionSetSchema } from './reactions.js'
 
 // ---------------------------------------------------------------------------
 // Request schemas
 // ---------------------------------------------------------------------------
 
 /** Hex color code pattern: # followed by 3, 4, 6, or 8 hex digits. */
-const hexColorPattern = /^#(?:[0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/;
+const hexColorPattern = /^#(?:[0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/
 
 /** Schema for updating community settings (all fields optional). */
 export const updateSettingsSchema = z.object({
   communityName: z
     .string()
     .trim()
-    .min(1, "Community name is required")
-    .max(100, "Community name must be at most 100 characters")
+    .min(1, 'Community name is required')
+    .max(100, 'Community name must be at most 100 characters')
     .optional(),
   maturityRating: maturityRatingSchema.optional(),
   reactionSet: reactionSetSchema.optional(),
   communityDescription: z
     .string()
     .trim()
-    .max(500, "Community description must be at most 500 characters")
+    .max(500, 'Community description must be at most 500 characters')
     .optional(),
-  communityLogoUrl: z
-    .url("Community logo must be a valid URL")
-    .optional(),
+  communityLogoUrl: z.url('Community logo must be a valid URL').optional(),
   primaryColor: z
     .string()
-    .regex(hexColorPattern, "Primary color must be a valid hex color (e.g., #ff0000)")
+    .regex(hexColorPattern, 'Primary color must be a valid hex color (e.g., #ff0000)')
     .optional(),
   accentColor: z
     .string()
-    .regex(hexColorPattern, "Accent color must be a valid hex color (e.g., #00ff00)")
+    .regex(hexColorPattern, 'Accent color must be a valid hex color (e.g., #00ff00)')
     .optional(),
   jurisdictionCountry: z
     .string()
-    .length(2, "Jurisdiction country must be a 2-letter ISO 3166-1 alpha-2 code")
-    .regex(/^[A-Z]{2}$/, "Jurisdiction country must be uppercase letters")
+    .length(2, 'Jurisdiction country must be a 2-letter ISO 3166-1 alpha-2 code')
+    .regex(/^[A-Z]{2}$/, 'Jurisdiction country must be uppercase letters')
     .nullable()
     .optional(),
   ageThreshold: z
     .number()
-    .int("Age threshold must be an integer")
-    .min(13, "Age threshold must be at least 13")
-    .max(18, "Age threshold must be at most 18")
+    .int('Age threshold must be an integer')
+    .min(13, 'Age threshold must be at least 13')
+    .max(18, 'Age threshold must be at most 18')
     .optional(),
-  requireLoginForMature: z
-    .boolean()
-    .optional(),
-});
+  requireLoginForMature: z.boolean().optional(),
+})
 
-export type UpdateSettingsInput = z.infer<typeof updateSettingsSchema>;
+export type UpdateSettingsInput = z.infer<typeof updateSettingsSchema>
 
 // ---------------------------------------------------------------------------
 // Response schemas (for OpenAPI documentation)
@@ -76,6 +72,6 @@ export const settingsResponseSchema = z.object({
   requireLoginForMature: z.boolean(),
   createdAt: z.string(),
   updatedAt: z.string(),
-});
+})
 
-export type SettingsResponse = z.infer<typeof settingsResponseSchema>;
+export type SettingsResponse = z.infer<typeof settingsResponseSchema>

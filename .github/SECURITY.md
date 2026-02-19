@@ -27,29 +27,34 @@ We will respond within 72 hours with next steps.
 barazo-api is the AppView backend -- it handles authentication, user input, database access, and firehose ingestion. The following areas are in scope for security reports:
 
 ### Authentication & Authorization
+
 - **OAuth bypass** -- circumventing AT Protocol OAuth flows, session hijacking, token leakage
 - **Authorization escalation** -- accessing admin/moderator endpoints without the required role
 - **Session management** -- JWT/session token weaknesses, missing expiration, replay attacks
 
 ### Input Validation & Injection
+
 - **SQL injection** -- any path that bypasses Drizzle ORM parameterized queries
 - **NoSQL/command injection** -- Valkey command injection via unsanitized input
 - **Content injection** -- storing malicious content that bypasses DOMPurify sanitization
 - **Zod schema bypass** -- requests that circumvent Zod validation on API endpoints
 
 ### AT Protocol & Firehose
+
 - **Firehose record manipulation** -- crafted AT Protocol records that exploit indexing logic
 - **DID spoofing** -- forging identity claims through manipulated DIDs or handles
 - **Cross-community data leaks** -- accessing data from communities the user is not authorized to view
 - **Deletion event bypass** -- circumventing GDPR deletion propagation via firehose replay
 
 ### Rate Limiting & Abuse
+
 - **Rate limit bypass** -- circumventing per-endpoint or per-user rate limits
 - **Burst detection evasion** -- evading anti-spam burst detection thresholds
 - **First-post queue bypass** -- new accounts posting without moderation review
 - **Resource exhaustion** -- requests that cause excessive CPU, memory, or database load
 
 ### Data Security
+
 - **BYOK key exposure** -- leaking user-provided AI API keys (encrypted with AES-256-GCM at rest)
 - **Backup data exposure** -- unencrypted PII in backup outputs
 - **Logging PII** -- personal data appearing in Pino structured logs
@@ -72,6 +77,7 @@ barazo-api is the AppView backend -- it handles authentication, user input, data
 ## Disclosure Policy
 
 We follow responsible disclosure:
+
 - 90 days before public disclosure
 - Credit given to reporter (if desired)
 - CVE assigned when applicable

@@ -1,48 +1,46 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import type { Cache } from "../../../src/cache/index.js";
-import type { Logger } from "../../../src/lib/logger.js";
-import type { Env } from "../../../src/config/env.js";
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import type { Cache } from '../../../src/cache/index.js'
+import type { Logger } from '../../../src/lib/logger.js'
+import type { Env } from '../../../src/config/env.js'
 
 // Track constructor calls and mock event listener
-const constructorArgs: Record<string, unknown>[] = [];
-const mockAddEventListener = vi.fn();
-const mockJwks = { keys: [] };
+const constructorArgs: Record<string, unknown>[] = []
+const mockAddEventListener = vi.fn()
+const mockJwks = { keys: [] }
 
-vi.mock("@atproto/oauth-client-node", () => {
+vi.mock('@atproto/oauth-client-node', () => {
   return {
     NodeOAuthClient: class MockNodeOAuthClient {
-      clientMetadata: Record<string, unknown>;
-      jwks: { keys: unknown[] };
-      addEventListener = mockAddEventListener;
+      clientMetadata: Record<string, unknown>
+      jwks: { keys: unknown[] }
+      addEventListener = mockAddEventListener
 
       constructor(options: { clientMetadata: Record<string, unknown> }) {
-        constructorArgs.push(options as Record<string, unknown>);
-        this.clientMetadata = options.clientMetadata;
-        this.jwks = mockJwks;
+        constructorArgs.push(options as Record<string, unknown>)
+        this.clientMetadata = options.clientMetadata
+        this.jwks = mockJwks
       }
     },
-  };
-});
+  }
+})
 
 // Import after mock setup
-const { createOAuthClient } = await import(
-  "../../../src/auth/oauth-client.js"
-);
+const { createOAuthClient } = await import('../../../src/auth/oauth-client.js')
 
 function createMockCache() {
-  const setFn = vi.fn<(...args: unknown[]) => Promise<string>>().mockResolvedValue("OK");
-  const getFn = vi.fn<(...args: unknown[]) => Promise<string | null>>().mockResolvedValue(null);
-  const delFn = vi.fn<(...args: unknown[]) => Promise<number>>().mockResolvedValue(1);
+  const setFn = vi.fn<(...args: unknown[]) => Promise<string>>().mockResolvedValue('OK')
+  const getFn = vi.fn<(...args: unknown[]) => Promise<string | null>>().mockResolvedValue(null)
+  const delFn = vi.fn<(...args: unknown[]) => Promise<number>>().mockResolvedValue(1)
   return {
     cache: { set: setFn, get: getFn, del: delFn } as unknown as Cache,
     setFn,
     getFn,
     delFn,
-  };
+  }
 }
 
 function createMockLogger() {
-  const infoFn = vi.fn();
+  const infoFn = vi.fn()
   return {
     logger: {
       debug: vi.fn(),
@@ -54,328 +52,322 @@ function createMockLogger() {
       child: vi.fn(),
     } as unknown as Logger,
     infoFn,
-  };
+  }
 }
 
 function createMockEnv(overrides: Partial<Env> = {}): Env {
   return {
-    DATABASE_URL: "postgresql://localhost/barazo",
-    VALKEY_URL: "redis://localhost:6379",
-    TAP_URL: "https://tap.example.com",
-    TAP_ADMIN_PASSWORD: "test-password",
-    HOST: "0.0.0.0",
+    DATABASE_URL: 'postgresql://localhost/barazo',
+    VALKEY_URL: 'redis://localhost:6379',
+    TAP_URL: 'https://tap.example.com',
+    TAP_ADMIN_PASSWORD: 'test-password',
+    HOST: '0.0.0.0',
     PORT: 3000,
-    LOG_LEVEL: "info",
-    CORS_ORIGINS: "http://localhost:3001",
-    COMMUNITY_MODE: "single",
-    COMMUNITY_NAME: "Barazo Community",
+    LOG_LEVEL: 'info',
+    CORS_ORIGINS: 'http://localhost:3001',
+    COMMUNITY_MODE: 'single',
+    COMMUNITY_NAME: 'Barazo Community',
     RATE_LIMIT_AUTH: 10,
     RATE_LIMIT_WRITE: 10,
     RATE_LIMIT_READ_ANON: 100,
     RATE_LIMIT_READ_AUTH: 300,
-    OAUTH_CLIENT_ID: "http://localhost",
-    OAUTH_REDIRECT_URI: "http://127.0.0.1:3000/api/auth/callback",
-    SESSION_SECRET: "a".repeat(32),
+    OAUTH_CLIENT_ID: 'http://localhost',
+    OAUTH_REDIRECT_URI: 'http://127.0.0.1:3000/api/auth/callback',
+    SESSION_SECRET: 'a'.repeat(32),
     OAUTH_SESSION_TTL: 604800,
     OAUTH_ACCESS_TOKEN_TTL: 900,
     ...overrides,
-  } as Env;
+  } as Env
 }
 
 /** Get the most recent constructor options */
 function getLastConstructorOptions(): Record<string, unknown> {
-  expect(constructorArgs.length).toBeGreaterThan(0);
-  return constructorArgs[constructorArgs.length - 1] as Record<string, unknown>;
+  expect(constructorArgs.length).toBeGreaterThan(0)
+  return constructorArgs[constructorArgs.length - 1] as Record<string, unknown>
 }
 
-describe("createOAuthClient", () => {
-  let cacheMocks: ReturnType<typeof createMockCache>;
-  let logMocks: ReturnType<typeof createMockLogger>;
+describe('createOAuthClient', () => {
+  let cacheMocks: ReturnType<typeof createMockCache>
+  let logMocks: ReturnType<typeof createMockLogger>
 
   beforeEach(() => {
-    constructorArgs.length = 0;
-    vi.clearAllMocks();
-    cacheMocks = createMockCache();
-    logMocks = createMockLogger();
-  });
+    constructorArgs.length = 0
+    vi.clearAllMocks()
+    cacheMocks = createMockCache()
+    logMocks = createMockLogger()
+  })
 
-  describe("loopback mode detection", () => {
-    it("detects loopback mode when OAUTH_CLIENT_ID starts with http://localhost", () => {
+  describe('loopback mode detection', () => {
+    it('detects loopback mode when OAUTH_CLIENT_ID starts with http://localhost', () => {
       const env = createMockEnv({
-        OAUTH_CLIENT_ID: "http://localhost",
-        OAUTH_REDIRECT_URI: "http://127.0.0.1:3000/api/auth/callback",
-      });
+        OAUTH_CLIENT_ID: 'http://localhost',
+        OAUTH_REDIRECT_URI: 'http://127.0.0.1:3000/api/auth/callback',
+      })
 
-      createOAuthClient(env, cacheMocks.cache, logMocks.logger);
+      createOAuthClient(env, cacheMocks.cache, logMocks.logger)
 
-      const options = getLastConstructorOptions();
-      const metadata = options.clientMetadata as { client_id: string };
-      const clientId = metadata.client_id;
+      const options = getLastConstructorOptions()
+      const metadata = options.clientMetadata as { client_id: string }
+      const clientId = metadata.client_id
 
       // Loopback client_id encodes redirect_uri and scope as query params
-      expect(clientId).toContain("http://localhost?");
-      expect(clientId).toContain("redirect_uri=");
-      expect(clientId).toContain("scope=");
-      expect(clientId).toContain(encodeURIComponent("http://127.0.0.1:3000/api/auth/callback"));
-      expect(clientId).toContain(encodeURIComponent("atproto repo:forum.barazo.topic.post repo:forum.barazo.topic.reply repo:forum.barazo.interaction.reaction"));
-    });
+      expect(clientId).toContain('http://localhost?')
+      expect(clientId).toContain('redirect_uri=')
+      expect(clientId).toContain('scope=')
+      expect(clientId).toContain(encodeURIComponent('http://127.0.0.1:3000/api/auth/callback'))
+      expect(clientId).toContain(
+        encodeURIComponent(
+          'atproto repo:forum.barazo.topic.post repo:forum.barazo.topic.reply repo:forum.barazo.interaction.reaction'
+        )
+      )
+    })
 
-    it("uses production client_id when not starting with http://localhost", () => {
+    it('uses production client_id when not starting with http://localhost', () => {
       const env = createMockEnv({
-        OAUTH_CLIENT_ID: "https://forum.barazo.forum/oauth-client-metadata.json",
-        OAUTH_REDIRECT_URI: "https://forum.barazo.forum/api/auth/callback",
-      });
+        OAUTH_CLIENT_ID: 'https://forum.barazo.forum/oauth-client-metadata.json',
+        OAUTH_REDIRECT_URI: 'https://forum.barazo.forum/api/auth/callback',
+      })
 
-      createOAuthClient(env, cacheMocks.cache, logMocks.logger);
+      createOAuthClient(env, cacheMocks.cache, logMocks.logger)
 
-      const options = getLastConstructorOptions();
-      const metadata = options.clientMetadata as { client_id: string };
-      expect(metadata.client_id).toBe(
-        "https://forum.barazo.forum/oauth-client-metadata.json",
-      );
-    });
-  });
+      const options = getLastConstructorOptions()
+      const metadata = options.clientMetadata as { client_id: string }
+      expect(metadata.client_id).toBe('https://forum.barazo.forum/oauth-client-metadata.json')
+    })
+  })
 
-  describe("client metadata", () => {
-    it("sets required OAuth metadata fields", () => {
-      const env = createMockEnv();
+  describe('client metadata', () => {
+    it('sets required OAuth metadata fields', () => {
+      const env = createMockEnv()
 
-      createOAuthClient(env, cacheMocks.cache, logMocks.logger);
+      createOAuthClient(env, cacheMocks.cache, logMocks.logger)
 
-      const options = getLastConstructorOptions();
+      const options = getLastConstructorOptions()
       const metadata = options.clientMetadata as {
-        client_name: string;
-        scope: string;
-        grant_types: string[];
-        response_types: string[];
-        application_type: string;
-        token_endpoint_auth_method: string;
-        dpop_bound_access_tokens: boolean;
-      };
+        client_name: string
+        scope: string
+        grant_types: string[]
+        response_types: string[]
+        application_type: string
+        token_endpoint_auth_method: string
+        dpop_bound_access_tokens: boolean
+      }
 
-      expect(metadata.client_name).toBe("Barazo Forum");
-      expect(metadata.scope).toBe("atproto repo:forum.barazo.topic.post repo:forum.barazo.topic.reply repo:forum.barazo.interaction.reaction");
-      expect(metadata.grant_types).toEqual(["authorization_code", "refresh_token"]);
-      expect(metadata.response_types).toEqual(["code"]);
-      expect(metadata.application_type).toBe("web");
-      expect(metadata.token_endpoint_auth_method).toBe("none");
-      expect(metadata.dpop_bound_access_tokens).toBe(true);
-    });
+      expect(metadata.client_name).toBe('Barazo Forum')
+      expect(metadata.scope).toBe(
+        'atproto repo:forum.barazo.topic.post repo:forum.barazo.topic.reply repo:forum.barazo.interaction.reaction'
+      )
+      expect(metadata.grant_types).toEqual(['authorization_code', 'refresh_token'])
+      expect(metadata.response_types).toEqual(['code'])
+      expect(metadata.application_type).toBe('web')
+      expect(metadata.token_endpoint_auth_method).toBe('none')
+      expect(metadata.dpop_bound_access_tokens).toBe(true)
+    })
 
-    it("includes redirect_uris from env", () => {
+    it('includes redirect_uris from env', () => {
       const env = createMockEnv({
-        OAUTH_REDIRECT_URI: "http://127.0.0.1:3000/api/auth/callback",
-      });
+        OAUTH_REDIRECT_URI: 'http://127.0.0.1:3000/api/auth/callback',
+      })
 
-      createOAuthClient(env, cacheMocks.cache, logMocks.logger);
+      createOAuthClient(env, cacheMocks.cache, logMocks.logger)
 
-      const options = getLastConstructorOptions();
-      const metadata = options.clientMetadata as { redirect_uris: string[] };
-      expect(metadata.redirect_uris).toEqual([
-        "http://127.0.0.1:3000/api/auth/callback",
-      ]);
-    });
+      const options = getLastConstructorOptions()
+      const metadata = options.clientMetadata as { redirect_uris: string[] }
+      expect(metadata.redirect_uris).toEqual(['http://127.0.0.1:3000/api/auth/callback'])
+    })
 
-    it("derives client_uri from OAUTH_CLIENT_ID in production mode", () => {
+    it('derives client_uri from OAUTH_CLIENT_ID in production mode', () => {
       const env = createMockEnv({
-        OAUTH_CLIENT_ID: "https://forum.barazo.forum/oauth-client-metadata.json",
-      });
+        OAUTH_CLIENT_ID: 'https://forum.barazo.forum/oauth-client-metadata.json',
+      })
 
-      createOAuthClient(env, cacheMocks.cache, logMocks.logger);
+      createOAuthClient(env, cacheMocks.cache, logMocks.logger)
 
-      const options = getLastConstructorOptions();
-      const metadata = options.clientMetadata as { client_uri: string };
-      expect(metadata.client_uri).toBe("https://forum.barazo.forum");
-    });
+      const options = getLastConstructorOptions()
+      const metadata = options.clientMetadata as { client_uri: string }
+      expect(metadata.client_uri).toBe('https://forum.barazo.forum')
+    })
 
-    it("uses http://localhost as client_uri in loopback mode", () => {
+    it('uses http://localhost as client_uri in loopback mode', () => {
       const env = createMockEnv({
-        OAUTH_CLIENT_ID: "http://localhost",
-      });
+        OAUTH_CLIENT_ID: 'http://localhost',
+      })
 
-      createOAuthClient(env, cacheMocks.cache, logMocks.logger);
+      createOAuthClient(env, cacheMocks.cache, logMocks.logger)
 
-      const options = getLastConstructorOptions();
-      const metadata = options.clientMetadata as { client_uri: string };
-      expect(metadata.client_uri).toBe("http://localhost");
-    });
-  });
+      const options = getLastConstructorOptions()
+      const metadata = options.clientMetadata as { client_uri: string }
+      expect(metadata.client_uri).toBe('http://localhost')
+    })
+  })
 
-  describe("stores and lock", () => {
-    it("provides stateStore, sessionStore, and requestLock", () => {
-      const env = createMockEnv();
+  describe('stores and lock', () => {
+    it('provides stateStore, sessionStore, and requestLock', () => {
+      const env = createMockEnv()
 
-      createOAuthClient(env, cacheMocks.cache, logMocks.logger);
+      createOAuthClient(env, cacheMocks.cache, logMocks.logger)
 
-      const options = getLastConstructorOptions();
-      expect(options.stateStore).toBeDefined();
-      expect(options.sessionStore).toBeDefined();
-      expect(options.requestLock).toBeDefined();
-      expect(typeof options.requestLock).toBe("function");
-    });
-  });
+      const options = getLastConstructorOptions()
+      expect(options.stateStore).toBeDefined()
+      expect(options.sessionStore).toBeDefined()
+      expect(options.requestLock).toBeDefined()
+      expect(typeof options.requestLock).toBe('function')
+    })
+  })
 
-  describe("event listeners", () => {
-    it("registers updated and deleted event listeners", () => {
-      const env = createMockEnv();
+  describe('event listeners', () => {
+    it('registers updated and deleted event listeners', () => {
+      const env = createMockEnv()
 
-      createOAuthClient(env, cacheMocks.cache, logMocks.logger);
+      createOAuthClient(env, cacheMocks.cache, logMocks.logger)
 
-      expect(mockAddEventListener).toHaveBeenCalledTimes(2);
-      expect(mockAddEventListener).toHaveBeenCalledWith(
-        "updated",
-        expect.any(Function),
-      );
-      expect(mockAddEventListener).toHaveBeenCalledWith(
-        "deleted",
-        expect.any(Function),
-      );
-    });
-  });
+      expect(mockAddEventListener).toHaveBeenCalledTimes(2)
+      expect(mockAddEventListener).toHaveBeenCalledWith('updated', expect.any(Function))
+      expect(mockAddEventListener).toHaveBeenCalledWith('deleted', expect.any(Function))
+    })
+  })
 
-  describe("logging", () => {
-    it("logs creation info in loopback mode", () => {
+  describe('logging', () => {
+    it('logs creation info in loopback mode', () => {
       const env = createMockEnv({
-        OAUTH_CLIENT_ID: "http://localhost",
-      });
+        OAUTH_CLIENT_ID: 'http://localhost',
+      })
 
-      createOAuthClient(env, cacheMocks.cache, logMocks.logger);
+      createOAuthClient(env, cacheMocks.cache, logMocks.logger)
 
       expect(logMocks.infoFn).toHaveBeenCalledWith(
-        { loopback: true, clientId: "(loopback)" },
-        "Creating OAuth client",
-      );
-    });
+        { loopback: true, clientId: '(loopback)' },
+        'Creating OAuth client'
+      )
+    })
 
-    it("logs creation info in production mode", () => {
+    it('logs creation info in production mode', () => {
       const env = createMockEnv({
-        OAUTH_CLIENT_ID: "https://forum.barazo.forum/oauth-client-metadata.json",
-      });
+        OAUTH_CLIENT_ID: 'https://forum.barazo.forum/oauth-client-metadata.json',
+      })
 
-      createOAuthClient(env, cacheMocks.cache, logMocks.logger);
+      createOAuthClient(env, cacheMocks.cache, logMocks.logger)
 
       expect(logMocks.infoFn).toHaveBeenCalledWith(
         {
           loopback: false,
-          clientId: "https://forum.barazo.forum/oauth-client-metadata.json",
+          clientId: 'https://forum.barazo.forum/oauth-client-metadata.json',
         },
-        "Creating OAuth client",
-      );
-    });
-  });
-});
+        'Creating OAuth client'
+      )
+    })
+  })
+})
 
-describe("requestLock (via createOAuthClient internals)", () => {
-  let cacheMocks: ReturnType<typeof createMockCache>;
-  let logMocks: ReturnType<typeof createMockLogger>;
+describe('requestLock (via createOAuthClient internals)', () => {
+  let cacheMocks: ReturnType<typeof createMockCache>
+  let logMocks: ReturnType<typeof createMockLogger>
 
   beforeEach(() => {
-    vi.useFakeTimers();
-    constructorArgs.length = 0;
-    vi.clearAllMocks();
-    cacheMocks = createMockCache();
-    logMocks = createMockLogger();
-  });
+    vi.useFakeTimers()
+    constructorArgs.length = 0
+    vi.clearAllMocks()
+    cacheMocks = createMockCache()
+    logMocks = createMockLogger()
+  })
 
   afterEach(() => {
-    vi.useRealTimers();
-  });
+    vi.useRealTimers()
+  })
 
-  it("acquires lock, executes function, and releases lock", async () => {
-    const env = createMockEnv();
+  it('acquires lock, executes function, and releases lock', async () => {
+    const env = createMockEnv()
 
-    createOAuthClient(env, cacheMocks.cache, logMocks.logger);
+    createOAuthClient(env, cacheMocks.cache, logMocks.logger)
 
-    const options = getLastConstructorOptions();
+    const options = getLastConstructorOptions()
     const requestLock = options.requestLock as <T>(
       name: string,
-      fn: () => T | PromiseLike<T>,
-    ) => Promise<T>;
+      fn: () => T | PromiseLike<T>
+    ) => Promise<T>
 
     // Mock successful lock acquisition
-    cacheMocks.setFn.mockResolvedValueOnce("OK");
+    cacheMocks.setFn.mockResolvedValueOnce('OK')
 
-    const result = await requestLock("test-lock", () => "test-result");
+    const result = await requestLock('test-lock', () => 'test-result')
 
-    expect(result).toBe("test-result");
+    expect(result).toBe('test-result')
     expect(cacheMocks.setFn).toHaveBeenCalledWith(
-      "barazo:oauth:lock:test-lock",
-      "1",
-      "EX",
+      'barazo:oauth:lock:test-lock',
+      '1',
+      'EX',
       10,
-      "NX",
-    );
+      'NX'
+    )
     // Lock released after function execution
-    expect(cacheMocks.delFn).toHaveBeenCalledWith("barazo:oauth:lock:test-lock");
-  });
+    expect(cacheMocks.delFn).toHaveBeenCalledWith('barazo:oauth:lock:test-lock')
+  })
 
-  it("releases lock even when function throws", async () => {
-    const env = createMockEnv();
+  it('releases lock even when function throws', async () => {
+    const env = createMockEnv()
 
-    createOAuthClient(env, cacheMocks.cache, logMocks.logger);
+    createOAuthClient(env, cacheMocks.cache, logMocks.logger)
 
-    const options = getLastConstructorOptions();
+    const options = getLastConstructorOptions()
     const requestLock = options.requestLock as <T>(
       name: string,
-      fn: () => T | PromiseLike<T>,
-    ) => Promise<T>;
+      fn: () => T | PromiseLike<T>
+    ) => Promise<T>
 
-    cacheMocks.setFn.mockResolvedValueOnce("OK");
+    cacheMocks.setFn.mockResolvedValueOnce('OK')
 
     await expect(
-      requestLock("test-lock", () => {
-        throw new Error("function error");
-      }),
-    ).rejects.toThrow("function error");
+      requestLock('test-lock', () => {
+        throw new Error('function error')
+      })
+    ).rejects.toThrow('function error')
 
     // Lock was still released
-    expect(cacheMocks.delFn).toHaveBeenCalledWith("barazo:oauth:lock:test-lock");
-  });
+    expect(cacheMocks.delFn).toHaveBeenCalledWith('barazo:oauth:lock:test-lock')
+  })
 
-  it("retries once when lock is not acquired", async () => {
-    const env = createMockEnv();
+  it('retries once when lock is not acquired', async () => {
+    const env = createMockEnv()
 
-    createOAuthClient(env, cacheMocks.cache, logMocks.logger);
+    createOAuthClient(env, cacheMocks.cache, logMocks.logger)
 
-    const options = getLastConstructorOptions();
+    const options = getLastConstructorOptions()
     const requestLock = options.requestLock as <T>(
       name: string,
-      fn: () => T | PromiseLike<T>,
-    ) => Promise<T>;
+      fn: () => T | PromiseLike<T>
+    ) => Promise<T>
 
     // First attempt fails (null = not acquired), second succeeds
-    cacheMocks.setFn
-      .mockResolvedValueOnce(null as unknown as "OK")
-      .mockResolvedValueOnce("OK");
+    cacheMocks.setFn.mockResolvedValueOnce(null as unknown as 'OK').mockResolvedValueOnce('OK')
 
-    const promise = requestLock("test-lock", () => 42);
-    await vi.advanceTimersByTimeAsync(1000);
-    const result = await promise;
+    const promise = requestLock('test-lock', () => 42)
+    await vi.advanceTimersByTimeAsync(1000)
+    const result = await promise
 
-    expect(result).toBe(42);
-    expect(cacheMocks.setFn).toHaveBeenCalledTimes(2);
-  });
+    expect(result).toBe(42)
+    expect(cacheMocks.setFn).toHaveBeenCalledTimes(2)
+  })
 
-  it("throws when lock cannot be acquired after retry", async () => {
-    const env = createMockEnv();
+  it('throws when lock cannot be acquired after retry', async () => {
+    const env = createMockEnv()
 
-    createOAuthClient(env, cacheMocks.cache, logMocks.logger);
+    createOAuthClient(env, cacheMocks.cache, logMocks.logger)
 
-    const options = getLastConstructorOptions();
+    const options = getLastConstructorOptions()
     const requestLock = options.requestLock as <T>(
       name: string,
-      fn: () => T | PromiseLike<T>,
-    ) => Promise<T>;
+      fn: () => T | PromiseLike<T>
+    ) => Promise<T>
 
     // Both attempts fail
     cacheMocks.setFn
-      .mockResolvedValueOnce(null as unknown as "OK")
-      .mockResolvedValueOnce(null as unknown as "OK");
+      .mockResolvedValueOnce(null as unknown as 'OK')
+      .mockResolvedValueOnce(null as unknown as 'OK')
 
-    const promise = requestLock("test-lock", () => "should not run");
+    const promise = requestLock('test-lock', () => 'should not run')
     // Attach rejection handler before advancing timers to avoid unhandled rejection
-    const expectation = expect(promise).rejects.toThrow("Could not acquire OAuth lock: test-lock");
-    await vi.advanceTimersByTimeAsync(1000);
-    await expectation;
-  });
-});
+    const expectation = expect(promise).rejects.toThrow('Could not acquire OAuth lock: test-lock')
+    await vi.advanceTimersByTimeAsync(1000)
+    await expectation
+  })
+})

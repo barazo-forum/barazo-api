@@ -5,24 +5,27 @@
 // Import in any route test file to avoid duplicating this boilerplate.
 // ---------------------------------------------------------------------------
 
-import { vi } from "vitest";
+import { vi } from 'vitest'
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
-export type MockFn = ReturnType<typeof vi.fn>;
+export type MockFn = ReturnType<typeof vi.fn>
 
 export interface DbChain {
-  values: MockFn;
-  onConflictDoUpdate: MockFn;
-  onConflictDoNothing: MockFn;
-  set: MockFn;
-  from: MockFn;
-  where: MockFn;
-  orderBy: MockFn;
-  limit: MockFn;
-  returning: MockFn;
+  values: MockFn
+  onConflictDoUpdate: MockFn
+  onConflictDoNothing: MockFn
+  set: MockFn
+  from: MockFn
+  leftJoin: MockFn
+  where: MockFn
+  groupBy: MockFn
+  having: MockFn
+  orderBy: MockFn
+  limit: MockFn
+  returning: MockFn
 }
 
 // ---------------------------------------------------------------------------
@@ -44,11 +47,14 @@ export function createChainableProxy(terminalResult: unknown = []): DbChain {
     onConflictDoNothing: vi.fn(),
     set: vi.fn(),
     from: vi.fn(),
+    leftJoin: vi.fn(),
     where: vi.fn(),
+    groupBy: vi.fn(),
+    having: vi.fn(),
     orderBy: vi.fn(),
     limit: vi.fn(),
     returning: vi.fn(),
-  };
+  }
 
   // Build a thenable wrapper that spreads the chain's actual methods
   // so test overrides (e.g. chain.returning.mockResolvedValueOnce) work
@@ -56,29 +62,38 @@ export function createChainableProxy(terminalResult: unknown = []): DbChain {
     ...chain,
     then: (resolve: (val: unknown) => void, reject?: (err: unknown) => void) =>
       Promise.resolve(terminalResult).then(resolve, reject),
-  });
+  })
 
   const methods: (keyof DbChain)[] = [
-    "values", "onConflictDoUpdate", "onConflictDoNothing",
-    "set", "from",
-  ];
+    'values',
+    'onConflictDoUpdate',
+    'onConflictDoNothing',
+    'set',
+    'from',
+    'leftJoin',
+  ]
   for (const m of methods) {
-    chain[m].mockImplementation(() => chain);
+    chain[m].mockImplementation(() => chain)
   }
 
   // Terminal methods return thenables so `await db.insert().values().returning()` works
   // and `await db.select().from().where().orderBy()` works
   // eslint-disable-next-line @typescript-eslint/no-misused-promises -- Intentionally thenable mock for Drizzle chain
-  chain.orderBy.mockImplementation(() => makeThenable());
+  chain.orderBy.mockImplementation(() => makeThenable())
   // eslint-disable-next-line @typescript-eslint/no-misused-promises -- Intentionally thenable mock for Drizzle chain
-  chain.limit.mockImplementation(() => makeThenable());
+  chain.limit.mockImplementation(() => makeThenable())
   // eslint-disable-next-line @typescript-eslint/no-misused-promises -- Intentionally thenable mock for Drizzle chain
-  chain.returning.mockImplementation(() => makeThenable());
+  chain.returning.mockImplementation(() => makeThenable())
 
   // eslint-disable-next-line @typescript-eslint/no-misused-promises -- Intentionally thenable mock for Drizzle chain
-  chain.where.mockImplementation(() => makeThenable());
+  chain.where.mockImplementation(() => makeThenable())
 
-  return chain;
+  // groupBy chains to having; having is terminal (thenable)
+  chain.groupBy.mockImplementation(() => chain)
+  // eslint-disable-next-line @typescript-eslint/no-misused-promises -- Intentionally thenable mock for Drizzle chain
+  chain.having.mockImplementation(() => makeThenable())
+
+  return chain
 }
 
 // ---------------------------------------------------------------------------
@@ -86,13 +101,13 @@ export function createChainableProxy(terminalResult: unknown = []): DbChain {
 // ---------------------------------------------------------------------------
 
 export interface MockDb {
-  insert: MockFn;
-  select: MockFn;
-  selectDistinct: MockFn;
-  update: MockFn;
-  delete: MockFn;
-  transaction: MockFn;
-  execute: MockFn;
+  insert: MockFn
+  select: MockFn
+  selectDistinct: MockFn
+  update: MockFn
+  delete: MockFn
+  transaction: MockFn
+  execute: MockFn
 }
 
 /**
@@ -107,7 +122,7 @@ export function createMockDb(): MockDb {
     delete: vi.fn(),
     transaction: vi.fn(),
     execute: vi.fn(),
-  };
+  }
 }
 
 /**
@@ -115,17 +130,17 @@ export function createMockDb(): MockDb {
  * Returns the new selectChain for per-test mock setup.
  */
 export function resetDbMocks(mockDb: MockDb): DbChain {
-  const selectChain = createChainableProxy([]);
-  const selectDistinctChain = createChainableProxy([]);
-  mockDb.insert.mockReturnValue(createChainableProxy());
-  mockDb.select.mockReturnValue(selectChain);
-  mockDb.selectDistinct.mockReturnValue(selectDistinctChain);
-  mockDb.update.mockReturnValue(createChainableProxy([]));
-  mockDb.delete.mockReturnValue(createChainableProxy());
+  const selectChain = createChainableProxy([])
+  const selectDistinctChain = createChainableProxy([])
+  mockDb.insert.mockReturnValue(createChainableProxy())
+  mockDb.select.mockReturnValue(selectChain)
+  mockDb.selectDistinct.mockReturnValue(selectDistinctChain)
+  mockDb.update.mockReturnValue(createChainableProxy([]))
+  mockDb.delete.mockReturnValue(createChainableProxy())
   // eslint-disable-next-line @typescript-eslint/no-misused-promises -- Intentionally async for Drizzle transaction mock
   mockDb.transaction.mockImplementation(async (fn: (tx: MockDb) => Promise<unknown>) => {
-    return await fn(mockDb);
-  });
-  mockDb.execute.mockReset();
-  return selectChain;
+    return await fn(mockDb)
+  })
+  mockDb.execute.mockReset()
+  return selectChain
 }

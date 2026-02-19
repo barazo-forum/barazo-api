@@ -1,52 +1,52 @@
-import { eq, and } from "drizzle-orm";
-import type { FastifyPluginCallback } from "fastify";
-import { notFound, badRequest } from "../lib/api-errors.js";
-import { resolveProfile } from "../lib/resolve-profile.js";
-import type { SourceProfile, CommunityOverride } from "../lib/resolve-profile.js";
-import { updateCommunityProfileSchema } from "../validation/community-profiles.js";
-import { users } from "../db/schema/users.js";
-import { communityProfiles } from "../db/schema/community-profiles.js";
+import { eq, and } from 'drizzle-orm'
+import type { FastifyPluginCallback } from 'fastify'
+import { notFound, badRequest } from '../lib/api-errors.js'
+import { resolveProfile } from '../lib/resolve-profile.js'
+import type { SourceProfile, CommunityOverride } from '../lib/resolve-profile.js'
+import { updateCommunityProfileSchema } from '../validation/community-profiles.js'
+import { users } from '../db/schema/users.js'
+import { communityProfiles } from '../db/schema/community-profiles.js'
 
 // ---------------------------------------------------------------------------
 // OpenAPI JSON Schema definitions
 // ---------------------------------------------------------------------------
 
 const errorJsonSchema = {
-  type: "object" as const,
+  type: 'object' as const,
   properties: {
-    error: { type: "string" as const },
+    error: { type: 'string' as const },
   },
-};
+}
 
 const communityProfileJsonSchema = {
-  type: "object" as const,
+  type: 'object' as const,
   properties: {
-    did: { type: "string" as const },
-    handle: { type: "string" as const },
-    displayName: { type: ["string", "null"] as const },
-    avatarUrl: { type: ["string", "null"] as const },
-    bannerUrl: { type: ["string", "null"] as const },
-    bio: { type: ["string", "null"] as const },
-    communityDid: { type: "string" as const },
-    hasOverride: { type: "boolean" as const },
+    did: { type: 'string' as const },
+    handle: { type: 'string' as const },
+    displayName: { type: ['string', 'null'] as const },
+    avatarUrl: { type: ['string', 'null'] as const },
+    bannerUrl: { type: ['string', 'null'] as const },
+    bio: { type: ['string', 'null'] as const },
+    communityDid: { type: 'string' as const },
+    hasOverride: { type: 'boolean' as const },
     source: {
-      type: "object" as const,
+      type: 'object' as const,
       properties: {
-        displayName: { type: ["string", "null"] as const },
-        avatarUrl: { type: ["string", "null"] as const },
-        bannerUrl: { type: ["string", "null"] as const },
-        bio: { type: ["string", "null"] as const },
+        displayName: { type: ['string', 'null'] as const },
+        avatarUrl: { type: ['string', 'null'] as const },
+        bannerUrl: { type: ['string', 'null'] as const },
+        bio: { type: ['string', 'null'] as const },
       },
     },
   },
-};
+}
 
 const successJsonSchema = {
-  type: "object" as const,
+  type: 'object' as const,
   properties: {
-    success: { type: "boolean" as const },
+    success: { type: 'boolean' as const },
   },
-};
+}
 
 // ---------------------------------------------------------------------------
 // Community profile routes plugin
@@ -61,25 +61,25 @@ const successJsonSchema = {
  */
 export function communityProfileRoutes(): FastifyPluginCallback {
   return (app, _opts, done) => {
-    const { db, authMiddleware } = app;
+    const { db, authMiddleware } = app
 
     // -------------------------------------------------------------------
     // GET /api/communities/:communityDid/profile (auth required)
     // -------------------------------------------------------------------
 
     app.get(
-      "/api/communities/:communityDid/profile",
+      '/api/communities/:communityDid/profile',
       {
         preHandler: [authMiddleware.requireAuth],
         schema: {
-          tags: ["Community Profiles"],
-          summary: "Get own resolved profile in a community",
+          tags: ['Community Profiles'],
+          summary: 'Get own resolved profile in a community',
           security: [{ bearerAuth: [] }],
           params: {
-            type: "object",
-            required: ["communityDid"],
+            type: 'object',
+            required: ['communityDid'],
             properties: {
-              communityDid: { type: "string" },
+              communityDid: { type: 'string' },
             },
           },
           response: {
@@ -90,25 +90,20 @@ export function communityProfileRoutes(): FastifyPluginCallback {
         },
       },
       async (request, reply) => {
-        const requestUser = request.user;
+        const requestUser = request.user
         if (!requestUser) {
-          return reply
-            .status(401)
-            .send({ error: "Authentication required" });
+          return reply.status(401).send({ error: 'Authentication required' })
         }
 
-        const { communityDid } = request.params as { communityDid: string };
-        const userDid = requestUser.did;
+        const { communityDid } = request.params as { communityDid: string }
+        const userDid = requestUser.did
 
         // Fetch source profile from users table
-        const userRows = await db
-          .select()
-          .from(users)
-          .where(eq(users.did, userDid));
+        const userRows = await db.select().from(users).where(eq(users.did, userDid))
 
-        const user = userRows[0];
+        const user = userRows[0]
         if (!user) {
-          throw notFound("User not found");
+          throw notFound('User not found')
         }
 
         // Fetch community override
@@ -118,11 +113,11 @@ export function communityProfileRoutes(): FastifyPluginCallback {
           .where(
             and(
               eq(communityProfiles.did, userDid),
-              eq(communityProfiles.communityDid, communityDid),
-            ),
-          );
+              eq(communityProfiles.communityDid, communityDid)
+            )
+          )
 
-        const overrideRow = overrideRows[0];
+        const overrideRow = overrideRows[0]
 
         const source: SourceProfile = {
           did: user.did,
@@ -131,7 +126,7 @@ export function communityProfileRoutes(): FastifyPluginCallback {
           avatarUrl: user.avatarUrl ?? null,
           bannerUrl: user.bannerUrl ?? null,
           bio: user.bio ?? null,
-        };
+        }
 
         const override: CommunityOverride | null = overrideRow
           ? {
@@ -140,9 +135,9 @@ export function communityProfileRoutes(): FastifyPluginCallback {
               bannerUrl: overrideRow.bannerUrl ?? null,
               bio: overrideRow.bio ?? null,
             }
-          : null;
+          : null
 
-        const resolved = resolveProfile(source, override);
+        const resolved = resolveProfile(source, override)
 
         return reply.status(200).send({
           did: resolved.did,
@@ -159,34 +154,34 @@ export function communityProfileRoutes(): FastifyPluginCallback {
             bannerUrl: source.bannerUrl,
             bio: source.bio,
           },
-        });
-      },
-    );
+        })
+      }
+    )
 
     // -------------------------------------------------------------------
     // PUT /api/communities/:communityDid/profile (auth required)
     // -------------------------------------------------------------------
 
     app.put(
-      "/api/communities/:communityDid/profile",
+      '/api/communities/:communityDid/profile',
       {
         preHandler: [authMiddleware.requireAuth],
         schema: {
-          tags: ["Community Profiles"],
-          summary: "Update per-community profile overrides",
+          tags: ['Community Profiles'],
+          summary: 'Update per-community profile overrides',
           security: [{ bearerAuth: [] }],
           params: {
-            type: "object",
-            required: ["communityDid"],
+            type: 'object',
+            required: ['communityDid'],
             properties: {
-              communityDid: { type: "string" },
+              communityDid: { type: 'string' },
             },
           },
           body: {
-            type: "object",
+            type: 'object',
             properties: {
-              displayName: { type: ["string", "null"] },
-              bio: { type: ["string", "null"] },
+              displayName: { type: ['string', 'null'] },
+              bio: { type: ['string', 'null'] },
             },
           },
           response: {
@@ -197,28 +192,26 @@ export function communityProfileRoutes(): FastifyPluginCallback {
         },
       },
       async (request, reply) => {
-        const requestUser = request.user;
+        const requestUser = request.user
         if (!requestUser) {
-          return reply
-            .status(401)
-            .send({ error: "Authentication required" });
+          return reply.status(401).send({ error: 'Authentication required' })
         }
 
-        const { communityDid } = request.params as { communityDid: string };
+        const { communityDid } = request.params as { communityDid: string }
 
-        const parsed = updateCommunityProfileSchema.safeParse(request.body);
+        const parsed = updateCommunityProfileSchema.safeParse(request.body)
         if (!parsed.success) {
-          throw badRequest("Invalid community profile data");
+          throw badRequest('Invalid community profile data')
         }
 
-        const now = new Date();
-        const updateData: Record<string, unknown> = { updatedAt: now };
+        const now = new Date()
+        const updateData: Record<string, unknown> = { updatedAt: now }
 
         if (parsed.data.displayName !== undefined) {
-          updateData["displayName"] = parsed.data.displayName;
+          updateData['displayName'] = parsed.data.displayName
         }
         if (parsed.data.bio !== undefined) {
-          updateData["bio"] = parsed.data.bio;
+          updateData['bio'] = parsed.data.bio
         }
 
         // Upsert: use composite key (did, communityDid)
@@ -233,60 +226,58 @@ export function communityProfileRoutes(): FastifyPluginCallback {
           .onConflictDoUpdate({
             target: [communityProfiles.did, communityProfiles.communityDid],
             set: updateData,
-          });
+          })
 
-        return reply.status(200).send({ success: true });
-      },
-    );
+        return reply.status(200).send({ success: true })
+      }
+    )
 
     // -------------------------------------------------------------------
     // DELETE /api/communities/:communityDid/profile (auth required)
     // -------------------------------------------------------------------
 
     app.delete(
-      "/api/communities/:communityDid/profile",
+      '/api/communities/:communityDid/profile',
       {
         preHandler: [authMiddleware.requireAuth],
         schema: {
-          tags: ["Community Profiles"],
-          summary: "Reset community profile to source (delete override)",
+          tags: ['Community Profiles'],
+          summary: 'Reset community profile to source (delete override)',
           security: [{ bearerAuth: [] }],
           params: {
-            type: "object",
-            required: ["communityDid"],
+            type: 'object',
+            required: ['communityDid'],
             properties: {
-              communityDid: { type: "string" },
+              communityDid: { type: 'string' },
             },
           },
           response: {
-            204: { type: "null" },
+            204: { type: 'null' },
             401: errorJsonSchema,
           },
         },
       },
       async (request, reply) => {
-        const requestUser = request.user;
+        const requestUser = request.user
         if (!requestUser) {
-          return reply
-            .status(401)
-            .send({ error: "Authentication required" });
+          return reply.status(401).send({ error: 'Authentication required' })
         }
 
-        const { communityDid } = request.params as { communityDid: string };
+        const { communityDid } = request.params as { communityDid: string }
 
         await db
           .delete(communityProfiles)
           .where(
             and(
               eq(communityProfiles.did, requestUser.did),
-              eq(communityProfiles.communityDid, communityDid),
-            ),
-          );
+              eq(communityProfiles.communityDid, communityDid)
+            )
+          )
 
-        return reply.status(204).send();
-      },
-    );
+        return reply.status(204).send()
+      }
+    )
 
-    done();
-  };
+    done()
+  }
 }
