@@ -3,9 +3,8 @@ import type { Cache } from '../../../src/cache/index.js'
 import type { Logger } from '../../../src/lib/logger.js'
 import type { Env } from '../../../src/config/env.js'
 
-// Track constructor calls and mock event listener
+// Track constructor calls
 const constructorArgs: Record<string, unknown>[] = []
-const mockAddEventListener = vi.fn()
 const mockJwks = { keys: [] }
 
 vi.mock('@atproto/oauth-client-node', () => {
@@ -13,7 +12,6 @@ vi.mock('@atproto/oauth-client-node', () => {
     NodeOAuthClient: class MockNodeOAuthClient {
       clientMetadata: Record<string, unknown>
       jwks: { keys: unknown[] }
-      addEventListener = mockAddEventListener
 
       constructor(options: { clientMetadata: Record<string, unknown> }) {
         constructorArgs.push(options as Record<string, unknown>)
@@ -215,15 +213,45 @@ describe('createOAuthClient', () => {
     })
   })
 
-  describe('event listeners', () => {
-    it('registers updated and deleted event listeners', () => {
+  describe('session lifecycle hooks', () => {
+    it('passes onUpdate and onDelete hooks in constructor options', () => {
       const env = createMockEnv()
 
       createOAuthClient(env, cacheMocks.cache, logMocks.logger)
 
-      expect(mockAddEventListener).toHaveBeenCalledTimes(2)
-      expect(mockAddEventListener).toHaveBeenCalledWith('updated', expect.any(Function))
-      expect(mockAddEventListener).toHaveBeenCalledWith('deleted', expect.any(Function))
+      const options = getLastConstructorOptions()
+      expect(typeof options.onUpdate).toBe('function')
+      expect(typeof options.onDelete).toBe('function')
+    })
+
+    it('onUpdate hook logs session update', () => {
+      const env = createMockEnv()
+
+      createOAuthClient(env, cacheMocks.cache, logMocks.logger)
+
+      const options = getLastConstructorOptions()
+      const onUpdate = options.onUpdate as (sub: string) => void
+      onUpdate('did:plc:test123')
+
+      expect(logMocks.infoFn).toHaveBeenCalledWith(
+        { sub: 'did:plc:test123' },
+        'OAuth session updated'
+      )
+    })
+
+    it('onDelete hook logs session deletion with cause', () => {
+      const env = createMockEnv()
+
+      createOAuthClient(env, cacheMocks.cache, logMocks.logger)
+
+      const options = getLastConstructorOptions()
+      const onDelete = options.onDelete as (sub: string, cause: unknown) => void
+      onDelete('did:plc:test123', new Error('token_revoked'))
+
+      expect(logMocks.infoFn).toHaveBeenCalledWith(
+        { sub: 'did:plc:test123', cause: 'Error: token_revoked' },
+        'OAuth session deleted'
+      )
     })
   })
 

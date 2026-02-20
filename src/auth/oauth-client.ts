@@ -102,17 +102,13 @@ export function createOAuthClient(env: Env, cache: Cache, logger: Logger): NodeO
     stateStore: new ValkeyStateStore(cache, logger),
     sessionStore: new ValkeySessionStore(cache, logger, env.OAUTH_SESSION_TTL),
     requestLock: createRequestLock(cache, logger),
-  })
-
-  // Log session lifecycle events for observability
-  client.addEventListener('updated', (event: CustomEvent) => {
-    const detail = event.detail as { sub: string }
-    logger.info({ sub: detail.sub }, 'OAuth session updated')
-  })
-
-  client.addEventListener('deleted', (event: CustomEvent) => {
-    const detail = event.detail as { sub: string; cause: unknown }
-    logger.info({ sub: detail.sub, cause: String(detail.cause) }, 'OAuth session deleted')
+    // Session lifecycle hooks for observability (replaces addEventListener in >=0.3.17)
+    onUpdate: (sub: string) => {
+      logger.info({ sub }, 'OAuth session updated')
+    },
+    onDelete: (sub: string, cause: unknown) => {
+      logger.info({ sub, cause: String(cause) }, 'OAuth session deleted')
+    },
   })
 
   return client
