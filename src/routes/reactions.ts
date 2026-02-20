@@ -17,7 +17,7 @@ import { replies } from '../db/schema/replies.js'
 import { communitySettings } from '../db/schema/community-settings.js'
 import { checkOnboardingComplete } from '../lib/onboarding-gate.js'
 import { createNotificationService } from '../services/notification.js'
-import { extractRkey } from '../lib/at-uri.js'
+import { extractRkey, getCollectionFromUri } from '../lib/at-uri.js'
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -87,15 +87,6 @@ function decodeCursor(cursor: string): { createdAt: string; uri: string } | null
   } catch {
     return null
   }
-}
-
-/**
- * Get the collection NSID from an AT URI.
- * Format: at://did/collection/rkey -> returns "collection"
- */
-function getCollectionFromUri(uri: string): string | undefined {
-  const parts = uri.split('/')
-  return parts[3]
 }
 
 // ---------------------------------------------------------------------------

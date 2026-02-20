@@ -562,6 +562,7 @@ async function searchTopicsFulltext(
     LIMIT ${fetchLimit}
   `)
 
+  // Drizzle execute() returns untyped rows — cast to expected shape
   return result as unknown as TopicSearchRow[]
 }
 
@@ -613,6 +614,7 @@ async function searchRepliesFulltext(
     LIMIT ${fetchLimit}
   `)
 
+  // Drizzle execute() returns untyped rows — cast to expected shape
   return result as unknown as ReplySearchRow[]
 }
 
@@ -664,6 +666,7 @@ async function searchTopicsVector(
     LIMIT ${fetchLimit}
   `)
 
+  // Drizzle execute() returns untyped rows — cast to expected shape
   return result as unknown as TopicSearchRow[]
 }
 
@@ -713,6 +716,7 @@ async function searchRepliesVector(
     LIMIT ${fetchLimit}
   `)
 
+  // Drizzle execute() returns untyped rows — cast to expected shape
   return result as unknown as ReplySearchRow[]
 }
 
@@ -764,6 +768,7 @@ async function countSearchResults(
       WHERE ${whereClause}
     `)
 
+    // Drizzle execute() returns untyped rows — cast to expected shape
     const rows = result as unknown as CountRow[]
     total += Number(rows[0]?.count ?? 0)
   }
@@ -795,6 +800,7 @@ async function countSearchResults(
       WHERE ${whereClause}
     `)
 
+    // Drizzle execute() returns untyped rows — cast to expected shape
     const rows = result as unknown as CountRow[]
     total += Number(rows[0]?.count ?? 0)
   }

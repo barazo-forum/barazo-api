@@ -57,7 +57,7 @@ function createRequestLock(cache: Cache, logger: Logger): RuntimeLock {
     try {
       return await fn()
     } finally {
-      // TODO(multi-instance): Use Redlock or check-and-delete Lua script for multi-instance safety.
+      // TODO(multi-instance): Use Redlock or check-and-delete Lua script for multi-instance safety. (#35)
       // Current simple DEL does not verify lock ownership; safe for single-instance MVP.
       // Only needed when SaaS tier runs multiple API instances against shared Valkey.
       try {

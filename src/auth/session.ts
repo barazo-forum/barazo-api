@@ -257,7 +257,7 @@ export function createSessionService(
       }
 
       // Delete each session individually (cleans up access token lookups too)
-      // TODO(phase-3): Pipeline deletes for performance when moving to multi-instance
+      // TODO(phase-3): Pipeline deletes for performance when moving to multi-instance (#36)
       for (const sid of sids) {
         await deleteSession(sid)
       }

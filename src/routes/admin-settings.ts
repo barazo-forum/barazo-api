@@ -363,7 +363,7 @@ export function adminSettingsRoutes(): FastifyPluginCallback {
           throw notFound('Community settings not found after update')
         }
 
-        // TODO: Write to admin_audit_log table when implemented (standards/backend.md audit logging)
+        // TODO: Write to admin_audit_log table when implemented (standards/backend.md audit logging) (#38)
         app.log.info(
           {
             event: 'settings_updated',
@@ -420,6 +420,7 @@ export function adminSettingsRoutes(): FastifyPluginCallback {
           recent_users: string
         }
 
+        // Drizzle execute() returns untyped rows — cast to expected shape
         const rows = result as unknown as StatsRow[]
         const row = rows[0]
         if (!row) {

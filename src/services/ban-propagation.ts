@@ -40,6 +40,7 @@ export async function checkBanPropagation(
     SELECT count(*)::int AS ban_count
     FROM latest_actions
     WHERE action = 'ban'
+  // Drizzle execute() returns untyped rows — cast to expected shape
   `)) as unknown as BanCountRow[]
 
   const banCount = result[0]?.ban_count ?? 0

@@ -134,7 +134,9 @@ export function authRoutes(oauthClient: NodeOAuthClient): FastifyPluginCallback 
           const session = await sessionService.createSession(did, handle)
 
           // Fire-and-forget profile sync from PDS (never blocks auth flow)
-          void app.profileSync.syncProfile(did)
+          void app.profileSync.syncProfile(did).catch((err: unknown) => {
+            app.log.error({ err, did }, 'Profile sync failed')
+          })
 
           // Detect cross-post scope grant and persist to user preferences.
           // The tokenSet scope field reflects what the PDS actually granted.

@@ -12,3 +12,12 @@ export function extractRkey(uri: string): string {
   }
   return rkey
 }
+
+/**
+ * Extract the collection NSID from an AT URI.
+ * Format: at://did/collection/rkey -> returns "collection"
+ */
+export function getCollectionFromUri(uri: string): string | undefined {
+  const parts = uri.split('/')
+  return parts[3]
+}

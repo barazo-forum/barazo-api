@@ -56,7 +56,7 @@ function extractBearerToken(request: FastifyRequest): string | undefined {
 // Factory
 // ---------------------------------------------------------------------------
 
-// TODO(self-hosting): Add DID document verification with 1-hour cache TTL.
+// TODO(self-hosting): Add DID document verification with 1-hour cache TTL. (#37)
 // Currently trusts the DID from the session. Full verification requires
 // PLC directory / DNS resolution (see standards/backend.md).
 // Not needed for single-instance MVP (trusted Valkey on same host).

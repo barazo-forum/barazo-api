@@ -5,6 +5,7 @@ import { replies } from '../../db/schema/replies.js'
 import type { Database } from '../../db/index.js'
 import type { Logger } from '../../lib/logger.js'
 import { clampCreatedAt } from '../clamp-timestamp.js'
+import { getCollectionFromUri } from '../../lib/at-uri.js'
 
 const TOPIC_COLLECTION = 'forum.barazo.topic.post'
 const REPLY_COLLECTION = 'forum.barazo.topic.reply'
@@ -26,14 +27,6 @@ interface DeleteParams {
   rkey: string
   did: string
   subjectUri: string
-}
-
-function getCollectionFromUri(uri: string): string | undefined {
-  // AT URI format: at://did/collection/rkey
-  const parts = uri.split('/')
-  // parts: ["at:", "", "did", "collection", "rkey"] for at://did/collection/rkey
-  // But NSID collections have dots, so we need index 3
-  return parts[3]
 }
 
 export class ReactionIndexer {

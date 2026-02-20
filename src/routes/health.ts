@@ -1,7 +1,7 @@
 import type { FastifyPluginCallback } from 'fastify'
 import { sql } from 'drizzle-orm'
 
-const healthRoutes: FastifyPluginCallback = (fastify, _opts, done) => {
+export const healthRoutes: FastifyPluginCallback = (fastify, _opts, done) => {
   fastify.get('/api/health', async (_request, reply) => {
     return reply.send({
       status: 'healthy',
@@ -54,5 +54,3 @@ const healthRoutes: FastifyPluginCallback = (fastify, _opts, done) => {
 
   done()
 }
-
-export default healthRoutes

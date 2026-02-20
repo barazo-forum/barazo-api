@@ -515,6 +515,7 @@ export function globalFilterRoutes(): FastifyPluginCallback {
         GROUP BY r.community_did, t.topic_count
         ORDER BY report_count DESC
         LIMIT ${limit}
+      // Drizzle execute() returns untyped rows — cast to expected shape
       `)) as unknown as CommunityReportRow[]
 
         return reply.status(200).send({
