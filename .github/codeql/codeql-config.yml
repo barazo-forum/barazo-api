@@ -1,0 +1,11 @@
+# CodeQL configuration for barazo-api
+# Uses the extended query suite with exclusions for false positives.
+
+name: 'Barazo API CodeQL Config'
+
+# Exclude queries that produce false positives with Fastify.
+# js/missing-rate-limiting does not recognise @fastify/rate-limit's
+# per-route config.rateLimit option and flags every handler as unprotected.
+query-filters:
+  - exclude:
+      id: js/missing-rate-limiting
