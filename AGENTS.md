@@ -46,7 +46,7 @@ The AppView backend for Barazo. Subscribes to AT Protocol firehose, indexes `for
 
 ### About Barazo
 
-Federated forum built on the [AT Protocol](https://atproto.com/). Portable identity, user-owned data, cross-community reputation.
+Open-source forum software built on the [AT Protocol](https://atproto.com/). Portable identity, member-owned data, no lock-in.
 
 - **Organization:** [github.com/barazo-forum](https://github.com/barazo-forum)
 - **License:** AGPL-3.0 (backend) / MIT (frontend, lexicons, deploy, website)
@@ -62,7 +62,7 @@ Federated forum built on the [AT Protocol](https://atproto.com/). Portable ident
 6. **Output sanitization** -- DOMPurify on all user-generated content.
 7. **No raw SQL** -- Drizzle ORM with parameterized queries only.
 8. **Structured logging** -- Pino logger, never `console.log`.
-9. **Accessibility** -- WCAG 2.2 AA, semantic HTML, keyboard navigable.
+9. **Accessible error responses** -- API responses include human-readable error messages that support accessible frontend rendering.
 
 ### Git Workflow
 
