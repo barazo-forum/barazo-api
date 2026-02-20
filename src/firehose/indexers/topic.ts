@@ -4,6 +4,7 @@ import type { Database } from '../../db/index.js'
 import type { Logger } from '../../lib/logger.js'
 import type { TrustStatus } from '../../services/account-age.js'
 import { clampCreatedAt } from '../clamp-timestamp.js'
+import { sanitizeHtml, sanitizeText } from '../../lib/sanitize.js'
 
 interface CreateParams {
   uri: string
@@ -38,8 +39,8 @@ export class TopicIndexer {
         uri,
         rkey,
         authorDid: did,
-        title: record['title'] as string,
-        content: record['content'] as string,
+        title: sanitizeText(record['title'] as string),
+        content: sanitizeHtml(record['content'] as string),
         contentFormat: (record['contentFormat'] as string | undefined) ?? null,
         category: record['category'] as string,
         tags: (record['tags'] as string[] | undefined) ?? null,
@@ -53,8 +54,8 @@ export class TopicIndexer {
       .onConflictDoUpdate({
         target: topics.uri,
         set: {
-          title: record['title'] as string,
-          content: record['content'] as string,
+          title: sanitizeText(record['title'] as string),
+          content: sanitizeHtml(record['content'] as string),
           contentFormat: (record['contentFormat'] as string | undefined) ?? null,
           category: record['category'] as string,
           tags: (record['tags'] as string[] | undefined) ?? null,
@@ -73,8 +74,8 @@ export class TopicIndexer {
     await this.db
       .update(topics)
       .set({
-        title: record['title'] as string,
-        content: record['content'] as string,
+        title: sanitizeText(record['title'] as string),
+        content: sanitizeHtml(record['content'] as string),
         contentFormat: (record['contentFormat'] as string | undefined) ?? null,
         category: record['category'] as string,
         tags: (record['tags'] as string[] | undefined) ?? null,

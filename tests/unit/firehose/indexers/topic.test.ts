@@ -102,6 +102,96 @@ describe('TopicIndexer', () => {
     })
   })
 
+  describe('sanitization', () => {
+    it('sanitizes title (strips HTML) and content (strips scripts) on create', async () => {
+      const valuesMock = vi.fn().mockReturnValue({
+        onConflictDoUpdate: vi.fn().mockResolvedValue(undefined),
+      })
+      const db = {
+        ...createMockDb(),
+        insert: vi.fn().mockReturnValue({ values: valuesMock }),
+      }
+      const logger = createMockLogger()
+      const indexer = new TopicIndexer(db as never, logger as never)
+
+      await indexer.handleCreate({
+        ...baseParams,
+        record: {
+          title: '<b>Bold</b> Title<script>alert("xss")</script>',
+          content: '<p>Good</p><script>alert("xss")</script>',
+          community: 'did:plc:community',
+          category: 'general',
+          createdAt: '2026-01-01T00:00:00.000Z',
+        },
+      })
+
+      const values = valuesMock.mock.calls[0][0] as Record<string, unknown>
+      // Title should have ALL HTML stripped (plain text)
+      expect(values.title).not.toContain('<b>')
+      expect(values.title).not.toContain('<script>')
+      expect(values.title).toContain('Bold')
+      // Content should keep safe tags but strip scripts
+      expect(values.content).toContain('<p>Good</p>')
+      expect(values.content).not.toContain('<script>')
+    })
+
+    it('sanitizes title and content on update', async () => {
+      const setMock = vi.fn().mockReturnValue({
+        where: vi.fn().mockResolvedValue(undefined),
+      })
+      const db = {
+        ...createMockDb(),
+        update: vi.fn().mockReturnValue({ set: setMock }),
+      }
+      const logger = createMockLogger()
+      const indexer = new TopicIndexer(db as never, logger as never)
+
+      await indexer.handleUpdate({
+        ...baseParams,
+        record: {
+          title: 'Clean <img src=x onerror=alert(1)>',
+          content: '<p>Safe</p><iframe src="evil.com"></iframe>',
+          community: 'did:plc:community',
+          category: 'general',
+          createdAt: '2026-01-01T00:00:00.000Z',
+        },
+      })
+
+      const setValues = setMock.mock.calls[0][0] as Record<string, unknown>
+      expect(setValues.title).not.toContain('<img')
+      expect(setValues.title).not.toContain('onerror')
+      expect(setValues.content).toContain('<p>Safe</p>')
+      expect(setValues.content).not.toContain('<iframe')
+    })
+
+    it('strips bidi override characters from title and content', async () => {
+      const valuesMock = vi.fn().mockReturnValue({
+        onConflictDoUpdate: vi.fn().mockResolvedValue(undefined),
+      })
+      const db = {
+        ...createMockDb(),
+        insert: vi.fn().mockReturnValue({ values: valuesMock }),
+      }
+      const logger = createMockLogger()
+      const indexer = new TopicIndexer(db as never, logger as never)
+
+      await indexer.handleCreate({
+        ...baseParams,
+        record: {
+          title: '\u202AHello\u202E World',
+          content: '<p>\u2066Content\u2069</p>',
+          community: 'did:plc:community',
+          category: 'general',
+          createdAt: '2026-01-01T00:00:00.000Z',
+        },
+      })
+
+      const values = valuesMock.mock.calls[0][0] as Record<string, unknown>
+      expect(values.title).not.toMatch(/[\u202A-\u202E\u2066-\u2069]/)
+      expect(values.content).not.toMatch(/[\u202A-\u202E\u2066-\u2069]/)
+    })
+  })
+
   describe('handleDelete', () => {
     it('soft-deletes a topic by URI', async () => {
       const db = createMockDb()

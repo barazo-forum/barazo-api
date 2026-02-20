@@ -5,6 +5,7 @@ import type { Database } from '../../db/index.js'
 import type { Logger } from '../../lib/logger.js'
 import type { TrustStatus } from '../../services/account-age.js'
 import { clampCreatedAt } from '../clamp-timestamp.js'
+import { sanitizeHtml } from '../../lib/sanitize.js'
 
 interface CreateParams {
   uri: string
@@ -54,7 +55,7 @@ export class ReplyIndexer {
           uri,
           rkey,
           authorDid: did,
-          content: record['content'] as string,
+          content: sanitizeHtml(record['content'] as string),
           contentFormat: (record['contentFormat'] as string | undefined) ?? null,
           rootUri: root.uri,
           rootCid: root.cid,
@@ -87,7 +88,7 @@ export class ReplyIndexer {
     await this.db
       .update(replies)
       .set({
-        content: record['content'] as string,
+        content: sanitizeHtml(record['content'] as string),
         contentFormat: (record['contentFormat'] as string | undefined) ?? null,
         cid,
         labels: (record['labels'] as { values: { val: string }[] } | undefined) ?? null,
