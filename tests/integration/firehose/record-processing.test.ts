@@ -154,7 +154,7 @@ describe('firehose record processing (integration)', () => {
       expect(topic.cid).toBe('bafytopic1v2')
     })
 
-    it('deletes a topic', async () => {
+    it('soft-deletes a topic', async () => {
       await handler.handle(topicEvent)
 
       const deleteEvent: RecordEvent = {
@@ -169,12 +169,14 @@ describe('firehose record processing (integration)', () => {
 
       await handler.handle(deleteEvent)
 
-      const result = await db
-        .select()
-        .from(topics)
-        .where(eq(topics.uri, 'at://did:plc:integ-user1/forum.barazo.topic.post/topic1'))
+      const topic = one(
+        await db
+          .select()
+          .from(topics)
+          .where(eq(topics.uri, 'at://did:plc:integ-user1/forum.barazo.topic.post/topic1'))
+      )
 
-      expect(result).toHaveLength(0)
+      expect(topic.isAuthorDeleted).toBe(true)
     })
   })
 
