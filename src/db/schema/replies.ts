@@ -19,6 +19,7 @@ export const replies = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true }).notNull(),
     indexedAt: timestamp('indexed_at', { withTimezone: true }).notNull().defaultNow(),
     isAuthorDeleted: boolean('is_author_deleted').notNull().default(false),
+    isModDeleted: boolean('is_mod_deleted').notNull().default(false),
     moderationStatus: text('moderation_status', {
       enum: ['approved', 'held', 'rejected'],
     })
@@ -31,7 +32,7 @@ export const replies = pgTable(
       .notNull()
       .default('trusted'),
     // Note: search_vector (tsvector) and embedding (vector) columns exist in the
-    // database but are managed outside Drizzle schema (see migration 0010).
+    // database but are managed outside Drizzle schema (created by db:push custom SQL).
     // search_vector is maintained by a database trigger.
     // embedding is nullable vector(768) for optional semantic search.
   },

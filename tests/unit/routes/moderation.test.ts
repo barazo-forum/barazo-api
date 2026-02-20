@@ -196,6 +196,8 @@ function sampleReplyRow(overrides?: Record<string, unknown>) {
     reactionCount: 0,
     createdAt: new Date(TEST_NOW),
     indexedAt: new Date(TEST_NOW),
+    isAuthorDeleted: false,
+    isModDeleted: false,
     embedding: null,
     ...overrides,
   }
@@ -507,7 +509,7 @@ describe('moderation routes', () => {
       expect(mockDb.insert).toHaveBeenCalled()
     })
 
-    it('mod-deletes a reply (removes from index)', async () => {
+    it('mod-deletes a reply via soft-delete (sets isModDeleted flag)', async () => {
       // Topic query returns nothing (not a topic)
       selectChain.where.mockResolvedValueOnce([])
       // Reply query returns a reply
@@ -527,10 +529,27 @@ describe('moderation routes', () => {
       expect(body.isModDeleted).toBe(true)
 
       expect(mockDb.transaction).toHaveBeenCalledOnce()
-      // Should delete reply + decrement reply count + insert mod action
-      expect(mockDb.delete).toHaveBeenCalled()
+      // Should soft-delete (update) reply, NOT hard-delete
       expect(mockDb.update).toHaveBeenCalled()
+      expect(mockDb.delete).not.toHaveBeenCalled()
       expect(mockDb.insert).toHaveBeenCalled()
+    })
+
+    it('returns 409 when reply is already mod-deleted', async () => {
+      // Topic query returns nothing (not a topic)
+      selectChain.where.mockResolvedValueOnce([])
+      // Reply query returns an already mod-deleted reply
+      selectChain.where.mockResolvedValueOnce([sampleReplyRow({ isModDeleted: true })])
+
+      const encodedUri = encodeURIComponent(TEST_REPLY_URI)
+      const response = await app.inject({
+        method: 'POST',
+        url: `/api/moderation/delete/${encodedUri}`,
+        headers: { authorization: 'Bearer test-token' },
+        payload: { reason: 'Already deleted' },
+      })
+
+      expect(response.statusCode).toBe(409)
     })
 
     it('returns 400 when reason is missing', async () => {

@@ -445,9 +445,12 @@ export function moderationRoutes(): FastifyPluginCallback {
           throw notFound('Content not found')
         }
 
-        // For replies, we delete from the index entirely (no isModDeleted column on replies)
+        if (replyRow.isModDeleted) {
+          throw conflict('Content already mod-deleted')
+        }
+
         await db.transaction(async (tx) => {
-          await tx.delete(replies).where(eq(replies.uri, decodedUri))
+          await tx.update(replies).set({ isModDeleted: true }).where(eq(replies.uri, decodedUri))
 
           // Decrement reply count on parent topic
           await tx

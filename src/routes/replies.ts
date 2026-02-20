@@ -102,12 +102,19 @@ function serializeReply(row: typeof replies.$inferSelect) {
   // depth 1 = reply to a reply (parentUri !== rootUri)
   const depth = row.parentUri === row.rootUri ? 0 : 1
 
+  const isDeleted = row.isAuthorDeleted || row.isModDeleted
+  const placeholderContent = row.isModDeleted
+    ? '[Removed by moderator]'
+    : row.isAuthorDeleted
+      ? ''
+      : row.content
+
   return {
     uri: row.uri,
     rkey: row.rkey,
     authorDid: row.authorDid,
-    content: row.isAuthorDeleted ? '' : row.content,
-    contentFormat: row.isAuthorDeleted ? null : (row.contentFormat ?? null),
+    content: placeholderContent,
+    contentFormat: isDeleted ? null : (row.contentFormat ?? null),
     rootUri: row.rootUri,
     rootCid: row.rootCid,
     parentUri: row.parentUri,
@@ -582,6 +589,7 @@ export function replyRoutes(): FastifyPluginCallback {
         const conditions = [
           eq(replies.rootUri, decodedTopicUri),
           eq(replies.moderationStatus, 'approved'),
+          eq(replies.isModDeleted, false),
         ]
 
         // Exclude replies by blocked authors

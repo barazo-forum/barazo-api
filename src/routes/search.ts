@@ -579,6 +579,7 @@ async function searchRepliesFulltext(
   const conditions: ReturnType<typeof sql>[] = [
     sql`r.search_vector @@ websearch_to_tsquery('english', ${query})`,
     sql`r.is_author_deleted = false`,
+    sql`r.is_mod_deleted = false`,
   ]
 
   if (filters.communityDid) {
@@ -685,6 +686,7 @@ async function searchRepliesVector(
   const conditions: ReturnType<typeof sql>[] = [
     sql`r.embedding IS NOT NULL`,
     sql`r.is_author_deleted = false`,
+    sql`r.is_mod_deleted = false`,
     sql`r.embedding <=> ${embeddingStr}::vector < 0.5`,
   ]
 
@@ -777,6 +779,7 @@ async function countSearchResults(
     const conditions: ReturnType<typeof sql>[] = [
       sql`search_vector @@ websearch_to_tsquery('english', ${query})`,
       sql`is_author_deleted = false`,
+      sql`is_mod_deleted = false`,
     ]
 
     if (filters.communityDid) {

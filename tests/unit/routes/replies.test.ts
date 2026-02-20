@@ -222,6 +222,8 @@ function sampleReplyRow(overrides?: Record<string, unknown>) {
     reactionCount: 0,
     createdAt: new Date(TEST_NOW),
     indexedAt: new Date(TEST_NOW),
+    isAuthorDeleted: false,
+    isModDeleted: false,
     embedding: null,
     ...overrides,
   }
@@ -684,6 +686,42 @@ describe('reply routes', () => {
       expect(body.replies[1]?.depth).toBe(1)
     })
 
+    it('returns placeholder content for mod-deleted replies', async () => {
+      selectChain.where.mockResolvedValueOnce([sampleTopicRow()])
+
+      const modDeletedReply = sampleReplyRow({
+        isModDeleted: true,
+        content: 'Original content that was removed by moderator',
+      })
+      const normalReply = sampleReplyRow({
+        uri: `at://${TEST_DID}/forum.barazo.topic.reply/normal001`,
+        rkey: 'normal001',
+        content: 'Normal reply content',
+      })
+      selectChain.limit.mockResolvedValueOnce([modDeletedReply, normalReply])
+
+      const encodedTopicUri = encodeURIComponent(TEST_TOPIC_URI)
+      const response = await app.inject({
+        method: 'GET',
+        url: `/api/topics/${encodedTopicUri}/replies`,
+      })
+
+      expect(response.statusCode).toBe(200)
+      const body = response.json<{
+        replies: Array<{ uri: string; content: string; contentFormat: string | null }>
+      }>()
+      expect(body.replies).toHaveLength(2)
+
+      // Mod-deleted reply should show placeholder content
+      const deletedReply = body.replies.find((r) => r.uri === modDeletedReply.uri)
+      expect(deletedReply?.content).toBe('[Removed by moderator]')
+      expect(deletedReply?.contentFormat).toBeNull()
+
+      // Normal reply should show original content
+      const normal = body.replies.find((r) => r.uri === normalReply.uri)
+      expect(normal?.content).toBe('Normal reply content')
+    })
+
     it('returns 404 when topic does not exist', async () => {
       selectChain.where.mockResolvedValueOnce([])
 
@@ -894,7 +932,7 @@ describe('reply routes', () => {
           mutedDids: [],
         },
       ])
-       
+
       selectChain.where.mockImplementationOnce(() => selectChain) // 6: replies .where
 
       const rows = [

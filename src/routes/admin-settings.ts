@@ -400,12 +400,12 @@ export function adminSettingsRoutes(): FastifyPluginCallback {
         const result = await db.execute(sql`
         SELECT
           (SELECT COUNT(*) FROM topics WHERE is_mod_deleted = false AND is_author_deleted = false) AS topic_count,
-          (SELECT COUNT(*) FROM replies WHERE is_author_deleted = false) AS reply_count,
+          (SELECT COUNT(*) FROM replies WHERE is_author_deleted = false AND is_mod_deleted = false) AS reply_count,
           (SELECT COUNT(*) FROM users) AS user_count,
           (SELECT COUNT(*) FROM categories) AS category_count,
           (SELECT COUNT(*) FROM reports WHERE status = 'pending') AS report_count,
           (SELECT COUNT(*) FROM topics WHERE is_mod_deleted = false AND is_author_deleted = false AND created_at > NOW() - INTERVAL '7 days') AS recent_topics,
-          (SELECT COUNT(*) FROM replies WHERE is_author_deleted = false AND created_at > NOW() - INTERVAL '7 days') AS recent_replies,
+          (SELECT COUNT(*) FROM replies WHERE is_author_deleted = false AND is_mod_deleted = false AND created_at > NOW() - INTERVAL '7 days') AS recent_replies,
           (SELECT COUNT(*) FROM users WHERE first_seen_at > NOW() - INTERVAL '7 days') AS recent_users
       `)
 
