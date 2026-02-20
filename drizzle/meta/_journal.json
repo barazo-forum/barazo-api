@@ -190,6 +190,13 @@
       "when": 1771459200001,
       "tag": "0026_composite_indexes",
       "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1771619013359,
+      "tag": "0027_sad_spencer_smythe",
+      "breakpoints": true
     }
   ]
 }
