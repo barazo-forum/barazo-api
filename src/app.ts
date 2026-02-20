@@ -113,18 +113,22 @@ export async function buildApp(env: Env) {
   const firehose = new FirehoseService(db, app.log, env)
   app.decorate('firehose', firehose)
 
-  // Security headers
+  // Security headers -- strict CSP for all routes (no unsafe-inline).
+  // The /docs scope overrides this with a permissive CSP for Scalar UI.
   await app.register(helmet, {
     contentSecurityPolicy: {
       directives: {
         defaultSrc: ["'self'"],
-        scriptSrc: ["'self'", "'unsafe-inline'", 'https://cdn.jsdelivr.net'],
-        styleSrc: ["'self'", "'unsafe-inline'", 'https://cdn.jsdelivr.net'],
+        scriptSrc: ["'self'"],
+        styleSrc: ["'self'"],
         imgSrc: ["'self'", 'data:', 'https:'],
         connectSrc: ["'self'"],
-        fontSrc: ["'self'", 'https://cdn.jsdelivr.net'],
+        fontSrc: ["'self'"],
         objectSrc: ["'none'"],
         frameSrc: ["'none'"],
+        baseUri: ["'self'"],
+        formAction: ["'self'"],
+        frameAncestors: ["'none'"],
       },
     },
     hsts: {
@@ -241,11 +245,33 @@ export async function buildApp(env: Env) {
     },
   })
 
-  await app.register(scalarApiReference, {
-    routePrefix: '/docs',
-    configuration: {
-      theme: 'kepler',
-    },
+  // Scalar API docs UI requires inline scripts/styles and CDN assets.
+  // Register in a scoped plugin to override the strict global CSP.
+  await app.register(async function docsPlugin(scope) {
+    const docsCsp = [
+      "default-src 'self'",
+      "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net",
+      "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net",
+      "img-src 'self' data: https:",
+      "connect-src 'self'",
+      "font-src 'self' https://cdn.jsdelivr.net",
+      "object-src 'none'",
+      "frame-src 'none'",
+      "base-uri 'self'",
+      "form-action 'self'",
+      "frame-ancestors 'none'",
+    ].join('; ')
+
+    scope.addHook('onRequest', async (_request, reply) => {
+      reply.header('content-security-policy', docsCsp)
+    })
+
+    await scope.register(scalarApiReference, {
+      routePrefix: '/docs',
+      configuration: {
+        theme: 'kepler',
+      },
+    })
   })
 
   // Routes
