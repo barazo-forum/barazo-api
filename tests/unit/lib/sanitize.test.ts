@@ -67,7 +67,6 @@ describe('sanitize', () => {
     })
 
     it('strips javascript: protocol from href', () => {
-       
       const input = '<a href="javascript:alert(1)">click</a>'
       const result = sanitizeHtml(input)
       expect(result).not.toContain('javascript:')

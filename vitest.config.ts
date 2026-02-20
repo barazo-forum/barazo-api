@@ -1,21 +1,18 @@
-import { defineConfig } from 'vitest/config'
+import { defineConfig, mergeConfig } from 'vitest/config'
+import baseConfig from '../vitest.config.base'
 
-export default defineConfig({
-  test: {
-    globals: false,
-    environment: 'node',
-    include: ['tests/**/*.test.ts'],
-    exclude: ['tests/integration/**'],
-    coverage: {
-      provider: 'v8',
-      include: ['src/**/*.ts'],
-      exclude: ['src/server.ts', 'src/db/migrations/**'],
-      thresholds: {
-        statements: 80,
-        branches: 80,
-        functions: 80,
-        lines: 80,
+export default mergeConfig(
+  baseConfig,
+  defineConfig({
+    test: {
+      globals: false,
+      environment: 'node',
+      include: ['tests/**/*.test.ts'],
+      exclude: ['tests/integration/**'],
+      coverage: {
+        include: ['src/**/*.ts'],
+        exclude: ['src/server.ts', 'src/db/migrations/**'],
       },
     },
-  },
-})
+  })
+)
