@@ -32,7 +32,7 @@
   },
   "dependencies": {
     "@atproto/api": "^0.18.21",
-    "@atproto/oauth-client-node": "^0.3.16",
+    "@atproto/oauth-client-node": "0.3.16",
     "@atproto/tap": "^0.2.4",
     "@barazo-forum/lexicons": "^0.1.0",
     "@fastify/cookie": "^11.0.2",
