@@ -748,6 +748,7 @@ export function topicRoutes(): FastifyPluginCallback {
     app.get(
       '/api/topics/by-rkey/:rkey',
       {
+        preHandler: [authMiddleware.optionalAuth],
         schema: {
           tags: ['Topics'],
           summary: 'Get a single topic by rkey (for SEO/metadata)',
@@ -760,6 +761,7 @@ export function topicRoutes(): FastifyPluginCallback {
           },
           response: {
             200: topicJsonSchema,
+            403: errorJsonSchema,
             404: errorJsonSchema,
           },
         },
@@ -781,6 +783,27 @@ export function topicRoutes(): FastifyPluginCallback {
           .from(categories)
           .where(and(eq(categories.slug, row.category), eq(categories.communityDid, communityDid)))
         const categoryRating = catRows[0]?.maturityRating ?? 'safe'
+
+        // Maturity check: verify the topic's category is within the user's allowed level
+        let userProfile: MaturityUser | undefined
+        if (request.user) {
+          const userRows = await db
+            .select({ declaredAge: users.declaredAge, maturityPref: users.maturityPref })
+            .from(users)
+            .where(eq(users.did, request.user.did))
+          userProfile = userRows[0] ?? undefined
+        }
+
+        const rkeySettingsRows = await db
+          .select({ ageThreshold: communitySettings.ageThreshold })
+          .from(communitySettings)
+          .where(eq(communitySettings.id, 'default'))
+        const rkeyAgeThreshold = rkeySettingsRows[0]?.ageThreshold ?? 16
+
+        const maxMaturity = resolveMaxMaturity(userProfile, rkeyAgeThreshold)
+        if (!maturityAllows(maxMaturity, categoryRating)) {
+          throw forbidden('Content restricted by maturity settings')
+        }
 
         return reply.status(200).send(serializeTopic(row, categoryRating))
       }

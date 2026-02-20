@@ -971,6 +971,123 @@ describe('topic routes', () => {
   })
 
   // =========================================================================
+  // GET /api/topics/by-rkey/:rkey
+  // =========================================================================
+
+  describe('GET /api/topics/by-rkey/:rkey', () => {
+    let app: FastifyInstance
+
+    beforeAll(async () => {
+      app = await buildTestApp(testUser())
+    })
+
+    afterAll(async () => {
+      await app.close()
+    })
+
+    beforeEach(() => {
+      vi.clearAllMocks()
+      resetAllDbMocks()
+    })
+
+    it('returns a single topic by rkey', async () => {
+      const row = sampleTopicRow()
+      // 1. select().from(topics).where(rkey) -> find topic
+      selectChain.where.mockResolvedValueOnce([row])
+      // 2. select(maturityRating).from(categories).where() -> category lookup
+      selectChain.where.mockResolvedValueOnce([{ maturityRating: 'safe' }])
+      // 3. select(declaredAge, maturityPref).from(users).where() -> user profile
+      selectChain.where.mockResolvedValueOnce([{ declaredAge: null, maturityPref: 'safe' }])
+      // 4. select(ageThreshold).from(communitySettings).where() -> age threshold
+      selectChain.where.mockResolvedValueOnce([{ ageThreshold: 16 }])
+
+      const response = await app.inject({
+        method: 'GET',
+        url: '/api/topics/by-rkey/abc123',
+      })
+
+      expect(response.statusCode).toBe(200)
+      const body = response.json<{ uri: string; title: string; rkey: string }>()
+      expect(body.uri).toBe(TEST_URI)
+      expect(body.title).toBe('Test Topic Title')
+    })
+
+    it('returns 404 for non-existent rkey', async () => {
+      selectChain.where.mockResolvedValueOnce([])
+
+      const response = await app.inject({
+        method: 'GET',
+        url: '/api/topics/by-rkey/nonexistent',
+      })
+
+      expect(response.statusCode).toBe(404)
+    })
+
+    it('returns 403 when maturity blocks access for unauthenticated user', async () => {
+      const noAuthApp = await buildTestApp(undefined)
+
+      const row = sampleTopicRow({ category: 'mature-cat' })
+      // 1. find topic
+      selectChain.where.mockResolvedValueOnce([row])
+      // 2. category maturity rating: mature
+      selectChain.where.mockResolvedValueOnce([{ maturityRating: 'mature' }])
+      // 3. no user profile (unauthenticated)
+      // 4. age threshold
+      selectChain.where.mockResolvedValueOnce([{ ageThreshold: 16 }])
+
+      const response = await noAuthApp.inject({
+        method: 'GET',
+        url: '/api/topics/by-rkey/abc123',
+      })
+
+      expect(response.statusCode).toBe(403)
+
+      await noAuthApp.close()
+    })
+
+    it('allows access when user maturity level is sufficient', async () => {
+      const row = sampleTopicRow({ category: 'mature-cat' })
+      // 1. find topic
+      selectChain.where.mockResolvedValueOnce([row])
+      // 2. category maturity rating: mature
+      selectChain.where.mockResolvedValueOnce([{ maturityRating: 'mature' }])
+      // 3. user profile: adult with mature pref
+      selectChain.where.mockResolvedValueOnce([{ declaredAge: 18, maturityPref: 'mature' }])
+      // 4. age threshold
+      selectChain.where.mockResolvedValueOnce([{ ageThreshold: 16 }])
+
+      const response = await app.inject({
+        method: 'GET',
+        url: '/api/topics/by-rkey/abc123',
+      })
+
+      expect(response.statusCode).toBe(200)
+    })
+
+    it('works without authentication for safe content', async () => {
+      const noAuthApp = await buildTestApp(undefined)
+
+      const row = sampleTopicRow()
+      // 1. find topic
+      selectChain.where.mockResolvedValueOnce([row])
+      // 2. category maturity rating: safe
+      selectChain.where.mockResolvedValueOnce([{ maturityRating: 'safe' }])
+      // 3. no user profile (unauthenticated)
+      // 4. age threshold
+      selectChain.where.mockResolvedValueOnce([{ ageThreshold: 16 }])
+
+      const response = await noAuthApp.inject({
+        method: 'GET',
+        url: '/api/topics/by-rkey/abc123',
+      })
+
+      expect(response.statusCode).toBe(200)
+
+      await noAuthApp.close()
+    })
+  })
+
+  // =========================================================================
   // PUT /api/topics/:uri
   // =========================================================================
 

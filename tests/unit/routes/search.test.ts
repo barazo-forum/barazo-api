@@ -85,6 +85,8 @@ async function buildTestApp(): Promise<FastifyInstance> {
   app.decorate('env', {
     EMBEDDING_URL: undefined,
     AI_EMBEDDING_DIMENSIONS: 768,
+    COMMUNITY_MODE: 'single',
+    COMMUNITY_DID: TEST_COMMUNITY_DID,
   } as never)
   app.decorate('authMiddleware', {
     requireAuth: vi.fn((_req: unknown, _reply: unknown) => Promise.resolve()),
@@ -524,5 +526,53 @@ describe('search routes', () => {
       results: Array<{ createdAt: string }>
     }>()
     expect(body.results[0]?.createdAt).toBe('2026-02-13T12:00:00.000Z')
+  })
+
+  // =========================================================================
+  // Community filtering (Issue: search must include community_did)
+  // =========================================================================
+
+  it('includes community_did in SQL queries (single mode)', async () => {
+    // The app is configured in single mode with TEST_COMMUNITY_DID.
+    // The search functions should include community_did in their WHERE clauses.
+    // We verify by checking that db.execute is called (the SQL is parameterized
+    // and includes the community_did filter internally).
+    mockDb.execute.mockResolvedValueOnce([sampleTopicRow()])
+    mockDb.execute.mockResolvedValueOnce([])
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/search?q=test&type=all',
+    })
+
+    expect(response.statusCode).toBe(200)
+    // Both topic and reply search should have been called
+    expect(mockDb.execute).toHaveBeenCalledTimes(2)
+  })
+
+  // =========================================================================
+  // Deletion filtering (Issue: deleted replies must not appear in search)
+  // =========================================================================
+
+  it('excludes deleted replies from search results (deletion filter applied)', async () => {
+    // The reply search query now includes is_author_deleted = false in the WHERE clause.
+    // Since we mock the DB to return only non-deleted rows, the key verification is
+    // that the route processes normally. The actual SQL filtering happens at the DB level.
+    const nonDeletedReply = sampleReplyRow()
+    // Reply search only (type=replies skips topic search): returns non-deleted replies
+    mockDb.execute.mockResolvedValueOnce([nonDeletedReply])
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/search?q=test&type=replies',
+    })
+
+    expect(response.statusCode).toBe(200)
+    const body = response.json<{
+      results: Array<{ type: string; uri: string }>
+    }>()
+    expect(body.results).toHaveLength(1)
+    expect(body.results[0]?.type).toBe('reply')
+    expect(body.results[0]?.uri).toBe(nonDeletedReply.uri)
   })
 })

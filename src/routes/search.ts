@@ -1,5 +1,6 @@
 import { sql } from 'drizzle-orm'
 import type { FastifyPluginCallback } from 'fastify'
+import { getCommunityDid } from '../config/env.js'
 import { badRequest } from '../lib/api-errors.js'
 import { loadMutedWords, contentMatchesMutedWords } from '../lib/muted-words.js'
 import { createEmbeddingService } from '../services/embedding.js'
@@ -269,6 +270,10 @@ export function searchRoutes(): FastifyPluginCallback {
           }
         }
 
+        // Community scope: in single mode, restrict to the configured community
+        const searchCommunityDid =
+          env.COMMUNITY_MODE === 'single' ? getCommunityDid(env) : undefined
+
         // Determine search mode
         let searchMode: 'fulltext' | 'hybrid' = 'fulltext'
         let queryEmbedding: number[] | null = null
@@ -296,6 +301,7 @@ export function searchRoutes(): FastifyPluginCallback {
               dateTo,
               cursorRank,
               cursorUri,
+              communityDid: searchCommunityDid,
             },
             limit + 1
           )
@@ -336,6 +342,7 @@ export function searchRoutes(): FastifyPluginCallback {
               dateTo,
               cursorRank,
               cursorUri,
+              communityDid: searchCommunityDid,
             },
             limit + 1
           )
@@ -380,6 +387,7 @@ export function searchRoutes(): FastifyPluginCallback {
                 author,
                 dateFrom,
                 dateTo,
+                communityDid: searchCommunityDid,
               },
               limit
             )
@@ -415,6 +423,7 @@ export function searchRoutes(): FastifyPluginCallback {
                 author,
                 dateFrom,
                 dateTo,
+                communityDid: searchCommunityDid,
               },
               limit
             )
@@ -471,6 +480,7 @@ export function searchRoutes(): FastifyPluginCallback {
             dateFrom,
             dateTo,
             searchType,
+            communityDid: searchCommunityDid,
           })
         }
 
@@ -507,6 +517,7 @@ interface SearchFilters {
   dateTo?: string | undefined
   cursorRank?: number | undefined
   cursorUri?: string | undefined
+  communityDid?: string | undefined
 }
 
 /**
@@ -524,6 +535,9 @@ async function searchTopicsFulltext(
     sql`is_author_deleted = false`,
   ]
 
+  if (filters.communityDid) {
+    conditions.push(sql`community_did = ${filters.communityDid}`)
+  }
   if (filters.category) {
     conditions.push(sql`category = ${filters.category}`)
   }
@@ -570,8 +584,12 @@ async function searchRepliesFulltext(
 ): Promise<ReplySearchRow[]> {
   const conditions: ReturnType<typeof sql>[] = [
     sql`r.search_vector @@ websearch_to_tsquery('english', ${query})`,
+    sql`r.is_author_deleted = false`,
   ]
 
+  if (filters.communityDid) {
+    conditions.push(sql`r.community_did = ${filters.communityDid}`)
+  }
   if (filters.author) {
     conditions.push(sql`r.author_did = ${filters.author}`)
   }
@@ -624,6 +642,9 @@ async function searchTopicsVector(
     sql`embedding <=> ${embeddingStr}::vector < 0.5`,
   ]
 
+  if (filters.communityDid) {
+    conditions.push(sql`community_did = ${filters.communityDid}`)
+  }
   if (filters.category) {
     conditions.push(sql`category = ${filters.category}`)
   }
@@ -667,9 +688,13 @@ async function searchRepliesVector(
 
   const conditions: ReturnType<typeof sql>[] = [
     sql`r.embedding IS NOT NULL`,
+    sql`r.is_author_deleted = false`,
     sql`r.embedding <=> ${embeddingStr}::vector < 0.5`,
   ]
 
+  if (filters.communityDid) {
+    conditions.push(sql`r.community_did = ${filters.communityDid}`)
+  }
   if (filters.author) {
     conditions.push(sql`r.author_did = ${filters.author}`)
   }
@@ -710,6 +735,7 @@ async function countSearchResults(
     dateFrom?: string | undefined
     dateTo?: string | undefined
     searchType: 'topics' | 'replies' | 'all'
+    communityDid?: string | undefined
   }
 ): Promise<number> {
   let total = 0
@@ -721,6 +747,9 @@ async function countSearchResults(
       sql`is_author_deleted = false`,
     ]
 
+    if (filters.communityDid) {
+      conditions.push(sql`community_did = ${filters.communityDid}`)
+    }
     if (filters.category) {
       conditions.push(sql`category = ${filters.category}`)
     }
@@ -749,8 +778,12 @@ async function countSearchResults(
   if (filters.searchType === 'replies' || filters.searchType === 'all') {
     const conditions: ReturnType<typeof sql>[] = [
       sql`search_vector @@ websearch_to_tsquery('english', ${query})`,
+      sql`is_author_deleted = false`,
     ]
 
+    if (filters.communityDid) {
+      conditions.push(sql`community_did = ${filters.communityDid}`)
+    }
     if (filters.author) {
       conditions.push(sql`author_did = ${filters.author}`)
     }
