@@ -1,6 +1,7 @@
 import { eq, sql } from 'drizzle-orm'
 import { communitySettings } from '../db/schema/community-settings.js'
 import type { Database } from '../db/index.js'
+import { encrypt } from '../lib/encryption.js'
 import type { Logger } from '../lib/logger.js'
 import type { PlcDidService } from '../services/plc-did.js'
 
@@ -58,12 +59,14 @@ const DEFAULT_COMMUNITY_NAME = 'Barazo Community'
  *
  * @param db - Drizzle database instance
  * @param logger - Pino logger instance
+ * @param encryptionKey - KEK for encrypting sensitive data (AI_ENCRYPTION_KEY)
  * @param plcDidService - Optional PLC DID service for DID generation
  * @returns SetupService with getStatus and initialize methods
  */
 export function createSetupService(
   db: Database,
   logger: Logger,
+  encryptionKey: string,
   plcDidService?: PlcDidService
 ): SetupService {
   /**
@@ -126,8 +129,8 @@ export function createSetupService(
         })
 
         communityDid = didResult.did
-        signingKeyHex = didResult.signingKey
-        rotationKeyHex = didResult.rotationKey
+        signingKeyHex = encrypt(didResult.signingKey, encryptionKey)
+        rotationKeyHex = encrypt(didResult.rotationKey, encryptionKey)
 
         logger.info({ communityDid, handle }, 'PLC DID generated successfully')
       } else if (handle && serviceEndpoint && !plcDidService) {

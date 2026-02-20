@@ -186,7 +186,7 @@ export async function buildApp(env: Env) {
 
   // PLC DID service + Setup service
   const plcDidService = createPlcDidService(app.log)
-  const setupService = createSetupService(db, app.log, plcDidService)
+  const setupService = createSetupService(db, app.log, env.AI_ENCRYPTION_KEY, plcDidService)
   app.decorate('setupService', setupService)
 
   // Admin middleware

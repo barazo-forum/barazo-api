@@ -3,6 +3,7 @@ import { createSetupService } from '../../../src/setup/service.js'
 import type { SetupService } from '../../../src/setup/service.js'
 import type { PlcDidService, GenerateDidResult } from '../../../src/services/plc-did.js'
 import type { Logger } from '../../../src/lib/logger.js'
+import { decrypt } from '../../../src/lib/encryption.js'
 
 // ---------------------------------------------------------------------------
 // Mock helpers
@@ -79,6 +80,7 @@ const TEST_SERVICE_ENDPOINT = 'https://community.barazo.forum'
 const TEST_COMMUNITY_DID = 'did:plc:communityabc123456'
 const TEST_SIGNING_KEY = 'a'.repeat(64)
 const TEST_ROTATION_KEY = 'b'.repeat(64)
+const TEST_ENCRYPTION_KEY = 'c'.repeat(32)
 
 // ---------------------------------------------------------------------------
 // Test suite
@@ -95,7 +97,7 @@ describe('SetupService', () => {
     mocks = m
     mockLogger = createMockLogger()
     mockPlcDidService = createMockPlcDidService()
-    service = createSetupService(db as never, mockLogger, mockPlcDidService)
+    service = createSetupService(db as never, mockLogger, TEST_ENCRYPTION_KEY, mockPlcDidService)
   })
 
   // =========================================================================
@@ -321,6 +323,38 @@ describe('SetupService', () => {
       expect(result).not.toHaveProperty('communityDid')
     })
 
+    it('encrypts signing and rotation keys before storing in DB', async () => {
+      mockPlcDidService.generateDid.mockResolvedValueOnce({
+        did: TEST_COMMUNITY_DID,
+        signingKey: TEST_SIGNING_KEY,
+        rotationKey: TEST_ROTATION_KEY,
+      })
+      mocks.returningFn.mockResolvedValueOnce([
+        { communityName: DEFAULT_COMMUNITY_NAME, communityDid: TEST_COMMUNITY_DID },
+      ])
+
+      await service.initialize({
+        did: TEST_DID,
+        handle: TEST_HANDLE,
+        serviceEndpoint: TEST_SERVICE_ENDPOINT,
+      })
+
+      // Extract the values passed to the DB insert
+      const callArgs = mocks.valuesFn.mock.calls[0]
+      expect(callArgs).toBeDefined()
+      const insertValues = (callArgs as unknown[][])[0] as Record<string, unknown>
+
+      // Keys should NOT be plaintext
+      expect(insertValues.signingKey).not.toBe(TEST_SIGNING_KEY)
+      expect(insertValues.rotationKey).not.toBe(TEST_ROTATION_KEY)
+
+      // Keys should be decryptable back to the originals
+      expect(decrypt(insertValues.signingKey as string, TEST_ENCRYPTION_KEY)).toBe(TEST_SIGNING_KEY)
+      expect(decrypt(insertValues.rotationKey as string, TEST_ENCRYPTION_KEY)).toBe(
+        TEST_ROTATION_KEY
+      )
+    })
+
     it('propagates PLC DID generation errors', async () => {
       mockPlcDidService.generateDid.mockRejectedValueOnce(
         new Error('PLC directory returned 500: Internal Server Error')
@@ -371,7 +405,7 @@ describe('SetupService', () => {
       // Create service without PlcDidService
       const { db, mocks: m } = createMockDb()
       const logger = createMockLogger()
-      const serviceWithoutPlc = createSetupService(db as never, logger)
+      const serviceWithoutPlc = createSetupService(db as never, logger, TEST_ENCRYPTION_KEY)
 
       m.returningFn.mockResolvedValueOnce([
         { communityName: DEFAULT_COMMUNITY_NAME, communityDid: null },

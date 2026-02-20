@@ -46,6 +46,9 @@ const baseEnvSchema = z.object({
   RATE_LIMIT_READ_ANON: intFromString('100'),
   RATE_LIMIT_READ_AUTH: intFromString('300'),
 
+  // Encryption (KEK for sensitive data at rest)
+  AI_ENCRYPTION_KEY: z.string().min(32),
+
   // OAuth
   OAUTH_CLIENT_ID: z.string().min(1),
   OAUTH_REDIRECT_URI: z.string().min(1),

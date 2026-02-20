@@ -12,6 +12,7 @@ describe('envSchema', () => {
       'http://localhost?redirect_uri=http%3A%2F%2F127.0.0.1%3A3000%2Fapi%2Fauth%2Fcallback',
     OAUTH_REDIRECT_URI: 'http://127.0.0.1:3000/api/auth/callback',
     SESSION_SECRET: 'a-very-long-session-secret-that-is-at-least-32-characters',
+    AI_ENCRYPTION_KEY: 'a-very-long-encryption-key-that-is-at-least-32-characters',
     HOST: '0.0.0.0',
     PORT: '3000',
     LOG_LEVEL: 'info',
@@ -97,6 +98,7 @@ describe('envSchema', () => {
       OAUTH_CLIENT_ID: validEnv.OAUTH_CLIENT_ID,
       OAUTH_REDIRECT_URI: validEnv.OAUTH_REDIRECT_URI,
       SESSION_SECRET: validEnv.SESSION_SECRET,
+      AI_ENCRYPTION_KEY: validEnv.AI_ENCRYPTION_KEY,
       COMMUNITY_DID: validEnv.COMMUNITY_DID,
     })
     expect(result.success).toBe(true)
@@ -218,6 +220,7 @@ describe('COMMUNITY_DID validation', () => {
       'http://localhost?redirect_uri=http%3A%2F%2F127.0.0.1%3A3000%2Fapi%2Fauth%2Fcallback',
     OAUTH_REDIRECT_URI: 'http://127.0.0.1:3000/api/auth/callback',
     SESSION_SECRET: 'a-very-long-session-secret-that-is-at-least-32-characters',
+    AI_ENCRYPTION_KEY: 'a-very-long-encryption-key-that-is-at-least-32-characters',
   }
 
   it('rejects single mode without COMMUNITY_DID', () => {
@@ -260,6 +263,51 @@ describe('getCommunityDid', () => {
   it('throws when COMMUNITY_DID is undefined', () => {
     const env = { COMMUNITY_DID: undefined } as Env
     expect(() => getCommunityDid(env)).toThrow('COMMUNITY_DID is required')
+  })
+})
+
+describe('AI_ENCRYPTION_KEY validation', () => {
+  const baseEnv = {
+    DATABASE_URL: 'postgresql://barazo:barazo_dev@localhost:5432/barazo',
+    VALKEY_URL: 'redis://localhost:6379',
+    TAP_URL: 'http://localhost:2480',
+    TAP_ADMIN_PASSWORD: 'tap_dev_secret',
+    OAUTH_CLIENT_ID:
+      'http://localhost?redirect_uri=http%3A%2F%2F127.0.0.1%3A3000%2Fapi%2Fauth%2Fcallback',
+    OAUTH_REDIRECT_URI: 'http://127.0.0.1:3000/api/auth/callback',
+    SESSION_SECRET: 'a-very-long-session-secret-that-is-at-least-32-characters',
+    COMMUNITY_DID: 'did:plc:testcommunity123',
+    AI_ENCRYPTION_KEY: 'a'.repeat(32),
+  }
+
+  it('rejects missing AI_ENCRYPTION_KEY', () => {
+    const { AI_ENCRYPTION_KEY: _, ...env } = baseEnv
+    const result = envSchema.safeParse(env)
+    expect(result.success).toBe(false)
+  })
+
+  it('rejects AI_ENCRYPTION_KEY shorter than 32 characters', () => {
+    const result = envSchema.safeParse({
+      ...baseEnv,
+      AI_ENCRYPTION_KEY: 'too-short',
+    })
+    expect(result.success).toBe(false)
+  })
+
+  it('accepts AI_ENCRYPTION_KEY of exactly 32 characters', () => {
+    const result = envSchema.safeParse({
+      ...baseEnv,
+      AI_ENCRYPTION_KEY: 'a'.repeat(32),
+    })
+    expect(result.success).toBe(true)
+  })
+
+  it('accepts AI_ENCRYPTION_KEY longer than 32 characters', () => {
+    const result = envSchema.safeParse({
+      ...baseEnv,
+      AI_ENCRYPTION_KEY: 'a'.repeat(64),
+    })
+    expect(result.success).toBe(true)
   })
 })
 
