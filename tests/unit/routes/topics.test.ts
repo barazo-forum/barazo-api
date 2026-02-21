@@ -38,25 +38,55 @@ vi.mock('../../../src/lib/pds-client.js', () => ({
   }),
 }))
 
-// Mock anti-spam module (tested separately in anti-spam.test.ts)
-vi.mock('../../../src/lib/anti-spam.js', () => ({
-  loadAntiSpamSettings: vi.fn().mockResolvedValue({
-    wordFilter: [],
-    firstPostQueueCount: 3,
-    newAccountDays: 7,
-    newAccountWriteRatePerMin: 3,
-    establishedWriteRatePerMin: 10,
-    linkHoldEnabled: true,
-    topicCreationDelayEnabled: false,
-    burstPostCount: 5,
-    burstWindowMinutes: 10,
-    trustedPostThreshold: 10,
+// Mock onboarding gate module
+const checkOnboardingCompleteFn = vi.fn().mockResolvedValue({ complete: true, missingFields: [] })
+vi.mock('../../../src/lib/onboarding-gate.js', () => ({
+  checkOnboardingComplete: (...args: unknown[]) => checkOnboardingCompleteFn(...args) as unknown,
+}))
+
+// Mock cross-post service module
+const crossPostTopicFn = vi.fn().mockResolvedValue(undefined)
+const deleteCrossPostsFn = vi.fn().mockResolvedValue(undefined)
+vi.mock('../../../src/services/cross-post.js', () => ({
+  createCrossPostService: () => ({
+    crossPostTopic: crossPostTopicFn,
+    deleteCrossPosts: deleteCrossPostsFn,
   }),
-  isNewAccount: vi.fn().mockResolvedValue(false),
-  isAccountTrusted: vi.fn().mockResolvedValue(true),
-  checkWriteRateLimit: vi.fn().mockResolvedValue(false),
-  canCreateTopic: vi.fn().mockResolvedValue(true),
-  runAntiSpamChecks: vi.fn().mockResolvedValue({ held: false, reasons: [] }),
+}))
+
+// Mock notification service module
+const notifyOnMentionsFn = vi.fn().mockResolvedValue(undefined)
+vi.mock('../../../src/services/notification.js', () => ({
+  createNotificationService: () => ({
+    notifyOnMentions: notifyOnMentionsFn,
+  }),
+}))
+
+// Mock anti-spam module (tested separately in anti-spam.test.ts)
+const loadAntiSpamSettingsFn = vi.fn().mockResolvedValue({
+  wordFilter: [],
+  firstPostQueueCount: 3,
+  newAccountDays: 7,
+  newAccountWriteRatePerMin: 3,
+  establishedWriteRatePerMin: 10,
+  linkHoldEnabled: true,
+  topicCreationDelayEnabled: false,
+  burstPostCount: 5,
+  burstWindowMinutes: 10,
+  trustedPostThreshold: 10,
+})
+const isNewAccountFn = vi.fn().mockResolvedValue(false)
+const isAccountTrustedFn = vi.fn().mockResolvedValue(true)
+const checkWriteRateLimitFn = vi.fn().mockResolvedValue(false)
+const canCreateTopicFn = vi.fn().mockResolvedValue(true)
+const runAntiSpamChecksFn = vi.fn().mockResolvedValue({ held: false, reasons: [] })
+vi.mock('../../../src/lib/anti-spam.js', () => ({
+  loadAntiSpamSettings: (...args: unknown[]) => loadAntiSpamSettingsFn(...args) as unknown,
+  isNewAccount: (...args: unknown[]) => isNewAccountFn(...args) as unknown,
+  isAccountTrusted: (...args: unknown[]) => isAccountTrustedFn(...args) as unknown,
+  checkWriteRateLimit: (...args: unknown[]) => checkWriteRateLimitFn(...args) as unknown,
+  canCreateTopic: (...args: unknown[]) => canCreateTopicFn(...args) as unknown,
+  runAntiSpamChecks: (...args: unknown[]) => runAntiSpamChecksFn(...args) as unknown,
 }))
 
 // Import routes AFTER mocking
@@ -1715,6 +1745,1606 @@ describe('topic routes', () => {
       const body = response.json<{ topics: unknown[]; cursor: string | null }>()
       expect(body.topics).toEqual([])
       expect(body.cursor).toBeNull()
+    })
+  })
+
+  // =========================================================================
+  // Additional branch coverage tests
+  // =========================================================================
+
+  // -------------------------------------------------------------------------
+  // POST /api/topics - onboarding, maturity, anti-spam, held content branches
+  // -------------------------------------------------------------------------
+
+  describe('POST /api/topics (onboarding gate)', () => {
+    let app: FastifyInstance
+
+    beforeAll(async () => {
+      app = await buildTestApp(testUser())
+    })
+
+    afterAll(async () => {
+      await app.close()
+    })
+
+    beforeEach(() => {
+      vi.clearAllMocks()
+      resetAllDbMocks()
+      createRecordFn.mockResolvedValue({ uri: TEST_URI, cid: TEST_CID })
+      isTrackedFn.mockResolvedValue(true)
+    })
+
+    it('returns 403 when onboarding is incomplete', async () => {
+      checkOnboardingCompleteFn.mockResolvedValueOnce({
+        complete: false,
+        missingFields: [{ id: 'bio', label: 'Bio', fieldType: 'text' }],
+      })
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/api/topics',
+        headers: { authorization: 'Bearer test-token' },
+        payload: {
+          title: 'Onboarding Blocked',
+          content: 'Should not work.',
+          category: 'general',
+        },
+      })
+
+      expect(response.statusCode).toBe(403)
+      const body = response.json<{ error: string }>()
+      expect(body.error).toBe('Onboarding required')
+    })
+  })
+
+  describe('POST /api/topics (maturity restriction on create)', () => {
+    let app: FastifyInstance
+
+    beforeAll(async () => {
+      app = await buildTestApp(testUser())
+    })
+
+    afterAll(async () => {
+      await app.close()
+    })
+
+    beforeEach(() => {
+      vi.clearAllMocks()
+      resetAllDbMocks()
+      createRecordFn.mockResolvedValue({ uri: TEST_URI, cid: TEST_CID })
+      isTrackedFn.mockResolvedValue(true)
+    })
+
+    it('returns 403 when user maturity level is insufficient for category', async () => {
+      // Onboarding passes
+      checkOnboardingCompleteFn.mockResolvedValueOnce({ complete: true, missingFields: [] })
+      // Category maturity query: category is "mature"
+      selectChain.where.mockResolvedValueOnce([{ maturityRating: 'mature' }])
+      // User profile: no age declared -> safe only
+      selectChain.where.mockResolvedValueOnce([{ declaredAge: null, maturityPref: 'safe' }])
+      // Community settings: age threshold
+      selectChain.where.mockResolvedValueOnce([{ ageThreshold: 16 }])
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/api/topics',
+        headers: { authorization: 'Bearer test-token' },
+        payload: {
+          title: 'Mature Topic',
+          content: 'Content for mature category.',
+          category: 'mature-category',
+        },
+      })
+
+      expect(response.statusCode).toBe(403)
+    })
+
+    it('defaults category maturity to safe when category not found', async () => {
+      // Onboarding passes
+      checkOnboardingCompleteFn.mockResolvedValueOnce({ complete: true, missingFields: [] })
+      // Category maturity query: empty (no category found) -> defaults to 'safe'
+      selectChain.where.mockResolvedValueOnce([])
+      // User profile query
+      selectChain.where.mockResolvedValueOnce([{ declaredAge: null, maturityPref: 'safe' }])
+      // Community settings: age threshold
+      selectChain.where.mockResolvedValueOnce([{ ageThreshold: 16 }])
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/api/topics',
+        headers: { authorization: 'Bearer test-token' },
+        payload: {
+          title: 'Topic in Missing Category',
+          content: 'Should still work because safe is default.',
+          category: 'nonexistent',
+        },
+      })
+
+      // Safe user + safe default = allowed
+      expect(response.statusCode).toBe(201)
+    })
+
+    it('defaults user profile to undefined when no user row exists', async () => {
+      // Onboarding passes
+      checkOnboardingCompleteFn.mockResolvedValueOnce({ complete: true, missingFields: [] })
+      // Category maturity query: safe
+      selectChain.where.mockResolvedValueOnce([{ maturityRating: 'safe' }])
+      // User profile query: empty (no user row) -> undefined -> safe
+      selectChain.where.mockResolvedValueOnce([])
+      // Community settings: age threshold
+      selectChain.where.mockResolvedValueOnce([{ ageThreshold: 16 }])
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/api/topics',
+        headers: { authorization: 'Bearer test-token' },
+        payload: {
+          title: 'Topic from Unknown User Profile',
+          content: 'Should still work for safe category.',
+          category: 'general',
+        },
+      })
+
+      expect(response.statusCode).toBe(201)
+    })
+
+    it('defaults age threshold to 16 when no community settings exist', async () => {
+      // Onboarding passes
+      checkOnboardingCompleteFn.mockResolvedValueOnce({ complete: true, missingFields: [] })
+      // Category maturity query: safe
+      selectChain.where.mockResolvedValueOnce([{ maturityRating: 'safe' }])
+      // User profile
+      selectChain.where.mockResolvedValueOnce([{ declaredAge: 15, maturityPref: 'mature' }])
+      // Community settings: empty (no settings row)
+      selectChain.where.mockResolvedValueOnce([])
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/api/topics',
+        headers: { authorization: 'Bearer test-token' },
+        payload: {
+          title: 'Topic from Underage User',
+          content: 'User is under default threshold of 16.',
+          category: 'general',
+        },
+      })
+
+      // User age 15 < default threshold 16 -> safe only -> can post to safe category
+      expect(response.statusCode).toBe(201)
+    })
+  })
+
+  describe('POST /api/topics (anti-spam untrusted path)', () => {
+    let app: FastifyInstance
+
+    beforeAll(async () => {
+      app = await buildTestApp(testUser())
+    })
+
+    afterAll(async () => {
+      await app.close()
+    })
+
+    beforeEach(() => {
+      vi.clearAllMocks()
+      resetAllDbMocks()
+      createRecordFn.mockResolvedValue({ uri: TEST_URI, cid: TEST_CID })
+      isTrackedFn.mockResolvedValue(true)
+      checkOnboardingCompleteFn.mockResolvedValue({ complete: true, missingFields: [] })
+    })
+
+    it('returns 429 when untrusted user hits write rate limit', async () => {
+      isAccountTrustedFn.mockResolvedValueOnce(false)
+      isNewAccountFn.mockResolvedValueOnce(true)
+      checkWriteRateLimitFn.mockResolvedValueOnce(true)
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/api/topics',
+        headers: { authorization: 'Bearer test-token' },
+        payload: {
+          title: 'Rate Limited',
+          content: 'Should hit rate limit.',
+          category: 'general',
+        },
+      })
+
+      expect(response.statusCode).toBe(429)
+    })
+
+    it('returns 403 when topic creation delay blocks new accounts', async () => {
+      isAccountTrustedFn.mockResolvedValueOnce(false)
+      isNewAccountFn.mockResolvedValueOnce(true)
+      checkWriteRateLimitFn.mockResolvedValueOnce(false)
+      loadAntiSpamSettingsFn.mockResolvedValueOnce({
+        wordFilter: [],
+        firstPostQueueCount: 3,
+        newAccountDays: 7,
+        newAccountWriteRatePerMin: 3,
+        establishedWriteRatePerMin: 10,
+        linkHoldEnabled: true,
+        topicCreationDelayEnabled: true,
+        burstPostCount: 5,
+        burstWindowMinutes: 10,
+        trustedPostThreshold: 10,
+      })
+      canCreateTopicFn.mockResolvedValueOnce(false)
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/api/topics',
+        headers: { authorization: 'Bearer test-token' },
+        payload: {
+          title: 'Delayed',
+          content: 'New account without approved replies.',
+          category: 'general',
+        },
+      })
+
+      expect(response.statusCode).toBe(403)
+    })
+
+    it('allows untrusted user to create topic when rate limit and delay pass', async () => {
+      isAccountTrustedFn.mockResolvedValueOnce(false)
+      isNewAccountFn.mockResolvedValueOnce(false)
+      checkWriteRateLimitFn.mockResolvedValueOnce(false)
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/api/topics',
+        headers: { authorization: 'Bearer test-token' },
+        payload: {
+          title: 'Untrusted But OK',
+          content: 'Passes rate limit and delay checks.',
+          category: 'general',
+        },
+      })
+
+      expect(response.statusCode).toBe(201)
+    })
+  })
+
+  describe('POST /api/topics (content held for moderation)', () => {
+    let app: FastifyInstance
+
+    beforeAll(async () => {
+      app = await buildTestApp(testUser())
+    })
+
+    afterAll(async () => {
+      await app.close()
+    })
+
+    beforeEach(() => {
+      vi.clearAllMocks()
+      resetAllDbMocks()
+      createRecordFn.mockResolvedValue({ uri: TEST_URI, cid: TEST_CID })
+      isTrackedFn.mockResolvedValue(true)
+      checkOnboardingCompleteFn.mockResolvedValue({ complete: true, missingFields: [] })
+    })
+
+    it('creates topic with held status when anti-spam flags content', async () => {
+      runAntiSpamChecksFn.mockResolvedValueOnce({
+        held: true,
+        reasons: [
+          { reason: 'word_filter', matchedWords: ['spam'] },
+          { reason: 'first_post_queue' },
+        ],
+      })
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/api/topics',
+        headers: { authorization: 'Bearer test-token' },
+        payload: {
+          title: 'Spam Topic',
+          content: 'This contains spam words.',
+          category: 'general',
+        },
+      })
+
+      expect(response.statusCode).toBe(201)
+      const body = response.json<{ moderationStatus: string }>()
+      expect(body.moderationStatus).toBe('held')
+
+      // Should have inserted moderation queue entries
+      expect(mockDb.insert).toHaveBeenCalledTimes(2) // topics + moderationQueue
+    })
+
+    it('does not cross-post when content is held', async () => {
+      runAntiSpamChecksFn.mockResolvedValueOnce({
+        held: true,
+        reasons: [{ reason: 'word_filter', matchedWords: ['spam'] }],
+      })
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/api/topics',
+        headers: { authorization: 'Bearer test-token' },
+        payload: {
+          title: 'Held Topic',
+          content: 'Will be held.',
+          category: 'general',
+        },
+      })
+
+      expect(response.statusCode).toBe(201)
+      // Cross-posting should NOT be called for held content
+      expect(crossPostTopicFn).not.toHaveBeenCalled()
+      // Mention notifications should NOT be called for held content
+      expect(notifyOnMentionsFn).not.toHaveBeenCalled()
+    })
+
+    it('fires cross-post when content is approved and feature flags are set', async () => {
+      const crossPostApp = Fastify({ logger: false })
+      const crossPostEnv = {
+        ...mockEnv,
+        FEATURE_CROSSPOST_BLUESKY: true,
+        FEATURE_CROSSPOST_FRONTPAGE: false,
+      } as Env
+
+      crossPostApp.decorate('db', mockDb as never)
+      crossPostApp.decorate('env', crossPostEnv)
+      crossPostApp.decorate('authMiddleware', createMockAuthMiddleware(testUser()))
+      crossPostApp.decorate('firehose', mockFirehose as never)
+      crossPostApp.decorate('oauthClient', {} as never)
+      crossPostApp.decorate('sessionService', {} as SessionService)
+      crossPostApp.decorate('setupService', {} as SetupService)
+      crossPostApp.decorate('cache', {} as never)
+      crossPostApp.decorateRequest('user', undefined as RequestUser | undefined)
+      await crossPostApp.register(topicRoutes())
+      await crossPostApp.ready()
+
+      runAntiSpamChecksFn.mockResolvedValueOnce({ held: false, reasons: [] })
+
+      const response = await crossPostApp.inject({
+        method: 'POST',
+        url: '/api/topics',
+        headers: { authorization: 'Bearer test-token' },
+        payload: {
+          title: 'Cross-Posted Topic',
+          content: 'This will be cross-posted.',
+          category: 'general',
+        },
+      })
+
+      expect(response.statusCode).toBe(201)
+      expect(crossPostTopicFn).toHaveBeenCalledOnce()
+      expect(notifyOnMentionsFn).toHaveBeenCalledOnce()
+
+      await crossPostApp.close()
+    })
+  })
+
+  describe('POST /api/topics (PDS and DB error branches)', () => {
+    let app: FastifyInstance
+
+    beforeAll(async () => {
+      app = await buildTestApp(testUser())
+    })
+
+    afterAll(async () => {
+      await app.close()
+    })
+
+    beforeEach(() => {
+      vi.clearAllMocks()
+      resetAllDbMocks()
+      isTrackedFn.mockResolvedValue(true)
+      checkOnboardingCompleteFn.mockResolvedValue({ complete: true, missingFields: [] })
+    })
+
+    it('re-throws PDS error that has statusCode property', async () => {
+      const pdsError = new Error('Forbidden') as Error & { statusCode: number }
+      pdsError.statusCode = 403
+      createRecordFn.mockRejectedValueOnce(pdsError)
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/api/topics',
+        headers: { authorization: 'Bearer test-token' },
+        payload: {
+          title: 'PDS Error With Status',
+          content: 'Should re-throw.',
+          category: 'general',
+        },
+      })
+
+      expect(response.statusCode).toBe(403)
+    })
+
+    it('returns 500 when local DB insert fails', async () => {
+      createRecordFn.mockResolvedValueOnce({ uri: TEST_URI, cid: TEST_CID })
+      // Make the insert chain throw on the values call
+      insertChain.values.mockImplementationOnce(() => {
+        throw new Error('DB insert failed')
+      })
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/api/topics',
+        headers: { authorization: 'Bearer test-token' },
+        payload: {
+          title: 'DB Fail Topic',
+          content: 'Should fail on DB insert.',
+          category: 'general',
+        },
+      })
+
+      expect(response.statusCode).toBe(500)
+    })
+
+    it('re-throws DB error that has statusCode property', async () => {
+      createRecordFn.mockResolvedValueOnce({ uri: TEST_URI, cid: TEST_CID })
+      const dbError = new Error('Not found') as Error & { statusCode: number }
+      dbError.statusCode = 404
+      insertChain.values.mockImplementationOnce(() => {
+        throw dbError
+      })
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/api/topics',
+        headers: { authorization: 'Bearer test-token' },
+        payload: {
+          title: 'DB Error Rethrow',
+          content: 'Should re-throw statusCode error.',
+          category: 'general',
+        },
+      })
+
+      expect(response.statusCode).toBe(404)
+    })
+  })
+
+  describe('POST /api/topics (ozone spam label)', () => {
+    let app: FastifyInstance
+
+    beforeAll(async () => {
+      const ozoneApp = Fastify({ logger: false })
+      ozoneApp.decorate('db', mockDb as never)
+      ozoneApp.decorate('env', mockEnv)
+      ozoneApp.decorate('authMiddleware', createMockAuthMiddleware(testUser()))
+      ozoneApp.decorate('firehose', mockFirehose as never)
+      ozoneApp.decorate('oauthClient', {} as never)
+      ozoneApp.decorate('sessionService', {} as SessionService)
+      ozoneApp.decorate('setupService', {} as SetupService)
+      ozoneApp.decorate('cache', {} as never)
+      ozoneApp.decorate('ozoneService', {
+        isSpamLabeled: vi.fn().mockResolvedValue(true),
+        batchIsSpamLabeled: vi.fn().mockResolvedValue(new Map()),
+      } as never)
+      ozoneApp.decorateRequest('user', undefined as RequestUser | undefined)
+      await ozoneApp.register(topicRoutes())
+      await ozoneApp.ready()
+      app = ozoneApp
+    })
+
+    afterAll(async () => {
+      await app.close()
+    })
+
+    beforeEach(() => {
+      vi.clearAllMocks()
+      resetAllDbMocks()
+      createRecordFn.mockResolvedValue({ uri: TEST_URI, cid: TEST_CID })
+      isTrackedFn.mockResolvedValue(true)
+      checkOnboardingCompleteFn.mockResolvedValue({ complete: true, missingFields: [] })
+    })
+
+    it('applies stricter rate limits for ozone spam-labeled accounts', async () => {
+      // When ozoneSpamLabeled is true:
+      // - isAccountTrusted returns false (because ozoneSpamLabeled negates trust)
+      // - isNewAccount is skipped; isNew is set to true due to ozoneSpamLabeled
+      // The user is untrusted, and treated as new, so rate limit check fires
+      isAccountTrustedFn.mockResolvedValueOnce(true) // trust check returns true but ozoneSpamLabeled overrides
+      checkWriteRateLimitFn.mockResolvedValueOnce(true) // rate limited
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/api/topics',
+        headers: { authorization: 'Bearer test-token' },
+        payload: {
+          title: 'Ozone Spam User',
+          content: 'Should be rate limited.',
+          category: 'general',
+        },
+      })
+
+      // ozoneSpamLabeled=true -> trusted = false (because !ozoneSpamLabeled && ...) -> untrusted path
+      // ozoneSpamLabeled=true -> isNew=true -> stricter rate limits
+      expect(response.statusCode).toBe(429)
+    })
+  })
+
+  // -------------------------------------------------------------------------
+  // GET /api/topics - cursor, ozone, serialization branches
+  // -------------------------------------------------------------------------
+
+  describe('GET /api/topics (cursor edge cases)', () => {
+    let app: FastifyInstance
+
+    beforeAll(async () => {
+      app = await buildTestApp(testUser())
+    })
+
+    afterAll(async () => {
+      await app.close()
+    })
+
+    beforeEach(() => {
+      vi.clearAllMocks()
+      resetAllDbMocks()
+    })
+
+    it('ignores invalid base64 cursor gracefully', async () => {
+      setupMaturityMocks(true)
+      selectChain.limit.mockResolvedValueOnce([])
+
+      const response = await app.inject({
+        method: 'GET',
+        url: '/api/topics?cursor=not-valid-base64!!!',
+      })
+
+      // Should not fail -- invalid cursor is silently ignored
+      expect(response.statusCode).toBe(200)
+    })
+
+    it('ignores cursor with missing fields in JSON', async () => {
+      setupMaturityMocks(true)
+      selectChain.limit.mockResolvedValueOnce([])
+
+      // Valid base64 but JSON lacks required fields
+      const cursor = Buffer.from(JSON.stringify({ foo: 'bar' })).toString('base64')
+      const response = await app.inject({
+        method: 'GET',
+        url: `/api/topics?cursor=${encodeURIComponent(cursor)}`,
+      })
+
+      expect(response.statusCode).toBe(200)
+    })
+
+    it('ignores cursor with non-string fields', async () => {
+      setupMaturityMocks(true)
+      selectChain.limit.mockResolvedValueOnce([])
+
+      // Valid base64 but fields are wrong types
+      const cursor = Buffer.from(JSON.stringify({ lastActivityAt: 123, uri: true })).toString(
+        'base64'
+      )
+      const response = await app.inject({
+        method: 'GET',
+        url: `/api/topics?cursor=${encodeURIComponent(cursor)}`,
+      })
+
+      expect(response.statusCode).toBe(200)
+    })
+  })
+
+  describe('GET /api/topics (ozone annotation)', () => {
+    let app: FastifyInstance
+    const batchIsSpamLabeledFn = vi.fn()
+
+    beforeAll(async () => {
+      const ozoneApp = Fastify({ logger: false })
+      ozoneApp.decorate('db', mockDb as never)
+      ozoneApp.decorate('env', mockEnv)
+      ozoneApp.decorate('authMiddleware', createMockAuthMiddleware(testUser()))
+      ozoneApp.decorate('firehose', mockFirehose as never)
+      ozoneApp.decorate('oauthClient', {} as never)
+      ozoneApp.decorate('sessionService', {} as SessionService)
+      ozoneApp.decorate('setupService', {} as SetupService)
+      ozoneApp.decorate('cache', {} as never)
+      ozoneApp.decorate('ozoneService', {
+        isSpamLabeled: vi.fn(),
+        batchIsSpamLabeled: batchIsSpamLabeledFn,
+      } as never)
+      ozoneApp.decorateRequest('user', undefined as RequestUser | undefined)
+      await ozoneApp.register(topicRoutes())
+      await ozoneApp.ready()
+      app = ozoneApp
+    })
+
+    afterAll(async () => {
+      await app.close()
+    })
+
+    beforeEach(() => {
+      vi.clearAllMocks()
+      resetAllDbMocks()
+    })
+
+    it('annotates topics with ozoneLabel: spam for spam-labeled authors', async () => {
+      setupMaturityMocks(true)
+
+      const spamDid = 'did:plc:spammer'
+      batchIsSpamLabeledFn.mockResolvedValueOnce(
+        new Map([
+          [spamDid, true],
+          [TEST_DID, false],
+        ])
+      )
+
+      const rows = [
+        sampleTopicRow({
+          authorDid: spamDid,
+          uri: `at://${spamDid}/forum.barazo.topic.post/s1`,
+          rkey: 's1',
+        }),
+        sampleTopicRow({ authorDid: TEST_DID }),
+      ]
+      selectChain.limit.mockResolvedValueOnce(rows)
+
+      const response = await app.inject({
+        method: 'GET',
+        url: '/api/topics',
+      })
+
+      expect(response.statusCode).toBe(200)
+      const body = response.json<{
+        topics: Array<{ authorDid: string; ozoneLabel: string | null }>
+      }>()
+      expect(body.topics).toHaveLength(2)
+      const spamTopic = body.topics.find((t) => t.authorDid === spamDid)
+      const normalTopic = body.topics.find((t) => t.authorDid === TEST_DID)
+      expect(spamTopic?.ozoneLabel).toBe('spam')
+      expect(normalTopic?.ozoneLabel).toBeNull()
+    })
+  })
+
+  describe('GET /api/topics (serialization branches)', () => {
+    let app: FastifyInstance
+
+    beforeAll(async () => {
+      app = await buildTestApp(testUser())
+    })
+
+    afterAll(async () => {
+      await app.close()
+    })
+
+    beforeEach(() => {
+      vi.clearAllMocks()
+      resetAllDbMocks()
+    })
+
+    it('serializes author-deleted topics with redacted title and empty content', async () => {
+      setupMaturityMocks(true)
+
+      const rows = [
+        sampleTopicRow({
+          isAuthorDeleted: true,
+          title: 'Original Title',
+          content: 'Original content',
+          contentFormat: 'markdown',
+        }),
+      ]
+      selectChain.limit.mockResolvedValueOnce(rows)
+
+      const response = await app.inject({
+        method: 'GET',
+        url: '/api/topics',
+      })
+
+      expect(response.statusCode).toBe(200)
+      const body = response.json<{
+        topics: Array<{
+          title: string
+          content: string
+          contentFormat: string | null
+          isAuthorDeleted: boolean
+        }>
+      }>()
+      expect(body.topics).toHaveLength(1)
+      expect(body.topics[0]?.title).toBe('[Deleted by author]')
+      expect(body.topics[0]?.content).toBe('')
+      expect(body.topics[0]?.contentFormat).toBeNull()
+    })
+
+    it('serializes topics with contentFormat when present', async () => {
+      setupMaturityMocks(true)
+
+      const rows = [
+        sampleTopicRow({
+          isAuthorDeleted: false,
+          contentFormat: 'markdown',
+        }),
+      ]
+      selectChain.limit.mockResolvedValueOnce(rows)
+
+      const response = await app.inject({
+        method: 'GET',
+        url: '/api/topics',
+      })
+
+      expect(response.statusCode).toBe(200)
+      const body = response.json<{
+        topics: Array<{ contentFormat: string | null }>
+      }>()
+      expect(body.topics[0]?.contentFormat).toBe('markdown')
+    })
+
+    it('serializes topics with null tags as null', async () => {
+      setupMaturityMocks(true)
+
+      const rows = [sampleTopicRow({ tags: null })]
+      selectChain.limit.mockResolvedValueOnce(rows)
+
+      const response = await app.inject({
+        method: 'GET',
+        url: '/api/topics',
+      })
+
+      expect(response.statusCode).toBe(200)
+      const body = response.json<{ topics: Array<{ tags: string[] | null }> }>()
+      expect(body.topics[0]?.tags).toBeNull()
+    })
+
+    it('provides fallback author profile when author not found in DB', async () => {
+      resetAllDbMocks()
+      setupMaturityMocks(true)
+
+      const unknownDid = 'did:plc:unknownauthor'
+      selectChain.limit.mockResolvedValueOnce([
+        sampleTopicRow({
+          authorDid: unknownDid,
+          uri: `at://${unknownDid}/forum.barazo.topic.post/u1`,
+          rkey: 'u1',
+        }),
+      ])
+
+      // Block/mute: empty
+      selectChain.where.mockResolvedValueOnce([])
+      // topics .where -> chain
+      selectChain.where.mockImplementationOnce(() => selectChain)
+      // loadMutedWords: empty
+      selectChain.where.mockResolvedValueOnce([])
+      // resolveAuthors: no user found for unknownDid
+      selectChain.where.mockResolvedValueOnce([])
+
+      const res = await app.inject({
+        method: 'GET',
+        url: '/api/topics',
+      })
+
+      expect(res.statusCode).toBe(200)
+      const body = JSON.parse(res.payload) as {
+        topics: Array<{
+          author: { did: string; handle: string; displayName: null; avatarUrl: null }
+        }>
+      }
+      // Fallback profile: handle = did, displayName/avatarUrl = null
+      expect(body.topics[0]?.author.did).toBe(unknownDid)
+      expect(body.topics[0]?.author.handle).toBe(unknownDid)
+      expect(body.topics[0]?.author.displayName).toBeNull()
+      expect(body.topics[0]?.author.avatarUrl).toBeNull()
+    })
+
+    it('maps categoryMaturityRating from category maturity map', async () => {
+      // Set up maturity mocks with a non-safe category
+      selectChain.where.mockResolvedValueOnce([{ declaredAge: 18, maturityPref: 'mature' }])
+      selectChain.where.mockResolvedValueOnce([{ ageThreshold: 16 }])
+      selectChain.where.mockResolvedValueOnce([
+        { slug: 'general', maturityRating: 'safe' },
+        { slug: 'nsfw', maturityRating: 'mature' },
+      ])
+
+      const rows = [
+        sampleTopicRow({ category: 'nsfw' }),
+        sampleTopicRow({
+          uri: `at://${TEST_DID}/forum.barazo.topic.post/safe1`,
+          rkey: 'safe1',
+          category: 'general',
+        }),
+      ]
+      selectChain.limit.mockResolvedValueOnce(rows)
+
+      const response = await app.inject({
+        method: 'GET',
+        url: '/api/topics',
+      })
+
+      expect(response.statusCode).toBe(200)
+      const body = response.json<{
+        topics: Array<{ category: string; categoryMaturityRating: string }>
+      }>()
+      expect(body.topics).toHaveLength(2)
+      const nsfwTopic = body.topics.find((t) => t.category === 'nsfw')
+      const safeTopic = body.topics.find((t) => t.category === 'general')
+      expect(nsfwTopic?.categoryMaturityRating).toBe('mature')
+      expect(safeTopic?.categoryMaturityRating).toBe('safe')
+    })
+  })
+
+  describe('GET /api/topics (single mode - no allowed categories)', () => {
+    let app: FastifyInstance
+
+    beforeAll(async () => {
+      app = await buildTestApp(testUser())
+    })
+
+    afterAll(async () => {
+      await app.close()
+    })
+
+    beforeEach(() => {
+      vi.clearAllMocks()
+      resetAllDbMocks()
+    })
+
+    it('returns empty result when no categories are allowed in single mode', async () => {
+      // User profile
+      selectChain.where.mockResolvedValueOnce([{ declaredAge: null, maturityPref: 'safe' }])
+      // Community settings: age threshold
+      selectChain.where.mockResolvedValueOnce([{ ageThreshold: 16 }])
+      // Categories query: empty (all categories are mature/adult, user is safe-only)
+      selectChain.where.mockResolvedValueOnce([])
+
+      const response = await app.inject({
+        method: 'GET',
+        url: '/api/topics',
+      })
+
+      expect(response.statusCode).toBe(200)
+      const body = response.json<{ topics: unknown[]; cursor: string | null }>()
+      expect(body.topics).toEqual([])
+      expect(body.cursor).toBeNull()
+    })
+  })
+
+  describe('GET /api/topics (combined category + tag filters)', () => {
+    let app: FastifyInstance
+
+    beforeAll(async () => {
+      app = await buildTestApp(testUser())
+    })
+
+    afterAll(async () => {
+      await app.close()
+    })
+
+    beforeEach(() => {
+      vi.clearAllMocks()
+      resetAllDbMocks()
+    })
+
+    it('applies both category and tag filters simultaneously', async () => {
+      setupMaturityMocks(true, ['general', 'support'])
+      selectChain.limit.mockResolvedValueOnce([])
+
+      const response = await app.inject({
+        method: 'GET',
+        url: '/api/topics?category=support&tag=help',
+      })
+
+      expect(response.statusCode).toBe(200)
+      // Verify where was called (filters applied)
+      expect(selectChain.where).toHaveBeenCalled()
+    })
+
+    it('applies category filter with cursor and limit together', async () => {
+      setupMaturityMocks(true)
+      const cursor = Buffer.from(
+        JSON.stringify({ lastActivityAt: TEST_NOW, uri: TEST_URI })
+      ).toString('base64')
+      selectChain.limit.mockResolvedValueOnce([])
+
+      const response = await app.inject({
+        method: 'GET',
+        url: `/api/topics?category=general&limit=5&cursor=${encodeURIComponent(cursor)}`,
+      })
+
+      expect(response.statusCode).toBe(200)
+    })
+  })
+
+  // -------------------------------------------------------------------------
+  // GET /api/topics/:uri - maturity branches
+  // -------------------------------------------------------------------------
+
+  describe('GET /api/topics/:uri (maturity branches)', () => {
+    let app: FastifyInstance
+
+    beforeAll(async () => {
+      app = await buildTestApp(testUser())
+    })
+
+    afterAll(async () => {
+      await app.close()
+    })
+
+    beforeEach(() => {
+      vi.clearAllMocks()
+      resetAllDbMocks()
+    })
+
+    it('returns 403 when maturity blocks access for authenticated user', async () => {
+      const row = sampleTopicRow({ category: 'mature-cat' })
+      // 1. find topic
+      selectChain.where.mockResolvedValueOnce([row])
+      // 2. category maturity: mature
+      selectChain.where.mockResolvedValueOnce([{ maturityRating: 'mature' }])
+      // 3. user profile: no age declared -> safe only
+      selectChain.where.mockResolvedValueOnce([{ declaredAge: null, maturityPref: 'safe' }])
+      // 4. age threshold
+      selectChain.where.mockResolvedValueOnce([{ ageThreshold: 16 }])
+
+      const encodedUri = encodeURIComponent(TEST_URI)
+      const response = await app.inject({
+        method: 'GET',
+        url: `/api/topics/${encodedUri}`,
+      })
+
+      expect(response.statusCode).toBe(403)
+    })
+
+    it('logs warning and defaults to safe when category not found', async () => {
+      const row = sampleTopicRow({ category: 'nonexistent-cat' })
+      // 1. find topic
+      selectChain.where.mockResolvedValueOnce([row])
+      // 2. category lookup: empty -> defaults to 'safe'
+      selectChain.where.mockResolvedValueOnce([])
+      // 3. user profile
+      selectChain.where.mockResolvedValueOnce([{ declaredAge: null, maturityPref: 'safe' }])
+      // 4. age threshold
+      selectChain.where.mockResolvedValueOnce([{ ageThreshold: 16 }])
+
+      const encodedUri = encodeURIComponent(TEST_URI)
+      const response = await app.inject({
+        method: 'GET',
+        url: `/api/topics/${encodedUri}`,
+      })
+
+      // Category not found -> defaults to safe -> safe user can access
+      expect(response.statusCode).toBe(200)
+    })
+
+    it('returns topic when user has sufficient maturity level', async () => {
+      const row = sampleTopicRow({ category: 'mature-cat' })
+      // 1. find topic
+      selectChain.where.mockResolvedValueOnce([row])
+      // 2. category maturity: mature
+      selectChain.where.mockResolvedValueOnce([{ maturityRating: 'mature' }])
+      // 3. user profile: adult age, mature pref
+      selectChain.where.mockResolvedValueOnce([{ declaredAge: 18, maturityPref: 'mature' }])
+      // 4. age threshold
+      selectChain.where.mockResolvedValueOnce([{ ageThreshold: 16 }])
+
+      const encodedUri = encodeURIComponent(TEST_URI)
+      const response = await app.inject({
+        method: 'GET',
+        url: `/api/topics/${encodedUri}`,
+      })
+
+      expect(response.statusCode).toBe(200)
+    })
+
+    it('defaults age threshold when no settings row exists', async () => {
+      const row = sampleTopicRow()
+      // 1. find topic
+      selectChain.where.mockResolvedValueOnce([row])
+      // 2. category maturity: safe
+      selectChain.where.mockResolvedValueOnce([{ maturityRating: 'safe' }])
+      // 3. user profile
+      selectChain.where.mockResolvedValueOnce([{ declaredAge: null, maturityPref: 'safe' }])
+      // 4. age threshold: empty -> defaults to 16
+      selectChain.where.mockResolvedValueOnce([])
+
+      const encodedUri = encodeURIComponent(TEST_URI)
+      const response = await app.inject({
+        method: 'GET',
+        url: `/api/topics/${encodedUri}`,
+      })
+
+      expect(response.statusCode).toBe(200)
+    })
+
+    it('works for unauthenticated user accessing safe content', async () => {
+      const noAuthApp = await buildTestApp(undefined)
+
+      const row = sampleTopicRow()
+      // 1. find topic
+      selectChain.where.mockResolvedValueOnce([row])
+      // 2. category maturity: safe
+      selectChain.where.mockResolvedValueOnce([{ maturityRating: 'safe' }])
+      // 3. no user profile query (unauthenticated)
+      // 4. age threshold
+      selectChain.where.mockResolvedValueOnce([{ ageThreshold: 16 }])
+
+      const encodedUri = encodeURIComponent(TEST_URI)
+      const response = await noAuthApp.inject({
+        method: 'GET',
+        url: `/api/topics/${encodedUri}`,
+      })
+
+      expect(response.statusCode).toBe(200)
+      await noAuthApp.close()
+    })
+
+    it('returns 403 for unauthenticated user accessing mature content', async () => {
+      const noAuthApp = await buildTestApp(undefined)
+
+      const row = sampleTopicRow({ category: 'mature-cat' })
+      // 1. find topic
+      selectChain.where.mockResolvedValueOnce([row])
+      // 2. category maturity: mature
+      selectChain.where.mockResolvedValueOnce([{ maturityRating: 'mature' }])
+      // 3. no user profile query (unauthenticated)
+      // 4. age threshold
+      selectChain.where.mockResolvedValueOnce([{ ageThreshold: 16 }])
+
+      const encodedUri = encodeURIComponent(TEST_URI)
+      const response = await noAuthApp.inject({
+        method: 'GET',
+        url: `/api/topics/${encodedUri}`,
+      })
+
+      expect(response.statusCode).toBe(403)
+      await noAuthApp.close()
+    })
+  })
+
+  // -------------------------------------------------------------------------
+  // GET /api/topics/by-rkey/:rkey - additional branches
+  // -------------------------------------------------------------------------
+
+  describe('GET /api/topics/by-rkey/:rkey (additional branches)', () => {
+    let app: FastifyInstance
+
+    beforeAll(async () => {
+      app = await buildTestApp(testUser())
+    })
+
+    afterAll(async () => {
+      await app.close()
+    })
+
+    beforeEach(() => {
+      vi.clearAllMocks()
+      resetAllDbMocks()
+    })
+
+    it('defaults category maturity to safe when no category row found', async () => {
+      const row = sampleTopicRow({ category: 'unknown-category' })
+      // 1. find topic
+      selectChain.where.mockResolvedValueOnce([row])
+      // 2. category lookup: empty -> defaults to 'safe'
+      selectChain.where.mockResolvedValueOnce([])
+      // 3. user profile
+      selectChain.where.mockResolvedValueOnce([{ declaredAge: null, maturityPref: 'safe' }])
+      // 4. age threshold
+      selectChain.where.mockResolvedValueOnce([{ ageThreshold: 16 }])
+
+      const response = await app.inject({
+        method: 'GET',
+        url: '/api/topics/by-rkey/abc123',
+      })
+
+      expect(response.statusCode).toBe(200)
+      const body = response.json<{ categoryMaturityRating: string }>()
+      expect(body.categoryMaturityRating).toBe('safe')
+    })
+
+    it('defaults user profile to undefined when user row not found', async () => {
+      const row = sampleTopicRow()
+      // 1. find topic
+      selectChain.where.mockResolvedValueOnce([row])
+      // 2. category maturity: safe
+      selectChain.where.mockResolvedValueOnce([{ maturityRating: 'safe' }])
+      // 3. user profile: empty -> undefined
+      selectChain.where.mockResolvedValueOnce([])
+      // 4. age threshold
+      selectChain.where.mockResolvedValueOnce([{ ageThreshold: 16 }])
+
+      const response = await app.inject({
+        method: 'GET',
+        url: '/api/topics/by-rkey/abc123',
+      })
+
+      // undefined user -> safe -> can access safe content
+      expect(response.statusCode).toBe(200)
+    })
+
+    it('defaults age threshold when no community settings row exists', async () => {
+      const row = sampleTopicRow()
+      // 1. find topic
+      selectChain.where.mockResolvedValueOnce([row])
+      // 2. category maturity: safe
+      selectChain.where.mockResolvedValueOnce([{ maturityRating: 'safe' }])
+      // 3. user profile
+      selectChain.where.mockResolvedValueOnce([{ declaredAge: null, maturityPref: 'safe' }])
+      // 4. age threshold: empty -> defaults to 16
+      selectChain.where.mockResolvedValueOnce([])
+
+      const response = await app.inject({
+        method: 'GET',
+        url: '/api/topics/by-rkey/abc123',
+      })
+
+      expect(response.statusCode).toBe(200)
+    })
+  })
+
+  // -------------------------------------------------------------------------
+  // PUT /api/topics/:uri - additional DB/PDS error branches
+  // -------------------------------------------------------------------------
+
+  describe('PUT /api/topics/:uri (additional error branches)', () => {
+    let app: FastifyInstance
+
+    beforeAll(async () => {
+      app = await buildTestApp(testUser())
+    })
+
+    afterAll(async () => {
+      await app.close()
+    })
+
+    beforeEach(() => {
+      vi.clearAllMocks()
+      resetAllDbMocks()
+      updateRecordFn.mockResolvedValue({ uri: TEST_URI, cid: 'bafyreinewcid' })
+    })
+
+    it('returns 400 when Zod validation fails (whitespace-only title)', async () => {
+      // JSON Schema sees minLength 1 satisfied by " ", but Zod trims to "" then fails min(1)
+      const encodedUri = encodeURIComponent(TEST_URI)
+      const response = await app.inject({
+        method: 'PUT',
+        url: `/api/topics/${encodedUri}`,
+        headers: { authorization: 'Bearer test-token' },
+        payload: {
+          title: '   ', // Whitespace-only -> passes JSON Schema but fails Zod after trim
+        },
+      })
+
+      expect(response.statusCode).toBe(400)
+    })
+
+    it('returns 404 when DB update returns empty result', async () => {
+      const existingRow = sampleTopicRow()
+      selectChain.where.mockResolvedValueOnce([existingRow])
+      // update().set().where().returning() -> empty
+      updateChain.returning.mockResolvedValueOnce([])
+
+      const encodedUri = encodeURIComponent(TEST_URI)
+      const response = await app.inject({
+        method: 'PUT',
+        url: `/api/topics/${encodedUri}`,
+        headers: { authorization: 'Bearer test-token' },
+        payload: { title: 'Vanished Topic' },
+      })
+
+      expect(response.statusCode).toBe(404)
+    })
+
+    it('returns 500 when local DB update fails', async () => {
+      const existingRow = sampleTopicRow()
+      selectChain.where.mockResolvedValueOnce([existingRow])
+      updateChain.returning.mockRejectedValueOnce(new Error('DB update error'))
+
+      const encodedUri = encodeURIComponent(TEST_URI)
+      const response = await app.inject({
+        method: 'PUT',
+        url: `/api/topics/${encodedUri}`,
+        headers: { authorization: 'Bearer test-token' },
+        payload: { content: 'Updated content' },
+      })
+
+      expect(response.statusCode).toBe(500)
+    })
+
+    it('re-throws DB update error with statusCode property', async () => {
+      const existingRow = sampleTopicRow()
+      selectChain.where.mockResolvedValueOnce([existingRow])
+      const dbError = new Error('Forbidden') as Error & { statusCode: number }
+      dbError.statusCode = 403
+      updateChain.returning.mockRejectedValueOnce(dbError)
+
+      const encodedUri = encodeURIComponent(TEST_URI)
+      const response = await app.inject({
+        method: 'PUT',
+        url: `/api/topics/${encodedUri}`,
+        headers: { authorization: 'Bearer test-token' },
+        payload: { title: 'DB Error Rethrow' },
+      })
+
+      expect(response.statusCode).toBe(403)
+    })
+
+    it('re-throws PDS update error with statusCode property', async () => {
+      const existingRow = sampleTopicRow()
+      selectChain.where.mockResolvedValueOnce([existingRow])
+      const pdsError = new Error('Forbidden') as Error & { statusCode: number }
+      pdsError.statusCode = 403
+      updateRecordFn.mockRejectedValueOnce(pdsError)
+
+      const encodedUri = encodeURIComponent(TEST_URI)
+      const response = await app.inject({
+        method: 'PUT',
+        url: `/api/topics/${encodedUri}`,
+        headers: { authorization: 'Bearer test-token' },
+        payload: { title: 'PDS Error With Status' },
+      })
+
+      expect(response.statusCode).toBe(403)
+    })
+
+    it('updates multiple fields simultaneously', async () => {
+      const existingRow = sampleTopicRow()
+      selectChain.where.mockResolvedValueOnce([existingRow])
+      const updatedRow = {
+        ...existingRow,
+        title: 'New Title',
+        content: 'New content',
+        category: 'support',
+        tags: ['new-tag'],
+        cid: 'bafyreinewcid',
+      }
+      updateChain.returning.mockResolvedValueOnce([updatedRow])
+
+      const encodedUri = encodeURIComponent(TEST_URI)
+      const response = await app.inject({
+        method: 'PUT',
+        url: `/api/topics/${encodedUri}`,
+        headers: { authorization: 'Bearer test-token' },
+        payload: {
+          title: 'New Title',
+          content: 'New content',
+          category: 'support',
+          tags: ['new-tag'],
+        },
+      })
+
+      expect(response.statusCode).toBe(200)
+      const body = response.json<{ title: string; content: string; category: string }>()
+      expect(body.title).toBe('New Title')
+      expect(body.content).toBe('New content')
+      expect(body.category).toBe('support')
+
+      // Verify all fields sent to DB update
+      const dbUpdateSet = updateChain.set.mock.calls[0]?.[0] as Record<string, unknown>
+      expect(dbUpdateSet.title).toBe('New Title')
+      expect(dbUpdateSet.content).toBe('New content')
+      expect(dbUpdateSet.category).toBe('support')
+      expect(dbUpdateSet.tags).toEqual(['new-tag'])
+    })
+
+    it('preserves existing labels in PDS record when labels not in update but exist on topic', async () => {
+      const existingLabels = { values: [{ val: 'nsfw' }] }
+      const existingRow = sampleTopicRow({ labels: existingLabels })
+      selectChain.where.mockResolvedValueOnce([existingRow])
+      updateChain.returning.mockResolvedValueOnce([{ ...existingRow, cid: 'bafyreinewcid' }])
+
+      const encodedUri = encodeURIComponent(TEST_URI)
+      const response = await app.inject({
+        method: 'PUT',
+        url: `/api/topics/${encodedUri}`,
+        headers: { authorization: 'Bearer test-token' },
+        payload: { title: 'Updated' },
+      })
+
+      expect(response.statusCode).toBe(200)
+      // PDS record should include existing labels
+      const pdsRecord = updateRecordFn.mock.calls[0]?.[3] as Record<string, unknown>
+      expect(pdsRecord.labels).toEqual(existingLabels)
+    })
+
+    it('removes labels when labels explicitly excluded from update and topic had no labels', async () => {
+      const existingRow = sampleTopicRow({ labels: null })
+      selectChain.where.mockResolvedValueOnce([existingRow])
+      updateChain.returning.mockResolvedValueOnce([{ ...existingRow, cid: 'bafyreinewcid' }])
+
+      const encodedUri = encodeURIComponent(TEST_URI)
+      const response = await app.inject({
+        method: 'PUT',
+        url: `/api/topics/${encodedUri}`,
+        headers: { authorization: 'Bearer test-token' },
+        payload: { title: 'No Labels' },
+      })
+
+      expect(response.statusCode).toBe(200)
+      // PDS record should NOT have labels key (resolvedLabels is null)
+      const pdsRecord = updateRecordFn.mock.calls[0]?.[3] as Record<string, unknown>
+      expect(pdsRecord).not.toHaveProperty('labels')
+    })
+  })
+
+  // -------------------------------------------------------------------------
+  // DELETE /api/topics/:uri - additional branches
+  // -------------------------------------------------------------------------
+
+  describe('DELETE /api/topics/:uri (additional branches)', () => {
+    let app: FastifyInstance
+
+    beforeAll(async () => {
+      app = await buildTestApp(testUser())
+    })
+
+    afterAll(async () => {
+      await app.close()
+    })
+
+    beforeEach(() => {
+      vi.clearAllMocks()
+      resetAllDbMocks()
+      deleteRecordFn.mockResolvedValue(undefined)
+    })
+
+    it('returns 403 when user is not author and user row not found', async () => {
+      const existingRow = sampleTopicRow({ authorDid: OTHER_DID })
+      selectChain.where.mockResolvedValueOnce([existingRow])
+      // Role lookup: no user row found
+      selectChain.where.mockResolvedValueOnce([])
+
+      const encodedUri = encodeURIComponent(TEST_URI)
+      const response = await app.inject({
+        method: 'DELETE',
+        url: `/api/topics/${encodedUri}`,
+        headers: { authorization: 'Bearer test-token' },
+      })
+
+      expect(response.statusCode).toBe(403)
+    })
+
+    it('returns 500 when local DB soft-delete fails', async () => {
+      const existingRow = sampleTopicRow()
+      selectChain.where.mockResolvedValueOnce([existingRow])
+      // DB update (soft delete) throws
+      updateChain.where.mockRejectedValueOnce(new Error('DB delete error'))
+
+      const encodedUri = encodeURIComponent(TEST_URI)
+      const response = await app.inject({
+        method: 'DELETE',
+        url: `/api/topics/${encodedUri}`,
+        headers: { authorization: 'Bearer test-token' },
+      })
+
+      // PDS delete succeeds for author, then DB soft-delete fails -> 500
+      expect(response.statusCode).toBe(500)
+    })
+
+    it('re-throws DB delete error with statusCode property', async () => {
+      const existingRow = sampleTopicRow()
+      selectChain.where.mockResolvedValueOnce([existingRow])
+      const dbError = new Error('Not found') as Error & { statusCode: number }
+      dbError.statusCode = 404
+      // The soft-delete uses update().set().where() which is chained
+      // set returns chain, where is the terminal call that resolves
+      updateChain.where.mockRejectedValueOnce(dbError)
+
+      const encodedUri = encodeURIComponent(TEST_URI)
+      const response = await app.inject({
+        method: 'DELETE',
+        url: `/api/topics/${encodedUri}`,
+        headers: { authorization: 'Bearer test-token' },
+      })
+
+      // Error has statusCode so it should be re-thrown
+      expect(response.statusCode).toBe(404)
+    })
+
+    it('re-throws PDS delete error with statusCode property', async () => {
+      const existingRow = sampleTopicRow() // author = TEST_DID
+      selectChain.where.mockResolvedValueOnce([existingRow])
+      const pdsError = new Error('Forbidden') as Error & { statusCode: number }
+      pdsError.statusCode = 403
+      deleteRecordFn.mockRejectedValueOnce(pdsError)
+
+      const encodedUri = encodeURIComponent(TEST_URI)
+      const response = await app.inject({
+        method: 'DELETE',
+        url: `/api/topics/${encodedUri}`,
+        headers: { authorization: 'Bearer test-token' },
+      })
+
+      expect(response.statusCode).toBe(403)
+    })
+
+    it('fires cross-post deletion when deleting as author', async () => {
+      const existingRow = sampleTopicRow()
+      selectChain.where.mockResolvedValueOnce([existingRow])
+
+      const encodedUri = encodeURIComponent(TEST_URI)
+      const response = await app.inject({
+        method: 'DELETE',
+        url: `/api/topics/${encodedUri}`,
+        headers: { authorization: 'Bearer test-token' },
+      })
+
+      expect(response.statusCode).toBe(204)
+      expect(deleteCrossPostsFn).toHaveBeenCalledOnce()
+    })
+
+    it('handles cross-post deletion failure gracefully (fire-and-forget)', async () => {
+      const existingRow = sampleTopicRow()
+      selectChain.where.mockResolvedValueOnce([existingRow])
+      // deleteCrossPosts rejects -- should not prevent 204 response
+      deleteCrossPostsFn.mockRejectedValueOnce(new Error('Cross-post delete failed'))
+
+      const encodedUri = encodeURIComponent(TEST_URI)
+      const response = await app.inject({
+        method: 'DELETE',
+        url: `/api/topics/${encodedUri}`,
+        headers: { authorization: 'Bearer test-token' },
+      })
+
+      // Should still return 204 despite cross-post failure
+      expect(response.statusCode).toBe(204)
+      expect(deleteCrossPostsFn).toHaveBeenCalledOnce()
+    })
+
+    it('fires cross-post deletion when deleting as moderator', async () => {
+      const modApp = await buildTestApp(testUser({ did: MOD_DID, handle: 'mod.bsky.social' }))
+
+      const existingRow = sampleTopicRow({ authorDid: OTHER_DID })
+      selectChain.where.mockResolvedValueOnce([existingRow])
+      selectChain.where.mockResolvedValueOnce([{ did: MOD_DID, role: 'moderator' }])
+
+      const encodedUri = encodeURIComponent(TEST_URI)
+      const response = await modApp.inject({
+        method: 'DELETE',
+        url: `/api/topics/${encodedUri}`,
+        headers: { authorization: 'Bearer test-token' },
+      })
+
+      expect(response.statusCode).toBe(204)
+      // Cross-post deletion should fire even for moderator deletes
+      expect(deleteCrossPostsFn).toHaveBeenCalledOnce()
+
+      await modApp.close()
+    })
+  })
+
+  // -------------------------------------------------------------------------
+  // GET /api/topics (global mode - additional branches)
+  // -------------------------------------------------------------------------
+
+  describe('GET /api/topics (global mode - additional branches)', () => {
+    const globalMockEnv = {
+      ...mockEnv,
+      COMMUNITY_MODE: 'global' as const,
+      COMMUNITY_DID: undefined,
+    } as Env
+
+    async function buildGlobalTestApp(user?: RequestUser): Promise<FastifyInstance> {
+      const globalApp = Fastify({ logger: false })
+
+      globalApp.decorate('db', mockDb as never)
+      globalApp.decorate('env', globalMockEnv)
+      globalApp.decorate('authMiddleware', createMockAuthMiddleware(user))
+      globalApp.decorate('firehose', mockFirehose as never)
+      globalApp.decorate('oauthClient', {} as never)
+      globalApp.decorate('sessionService', {} as SessionService)
+      globalApp.decorate('setupService', {} as SetupService)
+      globalApp.decorate('cache', {} as never)
+      globalApp.decorateRequest('user', undefined as RequestUser | undefined)
+
+      await globalApp.register(topicRoutes())
+      await globalApp.ready()
+
+      return globalApp
+    }
+
+    it('excludes communities with null communityDid in global mode', async () => {
+      const app = await buildGlobalTestApp(undefined)
+
+      // Community settings: ageThreshold
+      selectChain.where.mockResolvedValueOnce([{ ageThreshold: 16 }])
+      // Community settings: includes a row with null communityDid (filtered by isNotNull in query)
+      // But the filter also happens in JS code: communityDid must be truthy
+      selectChain.where.mockResolvedValueOnce([
+        { communityDid: 'did:plc:valid', maturityRating: 'safe' },
+        { communityDid: null, maturityRating: 'safe' },
+      ])
+      // Categories
+      selectChain.where.mockResolvedValueOnce([{ slug: 'general', maturityRating: 'safe' }])
+      // Topics
+      selectChain.limit.mockResolvedValueOnce([sampleTopicRow({ communityDid: 'did:plc:valid' })])
+
+      const response = await app.inject({
+        method: 'GET',
+        url: '/api/topics',
+      })
+
+      expect(response.statusCode).toBe(200)
+      const body = response.json<{ topics: Array<{ communityDid: string }> }>()
+      expect(body.topics).toHaveLength(1)
+      expect(body.topics[0]?.communityDid).toBe('did:plc:valid')
+
+      await app.close()
+    })
+
+    it('returns empty when all allowed communities have no allowed categories in global mode', async () => {
+      const app = await buildGlobalTestApp(testUser())
+
+      // User profile
+      selectChain.where.mockResolvedValueOnce([{ declaredAge: null, maturityPref: 'safe' }])
+      // Community settings: ageThreshold
+      selectChain.where.mockResolvedValueOnce([{ ageThreshold: 16 }])
+      // Communities: valid safe community
+      selectChain.where.mockResolvedValueOnce([
+        { communityDid: 'did:plc:valid', maturityRating: 'safe' },
+      ])
+      // Categories: empty (no categories match)
+      selectChain.where.mockResolvedValueOnce([])
+
+      const response = await app.inject({
+        method: 'GET',
+        url: '/api/topics',
+      })
+
+      expect(response.statusCode).toBe(200)
+      const body = response.json<{ topics: unknown[]; cursor: string | null }>()
+      expect(body.topics).toEqual([])
+      expect(body.cursor).toBeNull()
+
+      await app.close()
+    })
+  })
+
+  // -------------------------------------------------------------------------
+  // GET /api/topics (muted word annotation)
+  // -------------------------------------------------------------------------
+
+  describe('GET /api/topics (muted word content matching)', () => {
+    let app: FastifyInstance
+
+    beforeAll(async () => {
+      app = await buildTestApp(testUser())
+    })
+
+    afterAll(async () => {
+      await app.close()
+    })
+
+    beforeEach(() => {
+      vi.clearAllMocks()
+      resetAllDbMocks()
+    })
+
+    it('annotates isMutedWord: true when topic content matches muted words', async () => {
+      resetAllDbMocks()
+      setupMaturityMocks(true)
+
+      const rows = [
+        sampleTopicRow({
+          authorDid: TEST_DID,
+          content: 'This contains a badword in the content',
+        }),
+      ]
+      selectChain.limit.mockResolvedValueOnce(rows)
+
+      // Block/mute: empty
+      selectChain.where.mockResolvedValueOnce([])
+      // topics .where -> chain
+      selectChain.where.mockImplementationOnce(() => selectChain)
+      // loadMutedWords global: returns muted words
+      selectChain.where.mockResolvedValueOnce([{ mutedWords: ['badword'] }])
+      // loadMutedWords community (single mode, communityDid defined):
+      selectChain.where.mockResolvedValueOnce([{ mutedWords: null }])
+      // resolveAuthors
+      selectChain.where.mockResolvedValueOnce([
+        {
+          did: TEST_DID,
+          handle: TEST_HANDLE,
+          displayName: 'Alice',
+          avatarUrl: null,
+          bannerUrl: null,
+          bio: null,
+        },
+      ])
+
+      const res = await app.inject({
+        method: 'GET',
+        url: '/api/topics',
+      })
+
+      expect(res.statusCode).toBe(200)
+      const body = JSON.parse(res.payload) as {
+        topics: Array<{ isMutedWord: boolean }>
+      }
+      expect(body.topics[0]?.isMutedWord).toBe(true)
     })
   })
 })

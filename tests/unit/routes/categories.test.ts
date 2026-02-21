@@ -331,6 +331,62 @@ describe('category routes', () => {
       expect(response.statusCode).toBe(200)
       await noAuthApp.close()
     })
+
+    it('treats orphan nodes (parentId references missing parent) as root', async () => {
+      const orphan = sampleCategoryRow({
+        id: CATEGORY_ID_2,
+        slug: 'orphan',
+        name: 'Orphan Category',
+        parentId: 'nonexistent-parent-id',
+      })
+      selectChain.where.mockResolvedValueOnce([orphan])
+
+      const response = await app.inject({
+        method: 'GET',
+        url: '/api/categories',
+      })
+
+      expect(response.statusCode).toBe(200)
+      const body = response.json<{
+        categories: Array<{ id: string; parentId: string | null; children: unknown[] }>
+      }>()
+      // Orphan should be treated as root since its parent is not in the returned set
+      expect(body.categories).toHaveLength(1)
+      expect(body.categories[0]?.id).toBe(CATEGORY_ID_2)
+    })
+
+    it('handles invalid query parameters gracefully (parentId defaults to undefined)', async () => {
+      selectChain.where.mockResolvedValueOnce([])
+
+      // Pass an invalid query param that would fail categoryQuerySchema parse
+      const response = await app.inject({
+        method: 'GET',
+        url: '/api/categories?other=value',
+      })
+
+      // Should still succeed -- safeParse failure means parentId is undefined
+      expect(response.statusCode).toBe(200)
+    })
+
+    it('serializes categories with null description and null parentId', async () => {
+      const category = sampleCategoryRow({
+        description: undefined,
+        parentId: undefined,
+      })
+      selectChain.where.mockResolvedValueOnce([category])
+
+      const response = await app.inject({
+        method: 'GET',
+        url: '/api/categories',
+      })
+
+      expect(response.statusCode).toBe(200)
+      const body = response.json<{
+        categories: Array<{ description: string | null; parentId: string | null }>
+      }>()
+      expect(body.categories[0]?.description).toBeNull()
+      expect(body.categories[0]?.parentId).toBeNull()
+    })
   })
 
   // =========================================================================
@@ -395,6 +451,22 @@ describe('category routes', () => {
 
       expect(response.statusCode).toBe(200)
       await noAuthApp.close()
+    })
+
+    it('defaults topicCount to 0 when topic count query returns empty array', async () => {
+      const category = sampleCategoryRow()
+      selectChain.where.mockResolvedValueOnce([category])
+      // Topic count query returns empty result (no rows)
+      selectChain.where.mockResolvedValueOnce([])
+
+      const response = await app.inject({
+        method: 'GET',
+        url: '/api/categories/general',
+      })
+
+      expect(response.statusCode).toBe(200)
+      const body = response.json<{ topicCount: number }>()
+      expect(body.topicCount).toBe(0)
     })
   })
 
@@ -606,6 +678,99 @@ describe('category routes', () => {
       })
 
       expect(response.statusCode).toBe(201)
+    })
+
+    it('defaults to safe maturity when no community settings exist', async () => {
+      // Community settings query returns empty (no settings row)
+      selectChain.where.mockResolvedValueOnce([])
+      // Slug check: no conflict
+      selectChain.where.mockResolvedValueOnce([])
+      // Insert returns created row
+      insertChain.returning.mockResolvedValueOnce([sampleCategoryRow({ maturityRating: 'safe' })])
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/api/admin/categories',
+        headers: { authorization: 'Bearer admin-token' },
+        payload: {
+          name: 'No Settings',
+          slug: 'no-settings',
+        },
+      })
+
+      expect(response.statusCode).toBe(201)
+    })
+
+    it('creates a category without optional fields (description, parentId, sortOrder)', async () => {
+      selectChain.where.mockResolvedValueOnce([sampleCommunitySettings()])
+      selectChain.where.mockResolvedValueOnce([]) // slug check
+      insertChain.returning.mockResolvedValueOnce([
+        sampleCategoryRow({
+          description: null,
+          parentId: null,
+          sortOrder: 0,
+        }),
+      ])
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/api/admin/categories',
+        headers: { authorization: 'Bearer admin-token' },
+        payload: {
+          name: 'Minimal',
+          slug: 'minimal',
+        },
+      })
+
+      expect(response.statusCode).toBe(201)
+      const body = response.json<{
+        description: string | null
+        parentId: string | null
+        sortOrder: number
+      }>()
+      expect(body.description).toBeNull()
+      expect(body.parentId).toBeNull()
+      expect(body.sortOrder).toBe(0)
+    })
+
+    it('creates a category with explicit sortOrder', async () => {
+      selectChain.where.mockResolvedValueOnce([sampleCommunitySettings()])
+      selectChain.where.mockResolvedValueOnce([]) // slug check
+      insertChain.returning.mockResolvedValueOnce([sampleCategoryRow({ sortOrder: 5 })])
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/api/admin/categories',
+        headers: { authorization: 'Bearer admin-token' },
+        payload: {
+          name: 'Sorted',
+          slug: 'sorted',
+          sortOrder: 5,
+        },
+      })
+
+      expect(response.statusCode).toBe(201)
+      const body = response.json<{ sortOrder: number }>()
+      expect(body.sortOrder).toBe(5)
+    })
+
+    it('returns 400 when insert returns empty (no created row)', async () => {
+      selectChain.where.mockResolvedValueOnce([sampleCommunitySettings()])
+      selectChain.where.mockResolvedValueOnce([]) // slug check
+      // Insert returns empty array (unexpected DB failure)
+      insertChain.returning.mockResolvedValueOnce([])
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/api/admin/categories',
+        headers: { authorization: 'Bearer admin-token' },
+        payload: {
+          name: 'Ghost',
+          slug: 'ghost',
+        },
+      })
+
+      expect(response.statusCode).toBe(400)
     })
 
     it('returns 401 when unauthenticated', async () => {
@@ -823,6 +988,228 @@ describe('category routes', () => {
       expect(mockDb.update).toHaveBeenCalled()
     })
 
+    it('returns 400 for invalid update body (fails Zod validation)', async () => {
+      const existing = sampleCategoryRow()
+      selectChain.where.mockResolvedValueOnce([existing]) // find category
+
+      const response = await app.inject({
+        method: 'PUT',
+        url: `/api/admin/categories/${CATEGORY_ID_1}`,
+        headers: { authorization: 'Bearer admin-token' },
+        payload: {
+          slug: 'INVALID SLUG!!!',
+        },
+      })
+
+      expect(response.statusCode).toBe(400)
+    })
+
+    it('allows slug update when new slug is the same as existing', async () => {
+      const existing = sampleCategoryRow({ slug: 'general' })
+      selectChain.where.mockResolvedValueOnce([existing]) // find category
+      selectChain.where.mockResolvedValueOnce([sampleCommunitySettings()]) // community settings
+      // No slug uniqueness check needed since slug is unchanged
+      updateChain.returning.mockResolvedValueOnce([{ ...existing, updatedAt: new Date() }])
+
+      const response = await app.inject({
+        method: 'PUT',
+        url: `/api/admin/categories/${CATEGORY_ID_1}`,
+        headers: { authorization: 'Bearer admin-token' },
+        payload: {
+          slug: 'general', // same as existing
+        },
+      })
+
+      expect(response.statusCode).toBe(200)
+    })
+
+    it('allows setting parentId to null (move to root)', async () => {
+      const existing = sampleCategoryRow({ parentId: CATEGORY_ID_2 })
+      selectChain.where.mockResolvedValueOnce([existing]) // find category
+      selectChain.where.mockResolvedValueOnce([sampleCommunitySettings()]) // community settings
+      updateChain.returning.mockResolvedValueOnce([
+        { ...existing, parentId: null, updatedAt: new Date() },
+      ])
+
+      const response = await app.inject({
+        method: 'PUT',
+        url: `/api/admin/categories/${CATEGORY_ID_1}`,
+        headers: { authorization: 'Bearer admin-token' },
+        payload: {
+          parentId: null,
+        },
+      })
+
+      expect(response.statusCode).toBe(200)
+      const body = response.json<{ parentId: string | null }>()
+      expect(body.parentId).toBeNull()
+    })
+
+    it('defaults maturity to safe when no community settings exist', async () => {
+      const existing = sampleCategoryRow()
+      selectChain.where.mockResolvedValueOnce([existing]) // find category
+      selectChain.where.mockResolvedValueOnce([]) // community settings: empty
+      updateChain.returning.mockResolvedValueOnce([
+        { ...existing, name: 'Updated', updatedAt: new Date() },
+      ])
+
+      const response = await app.inject({
+        method: 'PUT',
+        url: `/api/admin/categories/${CATEGORY_ID_1}`,
+        headers: { authorization: 'Bearer admin-token' },
+        payload: {
+          name: 'Updated',
+        },
+      })
+
+      expect(response.statusCode).toBe(200)
+    })
+
+    it('returns 404 when update returning is empty (race condition)', async () => {
+      const existing = sampleCategoryRow()
+      selectChain.where.mockResolvedValueOnce([existing]) // find category
+      selectChain.where.mockResolvedValueOnce([sampleCommunitySettings()]) // community settings
+      // Update returns empty (category deleted between check and update)
+      updateChain.returning.mockResolvedValueOnce([])
+
+      const response = await app.inject({
+        method: 'PUT',
+        url: `/api/admin/categories/${CATEGORY_ID_1}`,
+        headers: { authorization: 'Bearer admin-token' },
+        payload: {
+          name: 'Race Condition',
+        },
+      })
+
+      expect(response.statusCode).toBe(404)
+    })
+
+    it('updates multiple fields at once (name, description, sortOrder)', async () => {
+      const existing = sampleCategoryRow()
+      selectChain.where.mockResolvedValueOnce([existing]) // find category
+      selectChain.where.mockResolvedValueOnce([sampleCommunitySettings()]) // community settings
+      updateChain.returning.mockResolvedValueOnce([
+        {
+          ...existing,
+          name: 'New Name',
+          description: 'New description',
+          sortOrder: 10,
+          updatedAt: new Date(),
+        },
+      ])
+
+      const response = await app.inject({
+        method: 'PUT',
+        url: `/api/admin/categories/${CATEGORY_ID_1}`,
+        headers: { authorization: 'Bearer admin-token' },
+        payload: {
+          name: 'New Name',
+          description: 'New description',
+          sortOrder: 10,
+        },
+      })
+
+      expect(response.statusCode).toBe(200)
+      const body = response.json<{ name: string; description: string; sortOrder: number }>()
+      expect(body.name).toBe('New Name')
+      expect(body.description).toBe('New description')
+      expect(body.sortOrder).toBe(10)
+    })
+
+    it('sets description to null explicitly', async () => {
+      const existing = sampleCategoryRow({ description: 'Old description' })
+      selectChain.where.mockResolvedValueOnce([existing]) // find category
+      selectChain.where.mockResolvedValueOnce([sampleCommunitySettings()]) // community settings
+      updateChain.returning.mockResolvedValueOnce([
+        { ...existing, description: null, updatedAt: new Date() },
+      ])
+
+      const response = await app.inject({
+        method: 'PUT',
+        url: `/api/admin/categories/${CATEGORY_ID_1}`,
+        headers: { authorization: 'Bearer admin-token' },
+        payload: {
+          description: null,
+        },
+      })
+
+      expect(response.statusCode).toBe(200)
+      const body = response.json<{ description: string | null }>()
+      expect(body.description).toBeNull()
+    })
+
+    it('updates maturity rating in update endpoint', async () => {
+      const existing = sampleCategoryRow({ maturityRating: 'safe' })
+      selectChain.where.mockResolvedValueOnce([existing]) // find category
+      selectChain.where.mockResolvedValueOnce([sampleCommunitySettings({ maturityRating: 'safe' })]) // community settings
+      updateChain.returning.mockResolvedValueOnce([
+        { ...existing, maturityRating: 'adult', updatedAt: new Date() },
+      ])
+
+      const response = await app.inject({
+        method: 'PUT',
+        url: `/api/admin/categories/${CATEGORY_ID_1}`,
+        headers: { authorization: 'Bearer admin-token' },
+        payload: {
+          maturityRating: 'adult',
+        },
+      })
+
+      expect(response.statusCode).toBe(200)
+      const body = response.json<{ maturityRating: string }>()
+      expect(body.maturityRating).toBe('adult')
+    })
+
+    it('successfully sets parentId to a valid non-cyclic parent', async () => {
+      const catA = sampleCategoryRow({ id: CATEGORY_ID_1, parentId: null })
+      const catC = sampleCategoryRow({ id: CATEGORY_ID_3, parentId: null })
+
+      selectChain.where.mockResolvedValueOnce([catA]) // find category A
+      selectChain.where.mockResolvedValueOnce([sampleCommunitySettings()]) // community settings
+      selectChain.where.mockResolvedValueOnce([catC]) // parent lookup: C exists
+      // All categories for cycle check -- no cycle since C has no parent
+      selectChain.where.mockResolvedValueOnce([catA, catC])
+      updateChain.returning.mockResolvedValueOnce([
+        { ...catA, parentId: CATEGORY_ID_3, updatedAt: new Date() },
+      ])
+
+      const response = await app.inject({
+        method: 'PUT',
+        url: `/api/admin/categories/${CATEGORY_ID_1}`,
+        headers: { authorization: 'Bearer admin-token' },
+        payload: {
+          parentId: CATEGORY_ID_3,
+        },
+      })
+
+      expect(response.statusCode).toBe(200)
+      const body = response.json<{ parentId: string | null }>()
+      expect(body.parentId).toBe(CATEGORY_ID_3)
+    })
+
+    it('allows slug change when new slug is unique', async () => {
+      const existing = sampleCategoryRow({ slug: 'general' })
+      selectChain.where.mockResolvedValueOnce([existing]) // find category
+      selectChain.where.mockResolvedValueOnce([sampleCommunitySettings()]) // community settings
+      selectChain.where.mockResolvedValueOnce([]) // slug uniqueness check: no conflict
+      updateChain.returning.mockResolvedValueOnce([
+        { ...existing, slug: 'new-slug', updatedAt: new Date() },
+      ])
+
+      const response = await app.inject({
+        method: 'PUT',
+        url: `/api/admin/categories/${CATEGORY_ID_1}`,
+        headers: { authorization: 'Bearer admin-token' },
+        payload: {
+          slug: 'new-slug',
+        },
+      })
+
+      expect(response.statusCode).toBe(200)
+      const body = response.json<{ slug: string }>()
+      expect(body.slug).toBe('new-slug')
+    })
+
     it('returns 401 when unauthenticated', async () => {
       const noAuthApp = await buildTestApp(undefined)
 
@@ -931,6 +1318,44 @@ describe('category routes', () => {
 
       expect(response.statusCode).toBe(409)
       const body = response.json<{ message: string }>()
+      expect(body.message).toContain('child')
+    })
+
+    it('defaults topicCount to 0 when topic count query returns empty result', async () => {
+      const existing = sampleCategoryRow()
+      selectChain.where.mockResolvedValueOnce([existing]) // find category
+      selectChain.where.mockResolvedValueOnce([]) // topic count: empty result
+      selectChain.where.mockResolvedValueOnce([]) // child categories: none
+
+      const response = await app.inject({
+        method: 'DELETE',
+        url: `/api/admin/categories/${CATEGORY_ID_1}`,
+        headers: { authorization: 'Bearer admin-token' },
+      })
+
+      // topicCount defaults to 0 via ?? 0, so deletion proceeds
+      expect(response.statusCode).toBe(204)
+      expect(mockDb.delete).toHaveBeenCalled()
+    })
+
+    it('returns 409 when category has multiple children', async () => {
+      const existing = sampleCategoryRow()
+      selectChain.where.mockResolvedValueOnce([existing]) // find category
+      selectChain.where.mockResolvedValueOnce([{ count: 0 }]) // topic count: 0
+      selectChain.where.mockResolvedValueOnce([
+        sampleCategoryRow({ id: CATEGORY_ID_2, parentId: CATEGORY_ID_1 }),
+        sampleCategoryRow({ id: CATEGORY_ID_3, parentId: CATEGORY_ID_1 }),
+      ]) // child categories: two found
+
+      const response = await app.inject({
+        method: 'DELETE',
+        url: `/api/admin/categories/${CATEGORY_ID_1}`,
+        headers: { authorization: 'Bearer admin-token' },
+      })
+
+      expect(response.statusCode).toBe(409)
+      const body = response.json<{ message: string }>()
+      expect(body.message).toContain('2')
       expect(body.message).toContain('child')
     })
 
@@ -1091,6 +1516,57 @@ describe('category routes', () => {
       expect(response.statusCode).toBe(200)
       const body = response.json<{ maturityRating: string }>()
       expect(body.maturityRating).toBe('adult')
+    })
+
+    it('defaults to safe community maturity when no community settings exist', async () => {
+      const existing = sampleCategoryRow({ maturityRating: 'safe' })
+      selectChain.where.mockResolvedValueOnce([existing]) // find category
+      selectChain.where.mockResolvedValueOnce([]) // community settings: empty
+      updateChain.returning.mockResolvedValueOnce([
+        { ...existing, maturityRating: 'mature', updatedAt: new Date() },
+      ])
+
+      const response = await app.inject({
+        method: 'PUT',
+        url: `/api/admin/categories/${CATEGORY_ID_1}/maturity`,
+        headers: { authorization: 'Bearer admin-token' },
+        payload: {
+          maturityRating: 'mature',
+        },
+      })
+
+      // Should succeed since community default falls back to 'safe' and 'mature' >= 'safe'
+      expect(response.statusCode).toBe(200)
+    })
+
+    it('returns 404 when update returning is empty (race condition)', async () => {
+      const existing = sampleCategoryRow({ maturityRating: 'safe' })
+      selectChain.where.mockResolvedValueOnce([existing]) // find category
+      selectChain.where.mockResolvedValueOnce([sampleCommunitySettings({ maturityRating: 'safe' })]) // community settings
+      // Update returns empty (category deleted between check and update)
+      updateChain.returning.mockResolvedValueOnce([])
+
+      const response = await app.inject({
+        method: 'PUT',
+        url: `/api/admin/categories/${CATEGORY_ID_1}/maturity`,
+        headers: { authorization: 'Bearer admin-token' },
+        payload: {
+          maturityRating: 'mature',
+        },
+      })
+
+      expect(response.statusCode).toBe(404)
+    })
+
+    it('returns 400 when maturity rating field is missing', async () => {
+      const response = await app.inject({
+        method: 'PUT',
+        url: `/api/admin/categories/${CATEGORY_ID_1}/maturity`,
+        headers: { authorization: 'Bearer admin-token' },
+        payload: {},
+      })
+
+      expect(response.statusCode).toBe(400)
     })
 
     it('returns 401 when unauthenticated', async () => {

@@ -282,6 +282,42 @@ async function buildTestApp(
   return app
 }
 
+// ---------------------------------------------------------------------------
+// Helper: build app with passthrough auth (reaches !user handler branch)
+// ---------------------------------------------------------------------------
+
+/**
+ * Builds an app where authMiddleware.requireAuth passes through without
+ * setting request.user. This exercises the defensive `!user` checks inside
+ * route handlers (lines 1270, 1359, etc.).
+ */
+async function buildPassthroughAuthApp(): Promise<FastifyInstance> {
+  const app = Fastify({ logger: false })
+
+  const passthroughAuth: AuthMiddleware = {
+    requireAuth: async () => {
+      // Intentionally does NOT set request.user or send 401
+    },
+    optionalAuth: () => Promise.resolve(),
+  }
+
+  app.decorate('db', mockDb as never)
+  app.decorate('env', mockEnv)
+  app.decorate('authMiddleware', passthroughAuth)
+  app.decorate('requireAdmin', createMockRequireAdmin(undefined) as never)
+  app.decorate('firehose', {} as never)
+  app.decorate('oauthClient', {} as never)
+  app.decorate('sessionService', {} as SessionService)
+  app.decorate('setupService', {} as SetupService)
+  app.decorate('cache', {} as never)
+  app.decorateRequest('user', undefined as RequestUser | undefined)
+
+  await app.register(moderationRoutes())
+  await app.ready()
+
+  return app
+}
+
 // ===========================================================================
 // Test suite
 // ===========================================================================
@@ -1332,6 +1368,1774 @@ describe('moderation routes', () => {
       })
 
       expect(response.statusCode).toBe(403)
+    })
+  })
+
+  // =========================================================================
+  // Additional branch coverage tests
+  // =========================================================================
+
+  // -------------------------------------------------------------------------
+  // POST /api/moderation/lock/:id -- auth & reason branches
+  // -------------------------------------------------------------------------
+
+  describe('POST /api/moderation/lock/:id (unauthenticated)', () => {
+    let app: FastifyInstance
+
+    beforeAll(async () => {
+      app = await buildTestApp(undefined)
+    })
+
+    afterAll(async () => {
+      await app.close()
+    })
+
+    beforeEach(() => {
+      vi.clearAllMocks()
+      resetAllDbMocks()
+
+      // requireModerator passes but sets no user (simulates auth gap)
+      mockRequireModerator.mockImplementation(() => {
+        return Promise.resolve()
+      })
+    })
+
+    it('returns 401 when user is not set on request', async () => {
+      const encodedUri = encodeURIComponent(TEST_TOPIC_URI)
+      const response = await app.inject({
+        method: 'POST',
+        url: `/api/moderation/lock/${encodedUri}`,
+        headers: { authorization: 'Bearer test-token' },
+        payload: {},
+      })
+
+      expect(response.statusCode).toBe(401)
+    })
+  })
+
+  describe('POST /api/moderation/lock/:id (reason branch)', () => {
+    let app: FastifyInstance
+
+    beforeAll(async () => {
+      app = await buildTestApp(testUser())
+    })
+
+    afterAll(async () => {
+      await app.close()
+    })
+
+    beforeEach(() => {
+      vi.clearAllMocks()
+      resetAllDbMocks()
+
+      mockRequireModerator.mockImplementation((request) => {
+        request.user = testUser()
+        return Promise.resolve()
+      })
+    })
+
+    it('locks a topic without reason when body reason fails validation', async () => {
+      // Reason parsing fails -- the route still proceeds without reason
+      selectChain.where.mockResolvedValueOnce([sampleTopicRow({ isLocked: false })])
+
+      const encodedUri = encodeURIComponent(TEST_TOPIC_URI)
+      const response = await app.inject({
+        method: 'POST',
+        url: `/api/moderation/lock/${encodedUri}`,
+        headers: { authorization: 'Bearer test-token' },
+        // Send a body where reason is not a string, so lockTopicSchema.safeParse fails
+        payload: { reason: 12345 },
+      })
+
+      expect(response.statusCode).toBe(200)
+      const body = response.json<{ uri: string; isLocked: boolean }>()
+      expect(body.isLocked).toBe(true)
+    })
+  })
+
+  // -------------------------------------------------------------------------
+  // POST /api/moderation/pin/:id -- auth & reason branches
+  // -------------------------------------------------------------------------
+
+  describe('POST /api/moderation/pin/:id (unauthenticated)', () => {
+    let app: FastifyInstance
+
+    beforeAll(async () => {
+      app = await buildTestApp(undefined)
+    })
+
+    afterAll(async () => {
+      await app.close()
+    })
+
+    beforeEach(() => {
+      vi.clearAllMocks()
+      resetAllDbMocks()
+
+      mockRequireModerator.mockImplementation(() => {
+        return Promise.resolve()
+      })
+    })
+
+    it('returns 401 when user is not set on request', async () => {
+      const encodedUri = encodeURIComponent(TEST_TOPIC_URI)
+      const response = await app.inject({
+        method: 'POST',
+        url: `/api/moderation/pin/${encodedUri}`,
+        headers: { authorization: 'Bearer test-token' },
+        payload: {},
+      })
+
+      expect(response.statusCode).toBe(401)
+    })
+  })
+
+  describe('POST /api/moderation/pin/:id (reason branch)', () => {
+    let app: FastifyInstance
+
+    beforeAll(async () => {
+      app = await buildTestApp(testUser())
+    })
+
+    afterAll(async () => {
+      await app.close()
+    })
+
+    beforeEach(() => {
+      vi.clearAllMocks()
+      resetAllDbMocks()
+
+      mockRequireModerator.mockImplementation((request) => {
+        request.user = testUser()
+        return Promise.resolve()
+      })
+    })
+
+    it('pins a topic without reason when body reason fails validation', async () => {
+      selectChain.where.mockResolvedValueOnce([sampleTopicRow({ isPinned: false })])
+
+      const encodedUri = encodeURIComponent(TEST_TOPIC_URI)
+      const response = await app.inject({
+        method: 'POST',
+        url: `/api/moderation/pin/${encodedUri}`,
+        headers: { authorization: 'Bearer test-token' },
+        payload: { reason: 12345 },
+      })
+
+      expect(response.statusCode).toBe(200)
+      const body = response.json<{ uri: string; isPinned: boolean }>()
+      expect(body.isPinned).toBe(true)
+    })
+
+    it('returns 403 for non-moderators', async () => {
+      mockRequireModerator.mockImplementation(async (_request, reply) => {
+        await reply.status(403).send({ error: 'Moderator access required' })
+      })
+
+      const encodedUri = encodeURIComponent(TEST_TOPIC_URI)
+      const response = await app.inject({
+        method: 'POST',
+        url: `/api/moderation/pin/${encodedUri}`,
+        headers: { authorization: 'Bearer test-token' },
+        payload: {},
+      })
+
+      expect(response.statusCode).toBe(403)
+    })
+  })
+
+  // -------------------------------------------------------------------------
+  // POST /api/moderation/delete/:id -- auth branch
+  // -------------------------------------------------------------------------
+
+  describe('POST /api/moderation/delete/:id (unauthenticated)', () => {
+    let app: FastifyInstance
+
+    beforeAll(async () => {
+      app = await buildTestApp(undefined)
+    })
+
+    afterAll(async () => {
+      await app.close()
+    })
+
+    beforeEach(() => {
+      vi.clearAllMocks()
+      resetAllDbMocks()
+
+      mockRequireModerator.mockImplementation(() => {
+        return Promise.resolve()
+      })
+    })
+
+    it('returns 401 when user is not set on request', async () => {
+      const encodedUri = encodeURIComponent(TEST_TOPIC_URI)
+      const response = await app.inject({
+        method: 'POST',
+        url: `/api/moderation/delete/${encodedUri}`,
+        headers: { authorization: 'Bearer test-token' },
+        payload: { reason: 'Test' },
+      })
+
+      expect(response.statusCode).toBe(401)
+    })
+  })
+
+  // -------------------------------------------------------------------------
+  // POST /api/moderation/ban -- auth, validation, global mode branches
+  // -------------------------------------------------------------------------
+
+  describe('POST /api/moderation/ban (unauthenticated)', () => {
+    let app: FastifyInstance
+
+    beforeAll(async () => {
+      // Build with no admin user so requireAdmin lets it through but user is not set
+      app = await buildTestApp(undefined, undefined)
+    })
+
+    afterAll(async () => {
+      await app.close()
+    })
+
+    beforeEach(() => {
+      vi.clearAllMocks()
+      resetAllDbMocks()
+    })
+
+    it('returns 401 when user is not set on request', async () => {
+      const response = await app.inject({
+        method: 'POST',
+        url: '/api/moderation/ban',
+        headers: { authorization: 'Bearer test-token' },
+        payload: { did: OTHER_DID, reason: 'Spam' },
+      })
+
+      expect(response.statusCode).toBe(401)
+    })
+  })
+
+  describe('POST /api/moderation/ban (validation failure)', () => {
+    let app: FastifyInstance
+
+    beforeAll(async () => {
+      app = await buildTestApp(adminUser(), adminUser())
+    })
+
+    afterAll(async () => {
+      await app.close()
+    })
+
+    beforeEach(() => {
+      vi.clearAllMocks()
+      resetAllDbMocks()
+    })
+
+    it('returns 400 when body is empty (validation failure)', async () => {
+      const response = await app.inject({
+        method: 'POST',
+        url: '/api/moderation/ban',
+        headers: { authorization: 'Bearer test-token' },
+        payload: {},
+      })
+
+      expect(response.statusCode).toBe(400)
+    })
+
+    it('returns 400 when reason is missing', async () => {
+      const response = await app.inject({
+        method: 'POST',
+        url: '/api/moderation/ban',
+        headers: { authorization: 'Bearer test-token' },
+        payload: { did: OTHER_DID },
+      })
+
+      expect(response.statusCode).toBe(400)
+    })
+  })
+
+  describe('POST /api/moderation/ban (global mode)', () => {
+    let globalApp: FastifyInstance
+
+    beforeAll(async () => {
+      // Build a special app with COMMUNITY_MODE='global'
+      const globalEnv = {
+        ...mockEnv,
+        COMMUNITY_MODE: 'global',
+      } as Env
+
+      const app = Fastify({ logger: false })
+      const authMiddleware = createMockAuthMiddleware(adminUser())
+      const requireAdmin = createMockRequireAdmin(adminUser())
+
+      app.decorate('db', mockDb as never)
+      app.decorate('env', globalEnv)
+      app.decorate('authMiddleware', authMiddleware)
+      app.decorate('requireAdmin', requireAdmin as never)
+      app.decorate('firehose', {} as never)
+      app.decorate('oauthClient', {} as never)
+      app.decorate('sessionService', {} as SessionService)
+      app.decorate('setupService', {} as SetupService)
+      app.decorate('cache', {
+        del: vi.fn().mockResolvedValue(undefined),
+      } as never)
+      app.decorateRequest('user', undefined as RequestUser | undefined)
+
+      await app.register(moderationRoutes())
+      await app.ready()
+      globalApp = app
+    })
+
+    afterAll(async () => {
+      await globalApp.close()
+    })
+
+    beforeEach(() => {
+      vi.clearAllMocks()
+      resetAllDbMocks()
+    })
+
+    it('triggers ban propagation in global mode when banning a user', async () => {
+      selectChain.where.mockResolvedValueOnce([sampleUserRow({ isBanned: false })])
+
+      const response = await globalApp.inject({
+        method: 'POST',
+        url: '/api/moderation/ban',
+        headers: { authorization: 'Bearer test-token' },
+        payload: { did: OTHER_DID, reason: 'Global ban test' },
+      })
+
+      expect(response.statusCode).toBe(200)
+      const body = response.json<{ did: string; isBanned: boolean }>()
+      expect(body.isBanned).toBe(true)
+    })
+
+    it('does not trigger ban propagation in global mode when unbanning a user', async () => {
+      selectChain.where.mockResolvedValueOnce([sampleUserRow({ isBanned: true })])
+
+      const response = await globalApp.inject({
+        method: 'POST',
+        url: '/api/moderation/ban',
+        headers: { authorization: 'Bearer test-token' },
+        payload: { did: OTHER_DID, reason: 'Global unban test' },
+      })
+
+      expect(response.statusCode).toBe(200)
+      const body = response.json<{ did: string; isBanned: boolean }>()
+      expect(body.isBanned).toBe(false)
+    })
+  })
+
+  // -------------------------------------------------------------------------
+  // GET /api/moderation/log -- cursor branches
+  // -------------------------------------------------------------------------
+
+  describe('GET /api/moderation/log (cursor branches)', () => {
+    let app: FastifyInstance
+
+    beforeAll(async () => {
+      app = await buildTestApp(testUser())
+    })
+
+    afterAll(async () => {
+      await app.close()
+    })
+
+    beforeEach(() => {
+      vi.clearAllMocks()
+      resetAllDbMocks()
+
+      mockRequireModerator.mockImplementation((request) => {
+        request.user = testUser()
+        return Promise.resolve()
+      })
+    })
+
+    it('accepts a valid cursor parameter', async () => {
+      const cursorData = { createdAt: '2026-02-13T10:00:00.000Z', id: 5 }
+      const cursor = Buffer.from(JSON.stringify(cursorData)).toString('base64')
+      selectChain.limit.mockResolvedValueOnce([])
+
+      const response = await app.inject({
+        method: 'GET',
+        url: `/api/moderation/log?cursor=${cursor}`,
+        headers: { authorization: 'Bearer test-token' },
+      })
+
+      expect(response.statusCode).toBe(200)
+      const body = response.json<{ actions: unknown[]; cursor: string | null }>()
+      expect(body.actions).toEqual([])
+      expect(body.cursor).toBeNull()
+    })
+
+    it('ignores an invalid (non-decodable) cursor', async () => {
+      selectChain.limit.mockResolvedValueOnce([])
+
+      const response = await app.inject({
+        method: 'GET',
+        url: '/api/moderation/log?cursor=not-valid-base64!!!',
+        headers: { authorization: 'Bearer test-token' },
+      })
+
+      expect(response.statusCode).toBe(200)
+    })
+
+    it('ignores a cursor with wrong shape (missing id field)', async () => {
+      const badCursor = Buffer.from(JSON.stringify({ createdAt: 'x' })).toString('base64')
+      selectChain.limit.mockResolvedValueOnce([])
+
+      const response = await app.inject({
+        method: 'GET',
+        url: `/api/moderation/log?cursor=${badCursor}`,
+        headers: { authorization: 'Bearer test-token' },
+      })
+
+      expect(response.statusCode).toBe(200)
+    })
+
+    it('respects a custom limit parameter', async () => {
+      const actions = [
+        sampleModerationAction({ id: 3 }),
+        sampleModerationAction({ id: 2 }),
+        sampleModerationAction({ id: 1 }),
+      ]
+      selectChain.limit.mockResolvedValueOnce(actions)
+
+      const response = await app.inject({
+        method: 'GET',
+        url: '/api/moderation/log?limit=2',
+        headers: { authorization: 'Bearer test-token' },
+      })
+
+      expect(response.statusCode).toBe(200)
+      const body = response.json<{ actions: unknown[]; cursor: string | null }>()
+      // 3 items returned with limit=2 means hasMore=true, so 2 returned with cursor
+      expect(body.actions).toHaveLength(2)
+      expect(body.cursor).toBeTruthy()
+    })
+  })
+
+  // -------------------------------------------------------------------------
+  // POST /api/moderation/report -- reply content, insert failure, global mode
+  // -------------------------------------------------------------------------
+
+  describe('POST /api/moderation/report (additional branches)', () => {
+    let app: FastifyInstance
+
+    beforeAll(async () => {
+      app = await buildTestApp(testUser())
+    })
+
+    afterAll(async () => {
+      await app.close()
+    })
+
+    beforeEach(() => {
+      vi.clearAllMocks()
+      resetAllDbMocks()
+    })
+
+    it('creates a report when content is a reply (not topic)', async () => {
+      // Topic lookup returns nothing
+      selectChain.where.mockResolvedValueOnce([])
+      // Reply lookup finds it
+      selectChain.where.mockResolvedValueOnce([{ uri: TEST_REPLY_URI }])
+      // Duplicate check returns nothing
+      selectChain.where.mockResolvedValueOnce([])
+      // Insert returns report
+      insertChain.returning.mockResolvedValueOnce([
+        sampleReport({ targetUri: TEST_REPLY_URI, appealStatus: 'none' }),
+      ])
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/api/moderation/report',
+        headers: { authorization: 'Bearer test-token' },
+        payload: {
+          targetUri: TEST_REPLY_URI,
+          reasonType: 'harassment',
+        },
+      })
+
+      expect(response.statusCode).toBe(201)
+      const body = response.json<{ id: number; targetUri: string }>()
+      expect(body.targetUri).toBe(TEST_REPLY_URI)
+    })
+
+    it('returns 400 when insert fails to return a report row', async () => {
+      // Topic exists
+      selectChain.where.mockResolvedValueOnce([{ uri: TEST_TOPIC_URI }])
+      // No duplicate
+      selectChain.where.mockResolvedValueOnce([])
+      // Insert returns empty array (failure)
+      insertChain.returning.mockResolvedValueOnce([])
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/api/moderation/report',
+        headers: { authorization: 'Bearer test-token' },
+        payload: {
+          targetUri: TEST_TOPIC_URI,
+          reasonType: 'spam',
+        },
+      })
+
+      expect(response.statusCode).toBe(400)
+    })
+
+    it('creates a report with description', async () => {
+      // Topic exists
+      selectChain.where.mockResolvedValueOnce([{ uri: TEST_TOPIC_URI }])
+      // No duplicate
+      selectChain.where.mockResolvedValueOnce([])
+      // Insert returns report with description
+      insertChain.returning.mockResolvedValueOnce([
+        sampleReport({ description: 'Detailed description', appealStatus: 'none' }),
+      ])
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/api/moderation/report',
+        headers: { authorization: 'Bearer test-token' },
+        payload: {
+          targetUri: TEST_TOPIC_URI,
+          reasonType: 'other',
+          description: 'Detailed description',
+        },
+      })
+
+      expect(response.statusCode).toBe(201)
+      const body = response.json<{ description: string | null }>()
+      expect(body.description).toBe('Detailed description')
+    })
+  })
+
+  describe('POST /api/moderation/report (global mode)', () => {
+    let globalApp: FastifyInstance
+
+    beforeAll(async () => {
+      const globalEnv = {
+        ...mockEnv,
+        COMMUNITY_MODE: 'global',
+      } as Env
+
+      const app = Fastify({ logger: false })
+      const authMiddleware = createMockAuthMiddleware(testUser())
+
+      app.decorate('db', mockDb as never)
+      app.decorate('env', globalEnv)
+      app.decorate('authMiddleware', authMiddleware)
+      app.decorate('requireAdmin', createMockRequireAdmin(adminUser()) as never)
+      app.decorate('firehose', {} as never)
+      app.decorate('oauthClient', {} as never)
+      app.decorate('sessionService', {} as SessionService)
+      app.decorate('setupService', {} as SetupService)
+      app.decorate('cache', {} as never)
+      app.decorateRequest('user', undefined as RequestUser | undefined)
+
+      await app.register(moderationRoutes())
+      await app.ready()
+      globalApp = app
+    })
+
+    afterAll(async () => {
+      await globalApp.close()
+    })
+
+    beforeEach(() => {
+      vi.clearAllMocks()
+      resetAllDbMocks()
+    })
+
+    it('sends admin notification in global mode when report is created', async () => {
+      // Topic exists
+      selectChain.where.mockResolvedValueOnce([{ uri: TEST_TOPIC_URI }])
+      // No duplicate
+      selectChain.where.mockResolvedValueOnce([])
+      // Insert returns report
+      insertChain.returning.mockResolvedValueOnce([sampleReport({ appealStatus: 'none' })])
+      // communityFilters lookup returns adminDid
+      selectChain.where.mockResolvedValueOnce([{ adminDid: ADMIN_DID }])
+
+      const response = await globalApp.inject({
+        method: 'POST',
+        url: '/api/moderation/report',
+        headers: { authorization: 'Bearer test-token' },
+        payload: {
+          targetUri: TEST_TOPIC_URI,
+          reasonType: 'spam',
+        },
+      })
+
+      expect(response.statusCode).toBe(201)
+      // The insert should have been called twice: once for the report, once for the notification
+      expect(mockDb.insert).toHaveBeenCalledTimes(2)
+    })
+
+    it('handles global mode when no admin is configured for community', async () => {
+      // Topic exists
+      selectChain.where.mockResolvedValueOnce([{ uri: TEST_TOPIC_URI }])
+      // No duplicate
+      selectChain.where.mockResolvedValueOnce([])
+      // Insert returns report
+      insertChain.returning.mockResolvedValueOnce([sampleReport({ appealStatus: 'none' })])
+      // communityFilters lookup returns empty (no admin configured)
+      selectChain.where.mockResolvedValueOnce([])
+
+      const response = await globalApp.inject({
+        method: 'POST',
+        url: '/api/moderation/report',
+        headers: { authorization: 'Bearer test-token' },
+        payload: {
+          targetUri: TEST_TOPIC_URI,
+          reasonType: 'spam',
+        },
+      })
+
+      expect(response.statusCode).toBe(201)
+    })
+
+    it('handles global mode notification insert failure gracefully', async () => {
+      // Topic exists
+      selectChain.where.mockResolvedValueOnce([{ uri: TEST_TOPIC_URI }])
+      // No duplicate
+      selectChain.where.mockResolvedValueOnce([])
+      // Insert: first call returns report, second call (notification) throws
+      const originalInsert = mockDb.insert
+      let insertCallCount = 0
+      originalInsert.mockImplementation(() => {
+        insertCallCount++
+        if (insertCallCount === 2) {
+          // Notification insert fails -- communityFilters select throws
+          throw new Error('DB error')
+        }
+        return insertChain
+      })
+      insertChain.returning.mockResolvedValueOnce([sampleReport({ appealStatus: 'none' })])
+      // communityFilters select will throw before reaching insert
+      selectChain.where.mockRejectedValueOnce(new Error('DB error'))
+
+      const response = await globalApp.inject({
+        method: 'POST',
+        url: '/api/moderation/report',
+        headers: { authorization: 'Bearer test-token' },
+        payload: {
+          targetUri: TEST_TOPIC_URI,
+          reasonType: 'spam',
+        },
+      })
+
+      // Should still return 201 because the global notification is non-critical
+      expect(response.statusCode).toBe(201)
+    })
+  })
+
+  // -------------------------------------------------------------------------
+  // GET /api/moderation/reports -- cursor & filter branches
+  // -------------------------------------------------------------------------
+
+  describe('GET /api/moderation/reports (cursor branches)', () => {
+    let app: FastifyInstance
+
+    beforeAll(async () => {
+      app = await buildTestApp(testUser())
+    })
+
+    afterAll(async () => {
+      await app.close()
+    })
+
+    beforeEach(() => {
+      vi.clearAllMocks()
+      resetAllDbMocks()
+
+      mockRequireModerator.mockImplementation((request) => {
+        request.user = testUser()
+        return Promise.resolve()
+      })
+    })
+
+    it('accepts a valid cursor parameter', async () => {
+      const cursorData = { createdAt: '2026-02-13T10:00:00.000Z', id: 5 }
+      const cursor = Buffer.from(JSON.stringify(cursorData)).toString('base64')
+      selectChain.limit.mockResolvedValueOnce([])
+
+      const response = await app.inject({
+        method: 'GET',
+        url: `/api/moderation/reports?cursor=${cursor}`,
+        headers: { authorization: 'Bearer test-token' },
+      })
+
+      expect(response.statusCode).toBe(200)
+    })
+
+    it('ignores an invalid cursor gracefully', async () => {
+      selectChain.limit.mockResolvedValueOnce([])
+
+      const response = await app.inject({
+        method: 'GET',
+        url: '/api/moderation/reports?cursor=garbage!!!',
+        headers: { authorization: 'Bearer test-token' },
+      })
+
+      expect(response.statusCode).toBe(200)
+    })
+
+    it('filters by resolved status', async () => {
+      selectChain.limit.mockResolvedValueOnce([])
+
+      const response = await app.inject({
+        method: 'GET',
+        url: '/api/moderation/reports?status=resolved',
+        headers: { authorization: 'Bearer test-token' },
+      })
+
+      expect(response.statusCode).toBe(200)
+      const body = response.json<{ reports: unknown[]; cursor: string | null }>()
+      expect(body.reports).toEqual([])
+    })
+
+    it('respects a custom limit parameter', async () => {
+      const reportRows = [
+        sampleReport({ id: 3, appealStatus: 'none' }),
+        sampleReport({ id: 2, appealStatus: 'none' }),
+        sampleReport({ id: 1, appealStatus: 'none' }),
+      ]
+      selectChain.limit.mockResolvedValueOnce(reportRows)
+
+      const response = await app.inject({
+        method: 'GET',
+        url: '/api/moderation/reports?limit=2',
+        headers: { authorization: 'Bearer test-token' },
+      })
+
+      expect(response.statusCode).toBe(200)
+      const body = response.json<{ reports: unknown[]; cursor: string | null }>()
+      expect(body.reports).toHaveLength(2)
+      expect(body.cursor).toBeTruthy()
+    })
+  })
+
+  // -------------------------------------------------------------------------
+  // PUT /api/moderation/reports/:id -- additional error branches
+  // -------------------------------------------------------------------------
+
+  describe('PUT /api/moderation/reports/:id (additional branches)', () => {
+    let app: FastifyInstance
+
+    beforeAll(async () => {
+      app = await buildTestApp(testUser())
+    })
+
+    afterAll(async () => {
+      await app.close()
+    })
+
+    beforeEach(() => {
+      vi.clearAllMocks()
+      resetAllDbMocks()
+
+      mockRequireModerator.mockImplementation((request) => {
+        request.user = testUser()
+        return Promise.resolve()
+      })
+    })
+
+    it('returns 400 for non-numeric report ID', async () => {
+      const response = await app.inject({
+        method: 'PUT',
+        url: '/api/moderation/reports/not-a-number',
+        headers: { authorization: 'Bearer test-token' },
+        payload: { resolutionType: 'dismissed' },
+      })
+
+      expect(response.statusCode).toBe(400)
+    })
+
+    it('returns 400 for invalid resolution data (missing resolutionType)', async () => {
+      const response = await app.inject({
+        method: 'PUT',
+        url: '/api/moderation/reports/1',
+        headers: { authorization: 'Bearer test-token' },
+        payload: {},
+      })
+
+      expect(response.statusCode).toBe(400)
+    })
+
+    it('returns 404 when update returns empty result', async () => {
+      // Report found pending
+      selectChain.where.mockResolvedValueOnce([sampleReport({ status: 'pending' })])
+      // Update returning empty
+      updateChain.returning.mockResolvedValueOnce([])
+
+      const response = await app.inject({
+        method: 'PUT',
+        url: '/api/moderation/reports/1',
+        headers: { authorization: 'Bearer test-token' },
+        payload: { resolutionType: 'warned' },
+      })
+
+      expect(response.statusCode).toBe(404)
+    })
+
+    it('resolves a report with different resolution types', async () => {
+      const resTypes = ['warned', 'labeled', 'removed', 'banned'] as const
+      for (const resType of resTypes) {
+        vi.clearAllMocks()
+        resetAllDbMocks()
+
+        mockRequireModerator.mockImplementation((request) => {
+          request.user = testUser()
+          return Promise.resolve()
+        })
+
+        selectChain.where.mockResolvedValueOnce([
+          sampleReport({ status: 'pending', appealStatus: 'none' }),
+        ])
+        updateChain.returning.mockResolvedValueOnce([
+          sampleReport({
+            status: 'resolved',
+            resolutionType: resType,
+            resolvedBy: TEST_DID,
+            resolvedAt: new Date(TEST_NOW),
+            appealStatus: 'none',
+          }),
+        ])
+
+        const response = await app.inject({
+          method: 'PUT',
+          url: '/api/moderation/reports/1',
+          headers: { authorization: 'Bearer test-token' },
+          payload: { resolutionType: resType },
+        })
+
+        expect(response.statusCode).toBe(200)
+        const body = response.json<{ resolutionType: string }>()
+        expect(body.resolutionType).toBe(resType)
+      }
+    })
+  })
+
+  describe('PUT /api/moderation/reports/:id (unauthenticated)', () => {
+    let app: FastifyInstance
+
+    beforeAll(async () => {
+      app = await buildTestApp(undefined)
+    })
+
+    afterAll(async () => {
+      await app.close()
+    })
+
+    beforeEach(() => {
+      vi.clearAllMocks()
+      resetAllDbMocks()
+
+      mockRequireModerator.mockImplementation(() => {
+        return Promise.resolve()
+      })
+    })
+
+    it('returns 401 when user is not set on request', async () => {
+      const response = await app.inject({
+        method: 'PUT',
+        url: '/api/moderation/reports/1',
+        headers: { authorization: 'Bearer test-token' },
+        payload: { resolutionType: 'dismissed' },
+      })
+
+      expect(response.statusCode).toBe(401)
+    })
+  })
+
+  // -------------------------------------------------------------------------
+  // GET /api/admin/reports/users -- custom limit, failed parse
+  // -------------------------------------------------------------------------
+
+  describe('GET /api/admin/reports/users (additional branches)', () => {
+    let app: FastifyInstance
+
+    beforeAll(async () => {
+      app = await buildTestApp(adminUser(), adminUser())
+    })
+
+    afterAll(async () => {
+      await app.close()
+    })
+
+    beforeEach(() => {
+      vi.clearAllMocks()
+      resetAllDbMocks()
+    })
+
+    it('uses custom limit when provided', async () => {
+      selectChain.limit.mockResolvedValueOnce([{ did: OTHER_DID, reportCount: 5 }])
+
+      const response = await app.inject({
+        method: 'GET',
+        url: '/api/admin/reports/users?limit=10',
+        headers: { authorization: 'Bearer test-token' },
+      })
+
+      expect(response.statusCode).toBe(200)
+      const body = response.json<{ users: unknown[] }>()
+      expect(body.users).toHaveLength(1)
+    })
+
+    it('uses default limit of 25 when parse fails', async () => {
+      selectChain.limit.mockResolvedValueOnce([])
+
+      const response = await app.inject({
+        method: 'GET',
+        url: '/api/admin/reports/users?limit=invalid',
+        headers: { authorization: 'Bearer test-token' },
+      })
+
+      expect(response.statusCode).toBe(200)
+    })
+  })
+
+  // -------------------------------------------------------------------------
+  // GET /api/admin/moderation/thresholds -- partial stored thresholds
+  // -------------------------------------------------------------------------
+
+  describe('GET /api/admin/moderation/thresholds (partial thresholds)', () => {
+    let app: FastifyInstance
+
+    beforeAll(async () => {
+      app = await buildTestApp(adminUser(), adminUser())
+    })
+
+    afterAll(async () => {
+      await app.close()
+    })
+
+    beforeEach(() => {
+      vi.clearAllMocks()
+      resetAllDbMocks()
+    })
+
+    it('fills defaults for missing threshold fields', async () => {
+      // Return partial thresholds -- only some fields set
+      selectChain.where.mockResolvedValueOnce([
+        {
+          moderationThresholds: {
+            autoBlockReportCount: 8,
+            // warnThreshold, firstPostQueueCount, etc. are missing
+          },
+        },
+      ])
+
+      const response = await app.inject({
+        method: 'GET',
+        url: '/api/admin/moderation/thresholds',
+        headers: { authorization: 'Bearer test-token' },
+      })
+
+      expect(response.statusCode).toBe(200)
+      const body = response.json<{
+        autoBlockReportCount: number
+        warnThreshold: number
+        firstPostQueueCount: number
+        newAccountDays: number
+        newAccountWriteRatePerMin: number
+        establishedWriteRatePerMin: number
+        linkHoldEnabled: boolean
+        topicCreationDelayEnabled: boolean
+        burstPostCount: number
+        burstWindowMinutes: number
+        trustedPostThreshold: number
+      }>()
+      expect(body.autoBlockReportCount).toBe(8)
+      expect(body.warnThreshold).toBe(3) // default
+      expect(body.firstPostQueueCount).toBe(3) // default
+      expect(body.newAccountDays).toBe(7) // default
+      expect(body.newAccountWriteRatePerMin).toBe(3) // default
+      expect(body.establishedWriteRatePerMin).toBe(10) // default
+      expect(body.linkHoldEnabled).toBe(true) // default
+      expect(body.topicCreationDelayEnabled).toBe(true) // default
+      expect(body.burstPostCount).toBe(5) // default
+      expect(body.burstWindowMinutes).toBe(10) // default
+      expect(body.trustedPostThreshold).toBe(10) // default
+    })
+
+    it('returns defaults when settings row has null moderationThresholds', async () => {
+      selectChain.where.mockResolvedValueOnce([{ moderationThresholds: null }])
+
+      const response = await app.inject({
+        method: 'GET',
+        url: '/api/admin/moderation/thresholds',
+        headers: { authorization: 'Bearer test-token' },
+      })
+
+      expect(response.statusCode).toBe(200)
+      const body = response.json<{ autoBlockReportCount: number }>()
+      expect(body.autoBlockReportCount).toBe(5) // default
+    })
+  })
+
+  // -------------------------------------------------------------------------
+  // PUT /api/admin/moderation/thresholds -- merge with existing, partial update
+  // -------------------------------------------------------------------------
+
+  describe('PUT /api/admin/moderation/thresholds (merge branches)', () => {
+    let app: FastifyInstance
+
+    beforeAll(async () => {
+      app = await buildTestApp(adminUser(), adminUser())
+    })
+
+    afterAll(async () => {
+      await app.close()
+    })
+
+    beforeEach(() => {
+      vi.clearAllMocks()
+      resetAllDbMocks()
+    })
+
+    it('merges partial update with existing thresholds', async () => {
+      // Existing thresholds present
+      selectChain.where.mockResolvedValueOnce([
+        {
+          moderationThresholds: {
+            autoBlockReportCount: 8,
+            warnThreshold: 4,
+            firstPostQueueCount: 2,
+            newAccountDays: 5,
+            newAccountWriteRatePerMin: 2,
+            establishedWriteRatePerMin: 8,
+            linkHoldEnabled: false,
+            topicCreationDelayEnabled: false,
+            burstPostCount: 3,
+            burstWindowMinutes: 5,
+            trustedPostThreshold: 7,
+          },
+        },
+      ])
+
+      const response = await app.inject({
+        method: 'PUT',
+        url: '/api/admin/moderation/thresholds',
+        headers: { authorization: 'Bearer test-token' },
+        payload: {
+          warnThreshold: 6,
+        },
+      })
+
+      expect(response.statusCode).toBe(200)
+      const body = response.json<{
+        autoBlockReportCount: number
+        warnThreshold: number
+      }>()
+      // The merged result should have the new warnThreshold but keep existing autoBlockReportCount
+      expect(body.warnThreshold).toBe(6)
+      expect(body.autoBlockReportCount).toBe(8)
+    })
+
+    it('uses full defaults when no existing settings row exists', async () => {
+      // No existing settings
+      selectChain.where.mockResolvedValueOnce([])
+
+      const response = await app.inject({
+        method: 'PUT',
+        url: '/api/admin/moderation/thresholds',
+        headers: { authorization: 'Bearer test-token' },
+        payload: {
+          burstPostCount: 10,
+        },
+      })
+
+      expect(response.statusCode).toBe(200)
+      const body = response.json<{
+        autoBlockReportCount: number
+        burstPostCount: number
+      }>()
+      expect(body.autoBlockReportCount).toBe(5) // default
+      expect(body.burstPostCount).toBe(10) // updated
+    })
+
+    it('uses defaults when existing settings has null moderationThresholds', async () => {
+      selectChain.where.mockResolvedValueOnce([{ moderationThresholds: null }])
+
+      const response = await app.inject({
+        method: 'PUT',
+        url: '/api/admin/moderation/thresholds',
+        headers: { authorization: 'Bearer test-token' },
+        payload: {
+          linkHoldEnabled: false,
+        },
+      })
+
+      expect(response.statusCode).toBe(200)
+      const body = response.json<{
+        linkHoldEnabled: boolean
+        autoBlockReportCount: number
+      }>()
+      expect(body.linkHoldEnabled).toBe(false)
+      expect(body.autoBlockReportCount).toBe(5) // default
+    })
+
+    it('sends an empty partial update (all fields optional)', async () => {
+      selectChain.where.mockResolvedValueOnce([
+        {
+          moderationThresholds: {
+            autoBlockReportCount: 5,
+            warnThreshold: 3,
+            firstPostQueueCount: 3,
+            newAccountDays: 7,
+            newAccountWriteRatePerMin: 3,
+            establishedWriteRatePerMin: 10,
+            linkHoldEnabled: true,
+            topicCreationDelayEnabled: true,
+            burstPostCount: 5,
+            burstWindowMinutes: 10,
+            trustedPostThreshold: 10,
+          },
+        },
+      ])
+
+      const response = await app.inject({
+        method: 'PUT',
+        url: '/api/admin/moderation/thresholds',
+        headers: { authorization: 'Bearer test-token' },
+        payload: {},
+      })
+
+      expect(response.statusCode).toBe(200)
+    })
+  })
+
+  // -------------------------------------------------------------------------
+  // GET /api/moderation/my-reports
+  // -------------------------------------------------------------------------
+
+  describe('GET /api/moderation/my-reports', () => {
+    let app: FastifyInstance
+
+    beforeAll(async () => {
+      app = await buildTestApp(testUser())
+    })
+
+    afterAll(async () => {
+      await app.close()
+    })
+
+    beforeEach(() => {
+      vi.clearAllMocks()
+      resetAllDbMocks()
+    })
+
+    it('returns reports for the authenticated user', async () => {
+      const reportRows = [
+        sampleReport({ id: 2, appealStatus: 'none' }),
+        sampleReport({ id: 1, appealStatus: 'none' }),
+      ]
+      selectChain.limit.mockResolvedValueOnce(reportRows)
+
+      const response = await app.inject({
+        method: 'GET',
+        url: '/api/moderation/my-reports',
+        headers: { authorization: 'Bearer test-token' },
+      })
+
+      expect(response.statusCode).toBe(200)
+      const body = response.json<{ reports: Array<{ id: number }>; cursor: string | null }>()
+      expect(body.reports).toHaveLength(2)
+      expect(body.cursor).toBeNull()
+    })
+
+    it('returns cursor when more results exist', async () => {
+      const baseDate = new Date('2026-02-13T12:00:00.000Z')
+      const reportRows = Array.from({ length: 26 }, (_, i) => {
+        const d = new Date(baseDate.getTime() - i * 3600000)
+        return sampleReport({ id: 26 - i, createdAt: d, appealStatus: 'none' })
+      })
+      selectChain.limit.mockResolvedValueOnce(reportRows)
+
+      const response = await app.inject({
+        method: 'GET',
+        url: '/api/moderation/my-reports',
+        headers: { authorization: 'Bearer test-token' },
+      })
+
+      expect(response.statusCode).toBe(200)
+      const body = response.json<{ reports: unknown[]; cursor: string | null }>()
+      expect(body.reports).toHaveLength(25)
+      expect(body.cursor).toBeTruthy()
+    })
+
+    it('accepts a valid cursor parameter', async () => {
+      const cursorData = { createdAt: '2026-02-13T10:00:00.000Z', id: 5 }
+      const cursor = Buffer.from(JSON.stringify(cursorData)).toString('base64')
+      selectChain.limit.mockResolvedValueOnce([])
+
+      const response = await app.inject({
+        method: 'GET',
+        url: `/api/moderation/my-reports?cursor=${cursor}`,
+        headers: { authorization: 'Bearer test-token' },
+      })
+
+      expect(response.statusCode).toBe(200)
+    })
+
+    it('ignores an invalid cursor', async () => {
+      selectChain.limit.mockResolvedValueOnce([])
+
+      const response = await app.inject({
+        method: 'GET',
+        url: '/api/moderation/my-reports?cursor=bad-cursor!!!',
+        headers: { authorization: 'Bearer test-token' },
+      })
+
+      expect(response.statusCode).toBe(200)
+    })
+
+    it('returns empty list when user has no reports', async () => {
+      selectChain.limit.mockResolvedValueOnce([])
+
+      const response = await app.inject({
+        method: 'GET',
+        url: '/api/moderation/my-reports',
+        headers: { authorization: 'Bearer test-token' },
+      })
+
+      expect(response.statusCode).toBe(200)
+      const body = response.json<{ reports: unknown[]; cursor: string | null }>()
+      expect(body.reports).toEqual([])
+      expect(body.cursor).toBeNull()
+    })
+
+    it('respects a custom limit parameter', async () => {
+      const reportRows = [
+        sampleReport({ id: 3, appealStatus: 'none' }),
+        sampleReport({ id: 2, appealStatus: 'none' }),
+        sampleReport({ id: 1, appealStatus: 'none' }),
+      ]
+      selectChain.limit.mockResolvedValueOnce(reportRows)
+
+      const response = await app.inject({
+        method: 'GET',
+        url: '/api/moderation/my-reports?limit=2',
+        headers: { authorization: 'Bearer test-token' },
+      })
+
+      expect(response.statusCode).toBe(200)
+      const body = response.json<{ reports: unknown[]; cursor: string | null }>()
+      expect(body.reports).toHaveLength(2)
+      expect(body.cursor).toBeTruthy()
+    })
+  })
+
+  describe('GET /api/moderation/my-reports (unauthenticated)', () => {
+    let app: FastifyInstance
+
+    beforeAll(async () => {
+      app = await buildTestApp(undefined)
+    })
+
+    afterAll(async () => {
+      await app.close()
+    })
+
+    it('returns 401 without auth', async () => {
+      const response = await app.inject({
+        method: 'GET',
+        url: '/api/moderation/my-reports',
+      })
+
+      expect(response.statusCode).toBe(401)
+    })
+  })
+
+  // -------------------------------------------------------------------------
+  // POST /api/moderation/reports/:id/appeal
+  // -------------------------------------------------------------------------
+
+  describe('POST /api/moderation/reports/:id/appeal', () => {
+    let app: FastifyInstance
+
+    beforeAll(async () => {
+      app = await buildTestApp(testUser())
+    })
+
+    afterAll(async () => {
+      await app.close()
+    })
+
+    beforeEach(() => {
+      vi.clearAllMocks()
+      resetAllDbMocks()
+    })
+
+    it('appeals a dismissed report successfully', async () => {
+      selectChain.where.mockResolvedValueOnce([
+        sampleReport({
+          status: 'resolved',
+          resolutionType: 'dismissed',
+          resolvedBy: ADMIN_DID,
+          resolvedAt: new Date(TEST_NOW),
+          appealStatus: 'none',
+          reporterDid: TEST_DID,
+        }),
+      ])
+
+      const appealedReport = sampleReport({
+        status: 'pending',
+        resolutionType: 'dismissed',
+        appealReason: 'I disagree with the dismissal',
+        appealedAt: new Date(TEST_NOW),
+        appealStatus: 'pending',
+        reporterDid: TEST_DID,
+      })
+      updateChain.returning.mockResolvedValueOnce([appealedReport])
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/api/moderation/reports/1/appeal',
+        headers: { authorization: 'Bearer test-token' },
+        payload: { reason: 'I disagree with the dismissal' },
+      })
+
+      expect(response.statusCode).toBe(200)
+      const body = response.json<{
+        appealReason: string
+        appealStatus: string
+        status: string
+      }>()
+      expect(body.appealReason).toBe('I disagree with the dismissal')
+      expect(body.appealStatus).toBe('pending')
+      expect(body.status).toBe('pending')
+    })
+
+    it('returns 400 for non-numeric report ID', async () => {
+      const response = await app.inject({
+        method: 'POST',
+        url: '/api/moderation/reports/not-a-number/appeal',
+        headers: { authorization: 'Bearer test-token' },
+        payload: { reason: 'Some reason' },
+      })
+
+      expect(response.statusCode).toBe(400)
+    })
+
+    it('returns 400 for invalid body (missing reason)', async () => {
+      const response = await app.inject({
+        method: 'POST',
+        url: '/api/moderation/reports/1/appeal',
+        headers: { authorization: 'Bearer test-token' },
+        payload: {},
+      })
+
+      expect(response.statusCode).toBe(400)
+    })
+
+    it('returns 404 when report is not found', async () => {
+      selectChain.where.mockResolvedValueOnce([])
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/api/moderation/reports/999/appeal',
+        headers: { authorization: 'Bearer test-token' },
+        payload: { reason: 'Appeal reason' },
+      })
+
+      expect(response.statusCode).toBe(404)
+    })
+
+    it('returns 403 when appealing a report from another user', async () => {
+      selectChain.where.mockResolvedValueOnce([
+        sampleReport({
+          reporterDid: OTHER_DID, // not the current user
+          status: 'resolved',
+          resolutionType: 'dismissed',
+          appealStatus: 'none',
+        }),
+      ])
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/api/moderation/reports/1/appeal',
+        headers: { authorization: 'Bearer test-token' },
+        payload: { reason: 'Appeal reason' },
+      })
+
+      expect(response.statusCode).toBe(403)
+    })
+
+    it('returns 400 when report is not resolved', async () => {
+      selectChain.where.mockResolvedValueOnce([
+        sampleReport({
+          status: 'pending',
+          reporterDid: TEST_DID,
+          appealStatus: 'none',
+        }),
+      ])
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/api/moderation/reports/1/appeal',
+        headers: { authorization: 'Bearer test-token' },
+        payload: { reason: 'Appeal reason' },
+      })
+
+      expect(response.statusCode).toBe(400)
+    })
+
+    it('returns 400 when report resolution is not dismissed', async () => {
+      selectChain.where.mockResolvedValueOnce([
+        sampleReport({
+          status: 'resolved',
+          resolutionType: 'warned', // not dismissed
+          reporterDid: TEST_DID,
+          appealStatus: 'none',
+        }),
+      ])
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/api/moderation/reports/1/appeal',
+        headers: { authorization: 'Bearer test-token' },
+        payload: { reason: 'Appeal reason' },
+      })
+
+      expect(response.statusCode).toBe(400)
+    })
+
+    it('returns 409 when report has already been appealed', async () => {
+      selectChain.where.mockResolvedValueOnce([
+        sampleReport({
+          status: 'resolved',
+          resolutionType: 'dismissed',
+          reporterDid: TEST_DID,
+          appealStatus: 'pending', // already appealed
+        }),
+      ])
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/api/moderation/reports/1/appeal',
+        headers: { authorization: 'Bearer test-token' },
+        payload: { reason: 'Appeal reason' },
+      })
+
+      expect(response.statusCode).toBe(409)
+    })
+
+    it('returns 404 when update returns empty result', async () => {
+      selectChain.where.mockResolvedValueOnce([
+        sampleReport({
+          status: 'resolved',
+          resolutionType: 'dismissed',
+          reporterDid: TEST_DID,
+          appealStatus: 'none',
+        }),
+      ])
+      // Update returning empty
+      updateChain.returning.mockResolvedValueOnce([])
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/api/moderation/reports/1/appeal',
+        headers: { authorization: 'Bearer test-token' },
+        payload: { reason: 'Appeal reason' },
+      })
+
+      expect(response.statusCode).toBe(404)
+    })
+  })
+
+  describe('POST /api/moderation/reports/:id/appeal (unauthenticated)', () => {
+    let app: FastifyInstance
+
+    beforeAll(async () => {
+      app = await buildTestApp(undefined)
+    })
+
+    afterAll(async () => {
+      await app.close()
+    })
+
+    it('returns 401 without auth', async () => {
+      const response = await app.inject({
+        method: 'POST',
+        url: '/api/moderation/reports/1/appeal',
+        payload: { reason: 'Some reason' },
+      })
+
+      expect(response.statusCode).toBe(401)
+    })
+  })
+
+  describe('POST /api/moderation/reports/:id/appeal (rejected appeal)', () => {
+    let app: FastifyInstance
+
+    beforeAll(async () => {
+      app = await buildTestApp(testUser())
+    })
+
+    afterAll(async () => {
+      await app.close()
+    })
+
+    beforeEach(() => {
+      vi.clearAllMocks()
+      resetAllDbMocks()
+    })
+
+    it('returns 409 when appeal has been rejected', async () => {
+      selectChain.where.mockResolvedValueOnce([
+        sampleReport({
+          status: 'resolved',
+          resolutionType: 'dismissed',
+          reporterDid: TEST_DID,
+          appealStatus: 'rejected',
+        }),
+      ])
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/api/moderation/reports/1/appeal',
+        headers: { authorization: 'Bearer test-token' },
+        payload: { reason: 'Appeal again' },
+      })
+
+      expect(response.statusCode).toBe(409)
+    })
+  })
+
+  // -------------------------------------------------------------------------
+  // serializeReport -- date/null branch coverage
+  // -------------------------------------------------------------------------
+
+  describe('GET /api/moderation/reports (serialization branches)', () => {
+    let app: FastifyInstance
+
+    beforeAll(async () => {
+      app = await buildTestApp(testUser())
+    })
+
+    afterAll(async () => {
+      await app.close()
+    })
+
+    beforeEach(() => {
+      vi.clearAllMocks()
+      resetAllDbMocks()
+
+      mockRequireModerator.mockImplementation((request) => {
+        request.user = testUser()
+        return Promise.resolve()
+      })
+    })
+
+    it('serializes report with resolvedAt, appealReason, and appealedAt present', async () => {
+      const reportRows = [
+        sampleReport({
+          id: 1,
+          status: 'resolved',
+          resolutionType: 'dismissed',
+          resolvedBy: TEST_DID,
+          resolvedAt: new Date('2026-02-14T10:00:00.000Z'),
+          appealReason: 'I disagree',
+          appealedAt: new Date('2026-02-14T11:00:00.000Z'),
+          appealStatus: 'pending',
+        }),
+      ]
+      selectChain.limit.mockResolvedValueOnce(reportRows)
+
+      const response = await app.inject({
+        method: 'GET',
+        url: '/api/moderation/reports',
+        headers: { authorization: 'Bearer test-token' },
+      })
+
+      expect(response.statusCode).toBe(200)
+      const body = response.json<{
+        reports: Array<{
+          resolvedAt: string | null
+          appealReason: string | null
+          appealedAt: string | null
+          appealStatus: string
+        }>
+      }>()
+      expect(body.reports[0]?.resolvedAt).toBe('2026-02-14T10:00:00.000Z')
+      expect(body.reports[0]?.appealReason).toBe('I disagree')
+      expect(body.reports[0]?.appealedAt).toBe('2026-02-14T11:00:00.000Z')
+      expect(body.reports[0]?.appealStatus).toBe('pending')
+    })
+
+    it('serializes report with null resolvedAt, appealReason, and appealedAt', async () => {
+      const reportRows = [
+        sampleReport({
+          id: 1,
+          status: 'pending',
+          resolvedAt: null,
+          appealReason: null,
+          appealedAt: null,
+          appealStatus: 'none',
+        }),
+      ]
+      selectChain.limit.mockResolvedValueOnce(reportRows)
+
+      const response = await app.inject({
+        method: 'GET',
+        url: '/api/moderation/reports',
+        headers: { authorization: 'Bearer test-token' },
+      })
+
+      expect(response.statusCode).toBe(200)
+      const body = response.json<{
+        reports: Array<{
+          resolvedAt: string | null
+          appealReason: string | null
+          appealedAt: string | null
+        }>
+      }>()
+      expect(body.reports[0]?.resolvedAt).toBeNull()
+      expect(body.reports[0]?.appealReason).toBeNull()
+      expect(body.reports[0]?.appealedAt).toBeNull()
+    })
+
+    it('serializes report with undefined appealReason (falls to null via ??)', async () => {
+      const reportRows = [
+        sampleReport({
+          id: 1,
+          appealStatus: 'none',
+          // appealReason not set (undefined)
+          // appealedAt not set (undefined)
+        }),
+      ]
+      selectChain.limit.mockResolvedValueOnce(reportRows)
+
+      const response = await app.inject({
+        method: 'GET',
+        url: '/api/moderation/reports',
+        headers: { authorization: 'Bearer test-token' },
+      })
+
+      expect(response.statusCode).toBe(200)
+      const body = response.json<{
+        reports: Array<{
+          appealReason: string | null
+          appealedAt: string | null
+        }>
+      }>()
+      expect(body.reports[0]?.appealReason).toBeNull()
+      expect(body.reports[0]?.appealedAt).toBeNull()
+    })
+  })
+
+  // -------------------------------------------------------------------------
+  // Handler-level !user branches (passthrough auth reaches handler code)
+  // -------------------------------------------------------------------------
+
+  describe('handler-level !user checks (passthrough auth)', () => {
+    let app: FastifyInstance
+
+    beforeAll(async () => {
+      app = await buildPassthroughAuthApp()
+    })
+
+    afterAll(async () => {
+      await app.close()
+    })
+
+    beforeEach(() => {
+      vi.clearAllMocks()
+      resetAllDbMocks()
+
+      // requireModerator also passes without setting user
+      mockRequireModerator.mockImplementation(() => {
+        return Promise.resolve()
+      })
+    })
+
+    it('POST /api/moderation/report returns 401 when handler !user check fires', async () => {
+      const response = await app.inject({
+        method: 'POST',
+        url: '/api/moderation/report',
+        headers: { authorization: 'Bearer test-token' },
+        payload: {
+          targetUri: TEST_TOPIC_URI,
+          reasonType: 'spam',
+        },
+      })
+
+      expect(response.statusCode).toBe(401)
+    })
+
+    it('GET /api/moderation/my-reports returns 401 when handler !user check fires', async () => {
+      const response = await app.inject({
+        method: 'GET',
+        url: '/api/moderation/my-reports',
+        headers: { authorization: 'Bearer test-token' },
+      })
+
+      expect(response.statusCode).toBe(401)
+    })
+
+    it('POST /api/moderation/reports/:id/appeal returns 401 when handler !user check fires', async () => {
+      const response = await app.inject({
+        method: 'POST',
+        url: '/api/moderation/reports/1/appeal',
+        headers: { authorization: 'Bearer test-token' },
+        payload: { reason: 'Some reason' },
+      })
+
+      expect(response.statusCode).toBe(401)
+    })
+
+    it('PUT /api/moderation/reports/:id returns 401 when handler !user check fires', async () => {
+      const response = await app.inject({
+        method: 'PUT',
+        url: '/api/moderation/reports/1',
+        headers: { authorization: 'Bearer test-token' },
+        payload: { resolutionType: 'dismissed' },
+      })
+
+      expect(response.statusCode).toBe(401)
+    })
+  })
+
+  // -------------------------------------------------------------------------
+  // Query parse failure branches
+  // -------------------------------------------------------------------------
+
+  describe('GET /api/moderation/my-reports (invalid query)', () => {
+    let app: FastifyInstance
+
+    beforeAll(async () => {
+      app = await buildTestApp(testUser())
+    })
+
+    afterAll(async () => {
+      await app.close()
+    })
+
+    beforeEach(() => {
+      vi.clearAllMocks()
+      resetAllDbMocks()
+    })
+
+    it('returns 400 when limit is out of range', async () => {
+      const response = await app.inject({
+        method: 'GET',
+        url: '/api/moderation/my-reports?limit=0',
+        headers: { authorization: 'Bearer test-token' },
+      })
+
+      expect(response.statusCode).toBe(400)
+    })
+
+    it('returns 400 when limit exceeds maximum', async () => {
+      const response = await app.inject({
+        method: 'GET',
+        url: '/api/moderation/my-reports?limit=101',
+        headers: { authorization: 'Bearer test-token' },
+      })
+
+      expect(response.statusCode).toBe(400)
     })
   })
 })
