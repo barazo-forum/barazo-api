@@ -1,7 +1,23 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { OzoneService } from '../../../src/services/ozone.js'
 
-// Mock WebSocket globally to prevent actual connections
+// ---------------------------------------------------------------------------
+// MockWebSocket that captures event listeners for triggering in tests
+// ---------------------------------------------------------------------------
+
+type WsListener = (...args: never[]) => void
+let lastWsInstance: MockWebSocket | null = null
+let wsConstructorShouldThrow = false
+
+function setLastWsInstance(instance: MockWebSocket): void {
+  lastWsInstance = instance
+}
+
+function getLastWs(): MockWebSocket {
+  if (!lastWsInstance) throw new Error('No WebSocket instance')
+  return lastWsInstance
+}
+
 class MockWebSocket {
   static CONNECTING = 0
   static OPEN = 1
@@ -10,12 +26,38 @@ class MockWebSocket {
 
   readyState = MockWebSocket.OPEN
   close = vi.fn()
-  addEventListener = vi.fn()
   removeEventListener = vi.fn()
   send = vi.fn()
+
+  private listeners = new Map<string, WsListener[]>()
+
+  constructor(_url: string) {
+    if (wsConstructorShouldThrow) {
+      throw new Error('WebSocket constructor failed')
+    }
+    setLastWsInstance(this)
+  }
+
+  addEventListener(event: string, listener: WsListener): void {
+    const existing = this.listeners.get(event) ?? []
+    existing.push(listener)
+    this.listeners.set(event, existing)
+  }
+
+  /** Fire a captured event listener in tests */
+  emit(event: string, data?: unknown): void {
+    const listeners = this.listeners.get(event) ?? []
+    for (const listener of listeners) {
+      listener(data as never)
+    }
+  }
 }
 
 vi.stubGlobal('WebSocket', MockWebSocket)
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
 
 function createMockLogger() {
   return {
@@ -65,6 +107,10 @@ function createMockDb() {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
 describe('OzoneService', () => {
   let service: OzoneService
   let logger: ReturnType<typeof createMockLogger>
@@ -72,6 +118,9 @@ describe('OzoneService', () => {
   let db: ReturnType<typeof createMockDb>
 
   beforeEach(() => {
+    vi.useFakeTimers()
+    lastWsInstance = null
+    wsConstructorShouldThrow = false
     logger = createMockLogger()
     cache = createMockCache()
     db = createMockDb()
@@ -84,12 +133,17 @@ describe('OzoneService', () => {
   })
 
   afterEach(() => {
+    service.stop()
+    vi.useRealTimers()
     vi.restoreAllMocks()
   })
 
+  // =========================================================================
+  // start / stop
+  // =========================================================================
+
   describe('start / stop', () => {
     it('sets stopping to false on start and creates a WebSocket', () => {
-      // start() should not throw and should attempt to connect
       expect(() => {
         service.start()
       }).not.toThrow()
@@ -102,11 +156,10 @@ describe('OzoneService', () => {
 
     it('sets stopping to true on stop and closes WebSocket', () => {
       service.start()
+      const ws = getLastWs()
       service.stop()
 
-      // After stop, calling start again should work (stopping reset)
-      // The ws.close() should have been called
-      expect(logger.info).toHaveBeenCalled()
+      expect(ws.close).toHaveBeenCalled()
     })
 
     it('stop is safe to call without prior start', () => {
@@ -118,7 +171,6 @@ describe('OzoneService', () => {
     it('does not reconnect after stop', () => {
       service.start()
       service.stop()
-      // After stopping, a second start should work fresh
       service.start()
       expect(logger.info).toHaveBeenCalledWith(
         // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
@@ -127,6 +179,243 @@ describe('OzoneService', () => {
       )
     })
   })
+
+  // =========================================================================
+  // WebSocket connection lifecycle
+  // =========================================================================
+
+  describe('connect / WebSocket lifecycle', () => {
+    it('converts https URL to wss and strips trailing slash', () => {
+      const svc = new OzoneService(
+        db as never,
+        cache as never,
+        logger as never,
+        'https://ozone.example.com/'
+      )
+      svc.start()
+
+      expect(logger.info).toHaveBeenCalledWith(
+        { url: 'wss://ozone.example.com/xrpc/com.atproto.label.subscribeLabels' },
+        'Connecting to Ozone labeler'
+      )
+      svc.stop()
+    })
+
+    it('converts http URL to wss', () => {
+      const svc = new OzoneService(
+        db as never,
+        cache as never,
+        logger as never,
+        'http://ozone.example.com'
+      )
+      svc.start()
+
+      expect(logger.info).toHaveBeenCalledWith(
+        { url: 'wss://ozone.example.com/xrpc/com.atproto.label.subscribeLabels' },
+        'Connecting to Ozone labeler'
+      )
+      svc.stop()
+    })
+
+    it('open event resets reconnect backoff and logs', () => {
+      service.start()
+      const ws = getLastWs()
+
+      ws.emit('open')
+
+      expect(logger.info).toHaveBeenCalledWith('Connected to Ozone labeler')
+    })
+
+    it('close event schedules reconnect', () => {
+      service.start()
+      const ws = getLastWs()
+
+      ws.emit('close')
+
+      expect(logger.info).toHaveBeenCalledWith('Ozone labeler connection closed')
+      expect(logger.info).toHaveBeenCalledWith(
+        { reconnectMs: 1000 },
+        'Scheduling Ozone labeler reconnect'
+      )
+    })
+
+    it('error event logs the error', () => {
+      service.start()
+      const ws = getLastWs()
+      const errorEvent = { type: 'error', message: 'connection refused' }
+
+      ws.emit('error', errorEvent)
+
+      expect(logger.warn).toHaveBeenCalledWith(
+        { event: errorEvent },
+        'Ozone labeler WebSocket error'
+      )
+    })
+
+    it('message event routes to handleMessage', async () => {
+      cache.get.mockResolvedValue(null)
+      db._selectFromWhere.mockResolvedValue([])
+
+      service.start()
+      const ws = getLastWs()
+
+      const labelEvent = JSON.stringify({
+        seq: 1,
+        labels: [
+          {
+            src: 'did:plc:labeler1',
+            uri: 'did:plc:user1',
+            val: 'spam',
+            neg: false,
+            cts: '2026-01-15T12:00:00.000Z',
+          },
+        ],
+      })
+
+      ws.emit('message', { data: labelEvent })
+
+      // Let the async handleMessage settle
+      await vi.advanceTimersByTimeAsync(0)
+
+      expect(db.insert).toHaveBeenCalled()
+    })
+
+    it('does not connect when stopping is true', () => {
+      service.stop()
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
+      ;(service as any).connect()
+
+      // Should not have logged the connection attempt
+      expect(logger.info).not.toHaveBeenCalledWith(
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+        expect.objectContaining({ url: expect.any(String) }),
+        'Connecting to Ozone labeler'
+      )
+    })
+
+    it('handles WebSocket constructor throwing and schedules reconnect', () => {
+      wsConstructorShouldThrow = true
+      service.start()
+
+      expect(logger.warn).toHaveBeenCalledWith(
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+        { err: expect.any(Error) },
+        'Failed to create Ozone WebSocket'
+      )
+      expect(logger.info).toHaveBeenCalledWith(
+        { reconnectMs: 1000 },
+        'Scheduling Ozone labeler reconnect'
+      )
+    })
+  })
+
+  // =========================================================================
+  // scheduleReconnect
+  // =========================================================================
+
+  describe('scheduleReconnect', () => {
+    it('does not reconnect when stopping', () => {
+      service.start()
+      service.stop()
+
+      const ws = lastWsInstance
+      // Trigger close -- scheduleReconnect will be called but should bail
+      ws?.emit('close')
+
+      // Advance time -- no new connection attempt should happen
+      vi.advanceTimersByTime(5000)
+
+      // Only the initial connect log, not a second one
+      const connectCalls = logger.info.mock.calls.filter(
+        (c: unknown[]) => c[1] === 'Connecting to Ozone labeler'
+      )
+      expect(connectCalls).toHaveLength(1)
+    })
+
+    it('applies exponential backoff up to max', () => {
+      service.start()
+      const ws1 = getLastWs()
+
+      // First close: reconnect in 1000ms, next will be 2000ms
+      ws1.emit('close')
+      expect(logger.info).toHaveBeenCalledWith(
+        { reconnectMs: 1000 },
+        'Scheduling Ozone labeler reconnect'
+      )
+
+      vi.advanceTimersByTime(1000)
+      const ws2 = getLastWs()
+      expect(ws2).not.toBe(ws1)
+
+      // Second close: reconnect in 2000ms, next will be 4000ms
+      ws2.emit('close')
+      expect(logger.info).toHaveBeenCalledWith(
+        { reconnectMs: 2000 },
+        'Scheduling Ozone labeler reconnect'
+      )
+
+      vi.advanceTimersByTime(2000)
+      const ws3 = getLastWs()
+
+      // Third close: reconnect in 4000ms
+      ws3.emit('close')
+      expect(logger.info).toHaveBeenCalledWith(
+        { reconnectMs: 4000 },
+        'Scheduling Ozone labeler reconnect'
+      )
+    })
+
+    it('caps backoff at 60000ms', () => {
+      service.start()
+
+      // Drive backoff past the max: 1000, 2000, 4000, 8000, 16000, 32000, 64000 -> capped at 60000
+      for (let i = 0; i < 7; i++) {
+        const ws = getLastWs()
+        ws.emit('close')
+        const lastCall = logger.info.mock.calls
+          .filter((c: unknown[]) => c[1] === 'Scheduling Ozone labeler reconnect')
+          .at(-1)
+        if (!lastCall) throw new Error('Expected reconnect log call')
+        const reconnectMs = lastCall[0] as { reconnectMs: number }
+
+        // Advance past the reconnect timer
+        vi.advanceTimersByTime(reconnectMs.reconnectMs)
+      }
+
+      // The last reconnectMs should be capped at 60000
+      const lastReconnectCall = logger.info.mock.calls
+        .filter((c: unknown[]) => c[1] === 'Scheduling Ozone labeler reconnect')
+        .at(-1)
+      if (!lastReconnectCall) throw new Error('Expected reconnect log call')
+      const lastReconnect = lastReconnectCall[0] as { reconnectMs: number }
+
+      expect(lastReconnect.reconnectMs).toBeLessThanOrEqual(60000)
+    })
+
+    it('resets backoff on successful open', () => {
+      service.start()
+      const ws1 = getLastWs()
+
+      // Close to increase backoff
+      ws1.emit('close')
+      vi.advanceTimersByTime(1000)
+
+      const ws2 = getLastWs()
+      // Simulate successful open -- resets backoff
+      ws2.emit('open')
+
+      // Now close again -- should reconnect at 1000ms (reset), not 2000ms
+      ws2.emit('close')
+      expect(logger.info).toHaveBeenCalledWith(
+        { reconnectMs: 1000 },
+        'Scheduling Ozone labeler reconnect'
+      )
+    })
+  })
+
+  // =========================================================================
+  // getLabels
+  // =========================================================================
 
   describe('getLabels', () => {
     it('returns labels from cache when available', async () => {
@@ -137,7 +426,6 @@ describe('OzoneService', () => {
 
       expect(result).toEqual(cachedLabels)
       expect(cache.get).toHaveBeenCalledWith('ozone:labels:did:plc:user123')
-      // DB should NOT have been queried
       expect(db.select).not.toHaveBeenCalled()
     })
 
@@ -189,10 +477,13 @@ describe('OzoneService', () => {
       const result = await service.getLabels('did:plc:clean-user')
 
       expect(result).toEqual([])
-      // Empty array should still be cached
       expect(cache.set).toHaveBeenCalledWith('ozone:labels:did:plc:clean-user', '[]', 'EX', 3600)
     })
   })
+
+  // =========================================================================
+  // hasLabel
+  // =========================================================================
 
   describe('hasLabel', () => {
     it('returns true when the label exists', async () => {
@@ -227,6 +518,10 @@ describe('OzoneService', () => {
       expect(result).toBe(false)
     })
   })
+
+  // =========================================================================
+  // isSpamLabeled
+  // =========================================================================
 
   describe('isSpamLabeled', () => {
     it('returns true when "spam" label is present', async () => {
@@ -285,10 +580,11 @@ describe('OzoneService', () => {
     })
   })
 
-  describe('handleMessage (via processLabel internals)', () => {
-    // We test processLabel behavior indirectly through handleMessage,
-    // which is private but accessible via the class prototype for testing.
+  // =========================================================================
+  // handleMessage / processLabel
+  // =========================================================================
 
+  describe('handleMessage / processLabel', () => {
     it('processLabel with negation deletes label from DB', async () => {
       const label = {
         src: 'did:plc:labeler1',
@@ -298,15 +594,12 @@ describe('OzoneService', () => {
         cts: '2026-01-15T12:00:00.000Z',
       }
 
-      // Access private method for testing
       // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
       await (service as any).processLabel(label)
 
       expect(db.delete).toHaveBeenCalled()
       expect(db._deleteWhere).toHaveBeenCalled()
-      // Should NOT have called insert
       expect(db.insert).not.toHaveBeenCalled()
-      // Should invalidate cache
       expect(cache.del).toHaveBeenCalledWith('ozone:labels:did:plc:user123')
     })
 
@@ -333,9 +626,7 @@ describe('OzoneService', () => {
         })
       )
       expect(db._onConflictDoUpdate).toHaveBeenCalled()
-      // Should NOT have called delete
       expect(db.delete).not.toHaveBeenCalled()
-      // Should invalidate cache
       expect(cache.del).toHaveBeenCalledWith('ozone:labels:did:plc:user123')
     })
 
@@ -378,7 +669,7 @@ describe('OzoneService', () => {
       )
     })
 
-    it('processLabel still invalidates cache even when cache.del fails', async () => {
+    it('processLabel still succeeds when cache.del fails', async () => {
       cache.del.mockRejectedValue(new Error('Redis down'))
 
       const label = {
@@ -389,7 +680,6 @@ describe('OzoneService', () => {
         cts: '2026-01-15T12:00:00.000Z',
       }
 
-      // Should not throw despite cache failure
       // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
       await expect((service as any).processLabel(label)).resolves.not.toThrow()
       expect(db.insert).toHaveBeenCalled()
@@ -419,11 +709,8 @@ describe('OzoneService', () => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
       await (service as any).handleMessage(event)
 
-      // First label: insert (neg: false)
       expect(db.insert).toHaveBeenCalledTimes(1)
-      // Second label: delete (neg: true)
       expect(db.delete).toHaveBeenCalledTimes(1)
-      // Both should invalidate cache
       expect(cache.del).toHaveBeenCalledTimes(2)
     })
 
@@ -462,12 +749,174 @@ describe('OzoneService', () => {
         ],
       }
 
-      // Pass a non-string -- String(object) produces "[object Object]" which is invalid JSON
+      // String(object) produces "[object Object]" which is invalid JSON
       // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
       await (service as any).handleMessage(event)
 
-      // Should log a warning because String({}) is not valid JSON
       expect(logger.warn).toHaveBeenCalled()
+    })
+  })
+
+  // =========================================================================
+  // batchIsSpamLabeled
+  // =========================================================================
+
+  describe('batchIsSpamLabeled', () => {
+    it('returns empty map for empty input', async () => {
+      const result = await service.batchIsSpamLabeled([])
+
+      expect(result.size).toBe(0)
+      expect(cache.get).not.toHaveBeenCalled()
+      expect(db.select).not.toHaveBeenCalled()
+    })
+
+    it('returns all results from cache when all DIDs are cached', async () => {
+      cache.get
+        .mockResolvedValueOnce(
+          JSON.stringify([{ val: 'spam', src: 'did:plc:labeler1', neg: false }])
+        )
+        .mockResolvedValueOnce(
+          JSON.stringify([{ val: 'nudity', src: 'did:plc:labeler1', neg: false }])
+        )
+
+      const result = await service.batchIsSpamLabeled(['did:plc:spammer', 'did:plc:clean'])
+
+      expect(result.get('did:plc:spammer')).toBe(true)
+      expect(result.get('did:plc:clean')).toBe(false)
+      // No DB query needed
+      expect(db.select).not.toHaveBeenCalled()
+    })
+
+    it('queries DB for all DIDs on complete cache miss', async () => {
+      cache.get.mockResolvedValue(null)
+      db._selectFromWhere.mockResolvedValue([
+        { uri: 'did:plc:user1', val: 'spam', src: 'did:plc:labeler1', neg: false },
+        { uri: 'did:plc:user1', val: 'nudity', src: 'did:plc:labeler1', neg: false },
+      ])
+
+      const result = await service.batchIsSpamLabeled(['did:plc:user1', 'did:plc:user2'])
+
+      expect(result.get('did:plc:user1')).toBe(true)
+      expect(result.get('did:plc:user2')).toBe(false)
+      expect(db.select).toHaveBeenCalled()
+      // Both results should be cached
+      expect(cache.set).toHaveBeenCalledTimes(2)
+    })
+
+    it('handles mixed cache hit and miss', async () => {
+      // First DID: cached (spam)
+      cache.get
+        .mockResolvedValueOnce(
+          JSON.stringify([{ val: 'spam', src: 'did:plc:labeler1', neg: false }])
+        )
+        // Second DID: not cached
+        .mockResolvedValueOnce(null)
+
+      db._selectFromWhere.mockResolvedValue([
+        { uri: 'did:plc:user2', val: '!hide', src: 'did:plc:labeler1', neg: false },
+      ])
+
+      const result = await service.batchIsSpamLabeled(['did:plc:user1', 'did:plc:user2'])
+
+      expect(result.get('did:plc:user1')).toBe(true)
+      expect(result.get('did:plc:user2')).toBe(true)
+      // Only the uncached DID should trigger DB query
+      expect(db.select).toHaveBeenCalledTimes(1)
+      // Only the uncached DID should be cached
+      expect(cache.set).toHaveBeenCalledTimes(1)
+    })
+
+    it('falls through to DB when cache.get throws', async () => {
+      cache.get.mockRejectedValue(new Error('Redis down'))
+      db._selectFromWhere.mockResolvedValue([])
+
+      const result = await service.batchIsSpamLabeled(['did:plc:user1'])
+
+      expect(result.get('did:plc:user1')).toBe(false)
+      expect(db.select).toHaveBeenCalled()
+    })
+
+    it('returns results even when cache.set fails', async () => {
+      cache.get.mockResolvedValue(null)
+      cache.set.mockRejectedValue(new Error('Redis write failed'))
+      db._selectFromWhere.mockResolvedValue([
+        { uri: 'did:plc:user1', val: 'spam', src: 'did:plc:labeler1', neg: false },
+      ])
+
+      const result = await service.batchIsSpamLabeled(['did:plc:user1'])
+
+      expect(result.get('did:plc:user1')).toBe(true)
+    })
+
+    it('groups labels by URI correctly from DB results', async () => {
+      cache.get.mockResolvedValue(null)
+      db._selectFromWhere.mockResolvedValue([
+        { uri: 'did:plc:user1', val: 'nudity', src: 'did:plc:labeler1', neg: false },
+        { uri: 'did:plc:user1', val: 'gore', src: 'did:plc:labeler1', neg: false },
+        { uri: 'did:plc:user2', val: 'spam', src: 'did:plc:labeler1', neg: false },
+        { uri: 'did:plc:user3', val: '!hide', src: 'did:plc:labeler1', neg: false },
+      ])
+
+      const result = await service.batchIsSpamLabeled([
+        'did:plc:user1',
+        'did:plc:user2',
+        'did:plc:user3',
+      ])
+
+      // user1 has nudity+gore but no spam labels
+      expect(result.get('did:plc:user1')).toBe(false)
+      // user2 has spam
+      expect(result.get('did:plc:user2')).toBe(true)
+      // user3 has !hide
+      expect(result.get('did:plc:user3')).toBe(true)
+    })
+
+    it('caches correct label arrays per URI', async () => {
+      cache.get.mockResolvedValue(null)
+      db._selectFromWhere.mockResolvedValue([
+        { uri: 'did:plc:user1', val: 'spam', src: 'did:plc:labeler1', neg: false },
+        { uri: 'did:plc:user1', val: 'nudity', src: 'did:plc:labeler2', neg: false },
+      ])
+
+      await service.batchIsSpamLabeled(['did:plc:user1', 'did:plc:user2'])
+
+      // user1 cached with both labels
+      expect(cache.set).toHaveBeenCalledWith(
+        'ozone:labels:did:plc:user1',
+        JSON.stringify([
+          { val: 'spam', src: 'did:plc:labeler1', neg: false },
+          { val: 'nudity', src: 'did:plc:labeler2', neg: false },
+        ]),
+        'EX',
+        3600
+      )
+      // user2 cached with empty array
+      expect(cache.set).toHaveBeenCalledWith('ozone:labels:did:plc:user2', '[]', 'EX', 3600)
+    })
+
+    it('marks DIDs with no DB labels as not spam', async () => {
+      cache.get.mockResolvedValue(null)
+      db._selectFromWhere.mockResolvedValue([])
+
+      const result = await service.batchIsSpamLabeled([
+        'did:plc:clean1',
+        'did:plc:clean2',
+        'did:plc:clean3',
+      ])
+
+      expect(result.get('did:plc:clean1')).toBe(false)
+      expect(result.get('did:plc:clean2')).toBe(false)
+      expect(result.get('did:plc:clean3')).toBe(false)
+    })
+
+    it('detects spam from cached labels with "!hide" value', async () => {
+      cache.get.mockResolvedValue(
+        JSON.stringify([{ val: '!hide', src: 'did:plc:labeler1', neg: false }])
+      )
+
+      const result = await service.batchIsSpamLabeled(['did:plc:hidden'])
+
+      expect(result.get('did:plc:hidden')).toBe(true)
     })
   })
 })
