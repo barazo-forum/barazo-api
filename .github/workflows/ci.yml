@@ -12,7 +12,6 @@ concurrency:
 
 permissions:
   contents: read
-  packages: read
 
 jobs:
   lint:
@@ -24,10 +23,11 @@ jobs:
       - uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6.2.0
         with:
           node-version: 24
-          registry-url: 'https://npm.pkg.github.com'
+      - name: Clone and build barazo-lexicons
+        run: |
+          git clone --depth 1 https://github.com/barazo-forum/barazo-lexicons.git ../barazo-lexicons
+          cd ../barazo-lexicons && pnpm install --ignore-scripts && pnpm run build
       - run: pnpm install
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - run: pnpm lint
 
   typecheck:
@@ -39,10 +39,11 @@ jobs:
       - uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6.2.0
         with:
           node-version: 24
-          registry-url: 'https://npm.pkg.github.com'
+      - name: Clone and build barazo-lexicons
+        run: |
+          git clone --depth 1 https://github.com/barazo-forum/barazo-lexicons.git ../barazo-lexicons
+          cd ../barazo-lexicons && pnpm install --ignore-scripts && pnpm run build
       - run: pnpm install
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - run: pnpm typecheck
 
   test:
@@ -54,10 +55,11 @@ jobs:
       - uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6.2.0
         with:
           node-version: 24
-          registry-url: 'https://npm.pkg.github.com'
+      - name: Clone and build barazo-lexicons
+        run: |
+          git clone --depth 1 https://github.com/barazo-forum/barazo-lexicons.git ../barazo-lexicons
+          cd ../barazo-lexicons && pnpm install --ignore-scripts && pnpm run build
       - run: pnpm install
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - run: pnpm test
 
   test-integration:
@@ -92,10 +94,11 @@ jobs:
       - uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6.2.0
         with:
           node-version: 24
-          registry-url: 'https://npm.pkg.github.com'
+      - name: Clone and build barazo-lexicons
+        run: |
+          git clone --depth 1 https://github.com/barazo-forum/barazo-lexicons.git ../barazo-lexicons
+          cd ../barazo-lexicons && pnpm install --ignore-scripts && pnpm run build
       - run: pnpm install
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - run: pnpm db:migrate
         env:
           DATABASE_URL: postgresql://barazo:barazo_dev@localhost:5432/barazo
@@ -115,10 +118,11 @@ jobs:
       - uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6.2.0
         with:
           node-version: 24
-          registry-url: 'https://npm.pkg.github.com'
+      - name: Clone and build barazo-lexicons
+        run: |
+          git clone --depth 1 https://github.com/barazo-forum/barazo-lexicons.git ../barazo-lexicons
+          cd ../barazo-lexicons && pnpm install --ignore-scripts && pnpm run build
       - run: pnpm install
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - run: pnpm build
 
   security:
@@ -130,10 +134,11 @@ jobs:
       - uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6.2.0
         with:
           node-version: 24
-          registry-url: 'https://npm.pkg.github.com'
+      - name: Clone and build barazo-lexicons
+        run: |
+          git clone --depth 1 https://github.com/barazo-forum/barazo-lexicons.git ../barazo-lexicons
+          cd ../barazo-lexicons && pnpm install --ignore-scripts && pnpm run build
       - run: pnpm install
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Security audit with retry
         run: |
           for attempt in 1 2 3; do

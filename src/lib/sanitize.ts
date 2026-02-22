@@ -1,4 +1,4 @@
-import DOMPurify from 'isomorphic-dompurify'
+import { sanitize } from 'isomorphic-dompurify'
 
 /**
  * Bidirectional override and mark characters to strip from all text.
@@ -60,7 +60,7 @@ export function sanitizeHtml(input: string): string {
 
   const normalized = normalizeText(input)
 
-  return DOMPurify.sanitize(normalized, {
+  return sanitize(normalized, {
     ALLOWED_TAGS,
     ALLOWED_ATTR,
     ALLOW_DATA_ATTR: false,
@@ -76,7 +76,7 @@ export function sanitizeText(input: string): string {
 
   const normalized = normalizeText(input)
 
-  return DOMPurify.sanitize(normalized, {
+  return sanitize(normalized, {
     ALLOWED_TAGS: [],
     ALLOWED_ATTR: [],
   })
