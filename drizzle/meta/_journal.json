@@ -204,6 +204,13 @@
       "when": 1771624800000,
       "tag": "0028_reply_mod_deleted",
       "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1771790400000,
+      "tag": "0029_vote_system",
+      "breakpoints": true
     }
   ]
 }

@@ -7,6 +7,7 @@ export default defineConfig({
     './src/db/schema/topics.ts',
     './src/db/schema/replies.ts',
     './src/db/schema/reactions.ts',
+    './src/db/schema/votes.ts',
     './src/db/schema/tracked-repos.ts',
     './src/db/schema/community-settings.ts',
     './src/db/schema/categories.ts',
