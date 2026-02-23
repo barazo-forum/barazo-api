@@ -1,5 +1,6 @@
 import {
   pgTable,
+  pgPolicy,
   text,
   integer,
   timestamp,
@@ -7,6 +8,8 @@ import {
   uniqueIndex,
   foreignKey,
 } from 'drizzle-orm/pg-core'
+import { sql } from 'drizzle-orm'
+import { appRole } from './roles.js'
 
 export const categories = pgTable(
   'categories',
@@ -36,5 +39,12 @@ export const categories = pgTable(
       foreignColumns: [table.id],
       name: 'categories_parent_id_fk',
     }).onDelete('set null'),
+    pgPolicy('tenant_isolation', {
+      as: 'permissive',
+      to: appRole,
+      for: 'all',
+      using: sql`community_did = current_setting('app.current_community_did', true)`,
+      withCheck: sql`community_did = current_setting('app.current_community_did', true)`,
+    }),
   ]
-)
+).enableRLS()

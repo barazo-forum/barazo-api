@@ -1,4 +1,6 @@
-import { pgTable, text, timestamp, index, serial } from 'drizzle-orm/pg-core'
+import { pgTable, pgPolicy, text, timestamp, index, serial } from 'drizzle-orm/pg-core'
+import { sql } from 'drizzle-orm'
+import { appRole } from './roles.js'
 
 export const moderationActions = pgTable(
   'moderation_actions',
@@ -20,5 +22,12 @@ export const moderationActions = pgTable(
     index('mod_actions_created_at_idx').on(table.createdAt),
     index('mod_actions_target_uri_idx').on(table.targetUri),
     index('mod_actions_target_did_idx').on(table.targetDid),
+    pgPolicy('tenant_isolation', {
+      as: 'permissive',
+      to: appRole,
+      for: 'all',
+      using: sql`community_did = current_setting('app.current_community_did', true)`,
+      withCheck: sql`community_did = current_setting('app.current_community_did', true)`,
+    }),
   ]
-)
+).enableRLS()

@@ -1,4 +1,6 @@
-import { pgTable, text, timestamp, index, integer } from 'drizzle-orm/pg-core'
+import { pgTable, pgPolicy, text, timestamp, index, integer } from 'drizzle-orm/pg-core'
+import { sql } from 'drizzle-orm'
+import { appRole } from './roles.js'
 
 export const communityFilters = pgTable(
   'community_filters',
@@ -21,5 +23,12 @@ export const communityFilters = pgTable(
     index('community_filters_status_idx').on(table.status),
     index('community_filters_admin_did_idx').on(table.adminDid),
     index('community_filters_updated_at_idx').on(table.updatedAt),
+    pgPolicy('tenant_isolation', {
+      as: 'permissive',
+      to: appRole,
+      for: 'all',
+      using: sql`community_did = current_setting('app.current_community_did', true)`,
+      withCheck: sql`community_did = current_setting('app.current_community_did', true)`,
+    }),
   ]
-)
+).enableRLS()

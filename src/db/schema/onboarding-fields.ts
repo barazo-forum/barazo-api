@@ -1,5 +1,6 @@
 import {
   pgTable,
+  pgPolicy,
   text,
   boolean,
   integer,
@@ -8,6 +9,8 @@ import {
   primaryKey,
   index,
 } from 'drizzle-orm/pg-core'
+import { sql } from 'drizzle-orm'
+import { appRole } from './roles.js'
 
 export const communityOnboardingFields = pgTable(
   'community_onboarding_fields',
@@ -34,8 +37,17 @@ export const communityOnboardingFields = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
-  (table) => [index('onboarding_fields_community_idx').on(table.communityDid)]
-)
+  (table) => [
+    index('onboarding_fields_community_idx').on(table.communityDid),
+    pgPolicy('tenant_isolation', {
+      as: 'permissive',
+      to: appRole,
+      for: 'all',
+      using: sql`community_did = current_setting('app.current_community_did', true)`,
+      withCheck: sql`community_did = current_setting('app.current_community_did', true)`,
+    }),
+  ]
+).enableRLS()
 
 export const userOnboardingResponses = pgTable(
   'user_onboarding_responses',
@@ -49,5 +61,12 @@ export const userOnboardingResponses = pgTable(
   (table) => [
     primaryKey({ columns: [table.did, table.communityDid, table.fieldId] }),
     index('onboarding_responses_did_community_idx').on(table.did, table.communityDid),
+    pgPolicy('tenant_isolation', {
+      as: 'permissive',
+      to: appRole,
+      for: 'all',
+      using: sql`community_did = current_setting('app.current_community_did', true)`,
+      withCheck: sql`community_did = current_setting('app.current_community_did', true)`,
+    }),
   ]
-)
+).enableRLS()

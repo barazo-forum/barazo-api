@@ -1,4 +1,6 @@
-import { pgTable, serial, text, jsonb, timestamp, index } from 'drizzle-orm/pg-core'
+import { pgTable, pgPolicy, serial, text, jsonb, timestamp, index } from 'drizzle-orm/pg-core'
+import { sql } from 'drizzle-orm'
+import { appRole } from './roles.js'
 
 export const moderationQueue = pgTable(
   'moderation_queue',
@@ -29,5 +31,12 @@ export const moderationQueue = pgTable(
     index('mod_queue_status_idx').on(table.status),
     index('mod_queue_created_at_idx').on(table.createdAt),
     index('mod_queue_content_uri_idx').on(table.contentUri),
+    pgPolicy('tenant_isolation', {
+      as: 'permissive',
+      to: appRole,
+      for: 'all',
+      using: sql`community_did = current_setting('app.current_community_did', true)`,
+      withCheck: sql`community_did = current_setting('app.current_community_did', true)`,
+    }),
   ]
-)
+).enableRLS()

@@ -1,4 +1,6 @@
-import { pgTable, text, timestamp, index, primaryKey } from 'drizzle-orm/pg-core'
+import { pgTable, pgPolicy, text, timestamp, index, primaryKey } from 'drizzle-orm/pg-core'
+import { sql } from 'drizzle-orm'
+import { appRole } from './roles.js'
 
 /**
  * Per-community profile overrides.
@@ -20,5 +22,12 @@ export const communityProfiles = pgTable(
     primaryKey({ columns: [table.did, table.communityDid] }),
     index('community_profiles_did_idx').on(table.did),
     index('community_profiles_community_idx').on(table.communityDid),
+    pgPolicy('tenant_isolation', {
+      as: 'permissive',
+      to: appRole,
+      for: 'all',
+      using: sql`community_did = current_setting('app.current_community_did', true)`,
+      withCheck: sql`community_did = current_setting('app.current_community_did', true)`,
+    }),
   ]
-)
+).enableRLS()

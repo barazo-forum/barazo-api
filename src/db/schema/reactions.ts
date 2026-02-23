@@ -1,4 +1,6 @@
-import { pgTable, text, timestamp, index, unique } from 'drizzle-orm/pg-core'
+import { pgTable, pgPolicy, text, timestamp, index, unique } from 'drizzle-orm/pg-core'
+import { sql } from 'drizzle-orm'
+import { appRole } from './roles.js'
 
 export const reactions = pgTable(
   'reactions',
@@ -22,5 +24,12 @@ export const reactions = pgTable(
     // reaction to a given subject is inherently community-scoped via the subject URI.
     unique('reactions_author_subject_type_uniq').on(table.authorDid, table.subjectUri, table.type),
     index('reactions_subject_uri_type_idx').on(table.subjectUri, table.type),
+    pgPolicy('tenant_isolation', {
+      as: 'permissive',
+      to: appRole,
+      for: 'all',
+      using: sql`community_did = current_setting('app.current_community_did', true)`,
+      withCheck: sql`community_did = current_setting('app.current_community_did', true)`,
+    }),
   ]
-)
+).enableRLS()

@@ -1,4 +1,6 @@
-import { pgTable, text, boolean, timestamp, jsonb, integer } from 'drizzle-orm/pg-core'
+import { pgTable, pgPolicy, text, boolean, timestamp, jsonb, integer } from 'drizzle-orm/pg-core'
+import { sql } from 'drizzle-orm'
+import { appRole } from './roles.js'
 
 export const communitySettings = pgTable('community_settings', {
   communityDid: text('community_did').primaryKey(),
@@ -54,4 +56,12 @@ export const communitySettings = pgTable('community_settings', {
   accentColor: text('accent_color'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-})
+}, () => [
+  pgPolicy('tenant_isolation', {
+    as: 'permissive',
+    to: appRole,
+    for: 'all',
+    using: sql`community_did = current_setting('app.current_community_did', true)`,
+    withCheck: sql`community_did = current_setting('app.current_community_did', true)`,
+  }),
+]).enableRLS()

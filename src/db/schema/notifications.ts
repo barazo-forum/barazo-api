@@ -1,4 +1,6 @@
-import { pgTable, text, boolean, timestamp, index, serial } from 'drizzle-orm/pg-core'
+import { pgTable, pgPolicy, text, boolean, timestamp, index, serial } from 'drizzle-orm/pg-core'
+import { sql } from 'drizzle-orm'
+import { appRole } from './roles.js'
 
 export const notifications = pgTable(
   'notifications',
@@ -26,5 +28,12 @@ export const notifications = pgTable(
     index('notifications_recipient_did_idx').on(table.recipientDid),
     index('notifications_recipient_read_idx').on(table.recipientDid, table.read),
     index('notifications_created_at_idx').on(table.createdAt),
+    pgPolicy('tenant_isolation', {
+      as: 'permissive',
+      to: appRole,
+      for: 'all',
+      using: sql`community_did = current_setting('app.current_community_did', true)`,
+      withCheck: sql`community_did = current_setting('app.current_community_did', true)`,
+    }),
   ]
-)
+).enableRLS()

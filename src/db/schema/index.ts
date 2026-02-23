@@ -1,3 +1,4 @@
+export { appRole } from './roles.js'
 export { users } from './users.js'
 export { firehoseCursor } from './firehose.js'
 export { topics } from './topics.js'

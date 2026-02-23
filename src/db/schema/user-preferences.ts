@@ -1,5 +1,6 @@
 import {
   pgTable,
+  pgPolicy,
   text,
   timestamp,
   integer,
@@ -8,6 +9,8 @@ import {
   index,
   primaryKey,
 } from 'drizzle-orm/pg-core'
+import { sql } from 'drizzle-orm'
+import { appRole } from './roles.js'
 
 // ---------------------------------------------------------------------------
 // Global user preferences (stored in PostgreSQL for MVP, will sync to PDS later)
@@ -57,5 +60,12 @@ export const userCommunityPreferences = pgTable(
     primaryKey({ columns: [table.did, table.communityDid] }),
     index('user_community_prefs_did_idx').on(table.did),
     index('user_community_prefs_community_idx').on(table.communityDid),
+    pgPolicy('tenant_isolation', {
+      as: 'permissive',
+      to: appRole,
+      for: 'all',
+      using: sql`community_did = current_setting('app.current_community_did', true)`,
+      withCheck: sql`community_did = current_setting('app.current_community_did', true)`,
+    }),
   ]
-)
+).enableRLS()

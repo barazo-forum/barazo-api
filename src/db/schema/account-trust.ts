@@ -1,5 +1,6 @@
 import {
   pgTable,
+  pgPolicy,
   serial,
   text,
   integer,
@@ -8,6 +9,8 @@ import {
   index,
   uniqueIndex,
 } from 'drizzle-orm/pg-core'
+import { sql } from 'drizzle-orm'
+import { appRole } from './roles.js'
 
 export const accountTrust = pgTable(
   'account_trust',
@@ -22,5 +25,12 @@ export const accountTrust = pgTable(
   (table) => [
     uniqueIndex('account_trust_did_community_idx').on(table.did, table.communityDid),
     index('account_trust_did_idx').on(table.did),
+    pgPolicy('tenant_isolation', {
+      as: 'permissive',
+      to: appRole,
+      for: 'all',
+      using: sql`community_did = current_setting('app.current_community_did', true)`,
+      withCheck: sql`community_did = current_setting('app.current_community_did', true)`,
+    }),
   ]
-)
+).enableRLS()
