@@ -74,6 +74,38 @@ describe('validateRecord', () => {
     })
   })
 
+  describe('vote validation', () => {
+    const validVote = {
+      subject: { uri: 'at://did:plc:abc/forum.barazo.topic.post/123', cid: 'bafyabc' },
+      direction: 'up',
+      community: 'did:plc:abc123',
+      createdAt: '2026-01-01T00:00:00.000Z',
+    }
+
+    it('accepts a valid vote', () => {
+      const result = validateRecord('forum.barazo.interaction.vote', validVote)
+      expect(result.success).toBe(true)
+    })
+
+    it('rejects a vote with missing direction', () => {
+      const { direction: _, ...invalid } = validVote
+      const result = validateRecord('forum.barazo.interaction.vote', invalid)
+      expect(result.success).toBe(false)
+    })
+
+    it('rejects a vote with missing subject', () => {
+      const { subject: _, ...invalid } = validVote
+      const result = validateRecord('forum.barazo.interaction.vote', invalid)
+      expect(result.success).toBe(false)
+    })
+
+    it('rejects a vote with missing community', () => {
+      const { community: _, ...invalid } = validVote
+      const result = validateRecord('forum.barazo.interaction.vote', invalid)
+      expect(result.success).toBe(false)
+    })
+  })
+
   describe('unknown collection', () => {
     it('rejects an unknown collection', () => {
       const result = validateRecord('com.example.unknown', { foo: 'bar' })

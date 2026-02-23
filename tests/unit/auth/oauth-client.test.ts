@@ -153,7 +153,7 @@ describe('createOAuthClient', () => {
 
       expect(metadata.client_name).toBe('Barazo Forum')
       expect(metadata.scope).toBe(
-        'atproto repo:forum.barazo.topic.post repo:forum.barazo.topic.reply repo:forum.barazo.interaction.reaction'
+        'atproto repo:forum.barazo.topic.post repo:forum.barazo.topic.reply repo:forum.barazo.interaction.reaction repo:forum.barazo.interaction.vote'
       )
       expect(metadata.grant_types).toEqual(['authorization_code', 'refresh_token'])
       expect(metadata.response_types).toEqual(['code'])

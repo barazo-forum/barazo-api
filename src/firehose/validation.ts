@@ -1,4 +1,9 @@
-import { topicPostSchema, topicReplySchema, reactionSchema } from '@barazo-forum/lexicons'
+import {
+  topicPostSchema,
+  topicReplySchema,
+  reactionSchema,
+  voteSchema,
+} from '@barazo-forum/lexicons'
 import type { SupportedCollection } from './types.js'
 import { isSupportedCollection } from './types.js'
 
@@ -15,6 +20,7 @@ const schemaMap: Record<
   'forum.barazo.topic.post': topicPostSchema,
   'forum.barazo.topic.reply': topicReplySchema,
   'forum.barazo.interaction.reaction': reactionSchema,
+  'forum.barazo.interaction.vote': voteSchema,
 }
 
 export function validateRecord(collection: string, record: unknown): ValidationResult {

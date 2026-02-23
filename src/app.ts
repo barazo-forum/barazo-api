@@ -27,6 +27,7 @@ import { replyRoutes } from './routes/replies.js'
 import { categoryRoutes } from './routes/categories.js'
 import { adminSettingsRoutes } from './routes/admin-settings.js'
 import { reactionRoutes } from './routes/reactions.js'
+import { voteRoutes } from './routes/votes.js'
 import { moderationRoutes } from './routes/moderation.js'
 import { moderationQueueRoutes } from './routes/moderation-queue.js'
 import { searchRoutes } from './routes/search.js'
@@ -288,6 +289,7 @@ export async function buildApp(env: Env) {
   await app.register(categoryRoutes())
   await app.register(adminSettingsRoutes())
   await app.register(reactionRoutes())
+  await app.register(voteRoutes())
   await app.register(moderationRoutes())
   await app.register(moderationQueueRoutes())
   await app.register(searchRoutes())

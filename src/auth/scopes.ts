@@ -11,7 +11,7 @@
 
 /** Base scopes for core Barazo forum operations (read/write own forum records). */
 export const BARAZO_BASE_SCOPES =
-  'atproto repo:forum.barazo.topic.post repo:forum.barazo.topic.reply repo:forum.barazo.interaction.reaction'
+  'atproto repo:forum.barazo.topic.post repo:forum.barazo.topic.reply repo:forum.barazo.interaction.reaction repo:forum.barazo.interaction.vote'
 
 /** Additional scopes needed for cross-posting to Bluesky and Frontpage. */
 export const CROSSPOST_ADDITIONAL_SCOPES =

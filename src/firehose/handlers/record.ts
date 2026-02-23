@@ -2,6 +2,7 @@ import { eq } from 'drizzle-orm'
 import { users } from '../../db/schema/users.js'
 import { replies } from '../../db/schema/replies.js'
 import { reactions } from '../../db/schema/reactions.js'
+import { votes } from '../../db/schema/votes.js'
 import type { Database } from '../../db/index.js'
 import type { Logger } from '../../lib/logger.js'
 import type { RecordEvent } from '../types.js'
@@ -10,12 +11,14 @@ import { validateRecord } from '../validation.js'
 import type { TopicIndexer } from '../indexers/topic.js'
 import type { ReplyIndexer } from '../indexers/reply.js'
 import type { ReactionIndexer } from '../indexers/reaction.js'
+import type { VoteIndexer } from '../indexers/vote.js'
 import type { AccountAgeService, TrustStatus } from '../../services/account-age.js'
 
 interface Indexers {
   topic: TopicIndexer
   reply: ReplyIndexer
   reaction: ReactionIndexer
+  vote: VoteIndexer
 }
 
 export class RecordHandler {
@@ -109,6 +112,9 @@ export class RecordHandler {
       case 'reaction':
         await this.indexers.reaction.handleCreate(params)
         break
+      case 'vote':
+        await this.indexers.vote.handleCreate(params)
+        break
     }
   }
 
@@ -131,7 +137,7 @@ export class RecordHandler {
       case 'reply':
         await this.indexers.reply.handleUpdate(params)
         break
-      // Reactions don't have update
+      // Reactions and votes don't have update
     }
   }
 
@@ -195,6 +201,29 @@ export class RecordHandler {
           rkey: params.rkey,
           did: params.did,
           subjectUri,
+        })
+        break
+      }
+      case 'vote': {
+        // Same pattern: look up subjectUri before the row is deleted.
+        const voteRows = await this.db
+          .select({ subjectUri: votes.subjectUri })
+          .from(votes)
+          .where(eq(votes.uri, params.uri))
+
+        const voteSubjectUri = voteRows[0]?.subjectUri ?? ''
+        if (!voteSubjectUri) {
+          this.logger.debug(
+            { uri: params.uri },
+            'Vote not found in DB for delete, count decrement will be skipped'
+          )
+        }
+
+        await this.indexers.vote.handleDelete({
+          uri: params.uri,
+          rkey: params.rkey,
+          did: params.did,
+          subjectUri: voteSubjectUri,
         })
         break
       }

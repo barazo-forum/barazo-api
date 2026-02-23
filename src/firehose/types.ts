@@ -49,6 +49,7 @@ export const SUPPORTED_COLLECTIONS = [
   'forum.barazo.topic.post',
   'forum.barazo.topic.reply',
   'forum.barazo.interaction.reaction',
+  'forum.barazo.interaction.vote',
 ] as const satisfies ReadonlyArray<(typeof LEXICON_IDS)[keyof typeof LEXICON_IDS]>
 
 export type SupportedCollection = (typeof SUPPORTED_COLLECTIONS)[number]
@@ -63,4 +64,5 @@ export const COLLECTION_MAP: Record<SupportedCollection, string> = {
   'forum.barazo.topic.post': 'topic',
   'forum.barazo.topic.reply': 'reply',
   'forum.barazo.interaction.reaction': 'reaction',
+  'forum.barazo.interaction.vote': 'vote',
 } as const

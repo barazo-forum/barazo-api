@@ -15,8 +15,12 @@ describe('firehose types', () => {
       expect(SUPPORTED_COLLECTIONS).toContain('forum.barazo.interaction.reaction')
     })
 
-    it('has exactly 3 supported collections', () => {
-      expect(SUPPORTED_COLLECTIONS).toHaveLength(3)
+    it('contains vote collection', () => {
+      expect(SUPPORTED_COLLECTIONS).toContain('forum.barazo.interaction.vote')
+    })
+
+    it('has exactly 4 supported collections', () => {
+      expect(SUPPORTED_COLLECTIONS).toHaveLength(4)
     })
   })
 
@@ -31,6 +35,10 @@ describe('firehose types', () => {
 
     it("maps reaction to 'reaction'", () => {
       expect(COLLECTION_MAP['forum.barazo.interaction.reaction']).toBe('reaction')
+    })
+
+    it("maps vote to 'vote'", () => {
+      expect(COLLECTION_MAP['forum.barazo.interaction.vote']).toBe('vote')
     })
 
     it('returns undefined for unsupported collection', () => {

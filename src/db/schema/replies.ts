@@ -16,6 +16,7 @@ export const replies = pgTable(
     cid: text('cid').notNull(),
     labels: jsonb('labels').$type<{ values: { val: string }[] }>(),
     reactionCount: integer('reaction_count').notNull().default(0),
+    voteCount: integer('vote_count').notNull().default(0),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull(),
     indexedAt: timestamp('indexed_at', { withTimezone: true }).notNull().defaultNow(),
     isAuthorDeleted: boolean('is_author_deleted').notNull().default(false),

@@ -16,6 +16,7 @@ export const topics = pgTable(
     labels: jsonb('labels').$type<{ values: { val: string }[] }>(),
     replyCount: integer('reply_count').notNull().default(0),
     reactionCount: integer('reaction_count').notNull().default(0),
+    voteCount: integer('vote_count').notNull().default(0),
     lastActivityAt: timestamp('last_activity_at', { withTimezone: true }).notNull().defaultNow(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull(),
     indexedAt: timestamp('indexed_at', { withTimezone: true }).notNull().defaultNow(),
