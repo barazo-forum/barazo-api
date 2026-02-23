@@ -5,10 +5,12 @@ import type { Database } from '../../../src/db/index.js'
 import { topics } from '../../../src/db/schema/topics.js'
 import { replies } from '../../../src/db/schema/replies.js'
 import { reactions } from '../../../src/db/schema/reactions.js'
+import { votes } from '../../../src/db/schema/votes.js'
 import { users } from '../../../src/db/schema/users.js'
 import { TopicIndexer } from '../../../src/firehose/indexers/topic.js'
 import { ReplyIndexer } from '../../../src/firehose/indexers/reply.js'
 import { ReactionIndexer } from '../../../src/firehose/indexers/reaction.js'
+import { VoteIndexer } from '../../../src/firehose/indexers/vote.js'
 import { RecordHandler } from '../../../src/firehose/handlers/record.js'
 import type { RecordEvent } from '../../../src/firehose/types.js'
 import type { AccountAgeService } from '../../../src/services/account-age.js'
@@ -55,9 +57,10 @@ describe('firehose record processing (integration)', () => {
     const topicIndexer = new TopicIndexer(db, logger as never)
     const replyIndexer = new ReplyIndexer(db, logger as never)
     const reactionIndexer = new ReactionIndexer(db, logger as never)
+    const voteIndexer = new VoteIndexer(db, logger as never)
 
     handler = new RecordHandler(
-      { topic: topicIndexer, reply: replyIndexer, reaction: reactionIndexer },
+      { topic: topicIndexer, reply: replyIndexer, reaction: reactionIndexer, vote: voteIndexer },
       db,
       logger as never,
       createStubAccountAgeService()
@@ -70,6 +73,7 @@ describe('firehose record processing (integration)', () => {
 
   beforeEach(async () => {
     // Clean tables in correct FK-safe order
+    await db.delete(votes)
     await db.delete(reactions)
     await db.delete(replies)
     await db.delete(topics)
