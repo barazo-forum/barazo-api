@@ -1,7 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { eq, and, count } from 'drizzle-orm'
 import type { FastifyPluginCallback } from 'fastify'
-import { getCommunityDid } from '../config/env.js'
 import { notFound, badRequest, conflict, errorResponseSchema } from '../lib/api-errors.js'
 import { isMaturityLowerThan } from '../lib/maturity.js'
 import {
@@ -209,7 +208,7 @@ export function categoryRoutes(): FastifyPluginCallback {
       async (request, reply) => {
         const parsed = categoryQuerySchema.safeParse(request.query)
         const parentId = parsed.success ? parsed.data.parentId : undefined
-        const communityDid = getCommunityDid(env)
+        const communityDid = request.communityDid
 
         const conditions = [eq(categories.communityDid, communityDid)]
         if (parentId !== undefined) {
@@ -253,7 +252,7 @@ export function categoryRoutes(): FastifyPluginCallback {
       },
       async (request, reply) => {
         const { slug } = request.params as { slug: string }
-        const communityDid = getCommunityDid(env)
+        const communityDid = request.communityDid
 
         const rows = await db
           .select()
@@ -320,7 +319,7 @@ export function categoryRoutes(): FastifyPluginCallback {
         }
 
         const { name, slug, description, parentId, sortOrder, maturityRating } = parsed.data
-        const communityDid = getCommunityDid(env)
+        const communityDid = request.communityDid
 
         // Fetch community settings for maturity default
         const settingsRows = await db
@@ -445,7 +444,7 @@ export function categoryRoutes(): FastifyPluginCallback {
         }
 
         const updates = parsed.data
-        const communityDid = getCommunityDid(env)
+        const communityDid = request.communityDid
 
         // Fetch community settings for maturity validation
         const settingsRows = await db
@@ -579,7 +578,7 @@ export function categoryRoutes(): FastifyPluginCallback {
         }
 
         // Check if category has topics within this community
-        const communityDid = getCommunityDid(env)
+        const communityDid = request.communityDid
         const topicCountResult = await db
           .select({ count: count() })
           .from(topics)

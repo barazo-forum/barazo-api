@@ -1,6 +1,5 @@
 import { eq, and, asc } from 'drizzle-orm'
 import type { FastifyPluginCallback } from 'fastify'
-import { getCommunityDid } from '../config/env.js'
 import { notFound, badRequest, forbidden, errorResponseSchema } from '../lib/api-errors.js'
 import {
   createOnboardingFieldSchema,
@@ -108,7 +107,7 @@ export function onboardingRoutes(): FastifyPluginCallback {
         },
       },
       async (_request, reply) => {
-        const communityDid = getCommunityDid(env)
+        const communityDid = request.communityDid
 
         const fields = await db
           .select()
@@ -158,7 +157,7 @@ export function onboardingRoutes(): FastifyPluginCallback {
           throw badRequest('Invalid onboarding field data')
         }
 
-        const communityDid = getCommunityDid(env)
+        const communityDid = request.communityDid
 
         const inserted = await db
           .insert(communityOnboardingFields)
@@ -240,7 +239,7 @@ export function onboardingRoutes(): FastifyPluginCallback {
           throw badRequest('At least one field must be provided')
         }
 
-        const communityDid = getCommunityDid(env)
+        const communityDid = request.communityDid
 
         const dbUpdates: Record<string, unknown> = { updatedAt: new Date() }
         if (updates.label !== undefined) dbUpdates.label = updates.label
@@ -298,7 +297,7 @@ export function onboardingRoutes(): FastifyPluginCallback {
         },
       },
       async (request, reply) => {
-        const communityDid = getCommunityDid(env)
+        const communityDid = request.communityDid
 
         const deleted = await db
           .delete(communityOnboardingFields)
@@ -368,7 +367,7 @@ export function onboardingRoutes(): FastifyPluginCallback {
           throw badRequest('Invalid reorder data')
         }
 
-        const communityDid = getCommunityDid(env)
+        const communityDid = request.communityDid
 
         // Update each field's sort order
         for (const item of parsed.data) {
@@ -422,7 +421,7 @@ export function onboardingRoutes(): FastifyPluginCallback {
           throw forbidden('Authentication required')
         }
 
-        const communityDid = getCommunityDid(env)
+        const communityDid = request.communityDid
 
         // Get all fields for this community
         const fields = await db
@@ -506,7 +505,7 @@ export function onboardingRoutes(): FastifyPluginCallback {
           throw badRequest('Invalid submission data')
         }
 
-        const communityDid = getCommunityDid(env)
+        const communityDid = request.communityDid
 
         // Fetch all community fields to validate against
         const fields = await db

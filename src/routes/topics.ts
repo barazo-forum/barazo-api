@@ -1,6 +1,5 @@
 import { eq, and, desc, sql, inArray, notInArray, isNotNull, ne, or } from 'drizzle-orm'
 import type { FastifyPluginCallback } from 'fastify'
-import { getCommunityDid } from '../config/env.js'
 import { createPdsClient } from '../lib/pds-client.js'
 import {
   notFound,
@@ -251,7 +250,7 @@ export function topicRoutes(): FastifyPluginCallback {
 
         const { title, content, category, tags, labels } = parsed.data
         const now = new Date().toISOString()
-        const communityDid = getCommunityDid(env)
+        const communityDid = request.communityDid
 
         // Onboarding gate: block if user hasn't completed mandatory onboarding
         const onboarding = await checkOnboardingComplete(db, user.did, communityDid)
@@ -622,7 +621,7 @@ export function topicRoutes(): FastifyPluginCallback {
           // Single mode: filter by the one configured community
           // ---------------------------------------------------------------
 
-          const communityDid = getCommunityDid(env)
+          const communityDid = request.communityDid
 
           // Get category slugs matching allowed maturity levels
           const allowedCategories = await db
@@ -710,7 +709,7 @@ export function topicRoutes(): FastifyPluginCallback {
         }
 
         // Load muted words for content filtering
-        const communityDid = env.COMMUNITY_MODE === 'single' ? env.COMMUNITY_DID : undefined
+        const communityDid = request.communityDid
         const mutedWords = await loadMutedWords(request.user?.did, communityDid, db)
 
         // Batch-resolve author profiles
@@ -786,7 +785,7 @@ export function topicRoutes(): FastifyPluginCallback {
         }
 
         // Look up the category maturity rating
-        const communityDid = getCommunityDid(env)
+        const communityDid = request.communityDid
         const catRows = await db
           .select({ maturityRating: categories.maturityRating })
           .from(categories)
@@ -855,7 +854,7 @@ export function topicRoutes(): FastifyPluginCallback {
         }
 
         // Maturity check: verify the topic's category is within the user's allowed level
-        const communityDid = getCommunityDid(env)
+        const communityDid = request.communityDid
         const catRows = await db
           .select({ maturityRating: categories.maturityRating })
           .from(categories)

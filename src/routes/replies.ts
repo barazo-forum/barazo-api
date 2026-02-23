@@ -1,6 +1,5 @@
 import { eq, and, sql, asc, notInArray } from 'drizzle-orm'
 import type { FastifyPluginCallback } from 'fastify'
-import { getCommunityDid } from '../config/env.js'
 import { createPdsClient } from '../lib/pds-client.js'
 import {
   notFound,
@@ -542,7 +541,7 @@ export function replyRoutes(): FastifyPluginCallback {
         }
 
         // Maturity check: verify the topic's category is within the user's allowed level
-        const communityDid = getCommunityDid(env)
+        const communityDid = request.communityDid
         const catRows = await db
           .select({ maturityRating: categories.maturityRating })
           .from(categories)

@@ -1,6 +1,5 @@
 import { eq, and, sql, asc } from 'drizzle-orm'
 import type { FastifyPluginCallback } from 'fastify'
-import { getCommunityDid } from '../config/env.js'
 import { createPdsClient } from '../lib/pds-client.js'
 import {
   notFound,
@@ -161,7 +160,7 @@ export function reactionRoutes(): FastifyPluginCallback {
         }
 
         const { subjectUri, subjectCid, type: reactionType } = parsed.data
-        const communityDid = getCommunityDid(env)
+        const communityDid = request.communityDid
 
         // Onboarding gate: block if user hasn't completed mandatory onboarding
         const onboarding = await checkOnboardingComplete(db, user.did, communityDid)
@@ -360,7 +359,7 @@ export function reactionRoutes(): FastifyPluginCallback {
 
         const { uri } = request.params as { uri: string }
         const decodedUri = decodeURIComponent(uri)
-        const communityDid = getCommunityDid(env)
+        const communityDid = request.communityDid
 
         // Fetch existing reaction (scoped to this community)
         const existing = await db
@@ -464,7 +463,7 @@ export function reactionRoutes(): FastifyPluginCallback {
         }
 
         const { subjectUri, type: reactionType, cursor, limit } = parsed.data
-        const communityDid = getCommunityDid(env)
+        const communityDid = request.communityDid
         const conditions = [
           eq(reactions.subjectUri, subjectUri),
           eq(reactions.communityDid, communityDid),

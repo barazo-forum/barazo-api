@@ -1,6 +1,5 @@
 import { sql } from 'drizzle-orm'
 import type { FastifyPluginCallback } from 'fastify'
-import { getCommunityDid } from '../config/env.js'
 import { badRequest, errorResponseSchema } from '../lib/api-errors.js'
 import { loadMutedWords, contentMatchesMutedWords } from '../lib/muted-words.js'
 import { createEmbeddingService } from '../services/embedding.js'
@@ -265,7 +264,7 @@ export function searchRoutes(): FastifyPluginCallback {
 
         // Community scope: in single mode, restrict to the configured community
         const searchCommunityDid =
-          env.COMMUNITY_MODE === 'single' ? getCommunityDid(env) : undefined
+          request.communityDid
 
         // Determine search mode
         let searchMode: 'fulltext' | 'hybrid' = 'fulltext'
@@ -478,7 +477,7 @@ export function searchRoutes(): FastifyPluginCallback {
         }
 
         // Muted word annotation: flag matching content for client-side collapsing
-        const communityDid = env.COMMUNITY_MODE === 'single' ? env.COMMUNITY_DID : undefined
+        const communityDid = request.communityDid
         const mutedWords = await loadMutedWords(request.user?.did, communityDid, db)
 
         const annotatedResults = pageResults.map((r) => ({

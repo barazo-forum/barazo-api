@@ -1,6 +1,5 @@
 import { eq, and, desc, sql } from 'drizzle-orm'
 import type { FastifyPluginCallback } from 'fastify'
-import { getCommunityDid } from '../config/env.js'
 import { notFound, badRequest, conflict, errorResponseSchema } from '../lib/api-errors.js'
 import { wordFilterSchema, queueActionSchema, queueQuerySchema } from '../validation/anti-spam.js'
 import { moderationQueue } from '../db/schema/moderation-queue.js'
@@ -80,7 +79,7 @@ export function moderationQueueRoutes(): FastifyPluginCallback {
     const { db, env, authMiddleware } = app
     const requireModerator = createRequireModerator(db, authMiddleware, app.log)
     const requireAdmin = app.requireAdmin
-    const communityDid = getCommunityDid(env)
+    const communityDid = request.communityDid
 
     // -------------------------------------------------------------------
     // GET /api/moderation/queue (moderator+)
