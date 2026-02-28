@@ -63,6 +63,7 @@ function sampleUserRow(overrides?: Record<string, unknown>) {
     lastActiveAt: new Date(TEST_NOW),
     declaredAge: null,
     maturityPref: 'safe',
+    atprotoLabels: [],
     ...overrides,
   }
 }
@@ -491,6 +492,55 @@ describe('profile routes', () => {
       }>()
       expect(body.firstSeenAt).toBe(TEST_NOW)
       expect(body.lastActiveAt).toBe(TEST_NOW)
+    })
+
+    it('includes labels with isSelfLabel flag in response', async () => {
+      const labelsData = [
+        { val: 'adult-content', src: TEST_DID, neg: false, cts: '2026-01-15T10:00:00.000Z' },
+        {
+          val: '!warn',
+          src: 'did:plc:ozone-mod-service',
+          neg: false,
+          cts: '2026-01-20T12:00:00.000Z',
+        },
+      ]
+
+      selectChain.where.mockResolvedValueOnce([sampleUserRow({ atprotoLabels: labelsData })])
+      selectChain.where.mockResolvedValueOnce([{ count: 0 }])
+      selectChain.where.mockResolvedValueOnce([{ count: 0 }])
+      selectChain.where.mockResolvedValueOnce([{ count: 0 }])
+      selectChain.where.mockResolvedValueOnce([{ count: 0 }])
+
+      const response = await app.inject({
+        method: 'GET',
+        url: `/api/users/${TEST_HANDLE}`,
+      })
+
+      expect(response.statusCode).toBe(200)
+      const body = response.json<{
+        labels: Array<{ val: string; src: string; isSelfLabel: boolean }>
+      }>()
+      expect(body.labels).toStrictEqual([
+        { val: 'adult-content', src: TEST_DID, isSelfLabel: true },
+        { val: '!warn', src: 'did:plc:ozone-mod-service', isSelfLabel: false },
+      ])
+    })
+
+    it('returns empty labels array when user has no labels', async () => {
+      selectChain.where.mockResolvedValueOnce([sampleUserRow({ atprotoLabels: [] })])
+      selectChain.where.mockResolvedValueOnce([{ count: 0 }])
+      selectChain.where.mockResolvedValueOnce([{ count: 0 }])
+      selectChain.where.mockResolvedValueOnce([{ count: 0 }])
+      selectChain.where.mockResolvedValueOnce([{ count: 0 }])
+
+      const response = await app.inject({
+        method: 'GET',
+        url: `/api/users/${TEST_HANDLE}`,
+      })
+
+      expect(response.statusCode).toBe(200)
+      const body = response.json<{ labels: unknown[] }>()
+      expect(body.labels).toStrictEqual([])
     })
   })
 
