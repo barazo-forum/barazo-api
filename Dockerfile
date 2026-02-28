@@ -65,6 +65,9 @@ COPY --from=builder /app/deploy/ ./
 # Copy compiled output
 COPY --from=builder /workspace/barazo-api/dist/ ./dist/
 
+# Copy Drizzle migration files (applied on startup)
+COPY --from=builder /workspace/barazo-api/drizzle/ ./drizzle/
+
 # Create plugins directory for runtime plugin loading
 RUN mkdir -p /app/plugins && chown barazo:nodejs /app/plugins
 

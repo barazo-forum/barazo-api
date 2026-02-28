@@ -6,7 +6,9 @@ import type { FastifyInstance } from 'fastify'
 const mockExecute = vi.fn().mockResolvedValue([{ '?column?': 1 }])
 const mockDb = {
   execute: mockExecute,
-  select: vi.fn().mockReturnValue({ from: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue([]) }) }),
+  select: vi
+    .fn()
+    .mockReturnValue({ from: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue([]) }) }),
   insert: vi.fn(),
   update: vi.fn(),
   delete: vi.fn(),
@@ -18,6 +20,7 @@ const mockClient = {
 }
 vi.mock('../../../src/db/index.js', () => ({
   createDb: () => ({ db: mockDb, client: mockClient }),
+  runMigrations: vi.fn().mockResolvedValue(undefined),
 }))
 
 // Mock cache to avoid real Valkey connection

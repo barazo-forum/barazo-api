@@ -14,7 +14,7 @@ import type { Env } from './config/env.js'
 import { getCommunityDid } from './config/env.js'
 import { createSingleResolver, registerCommunityResolver } from './middleware/community-resolver.js'
 import type { CommunityResolver } from './middleware/community-resolver.js'
-import { createDb } from './db/index.js'
+import { createDb, runMigrations } from './db/index.js'
 import { createCache } from './cache/index.js'
 import { FirehoseService } from './firehose/service.js'
 import { createOAuthClient } from './auth/oauth-client.js'
@@ -106,7 +106,11 @@ export async function buildApp(env: Env) {
     trustProxy: true,
   })
 
-  // Database
+  // Database -- run migrations before creating the main connection pool
+  const migrationsFolder = new URL('../drizzle', import.meta.url).pathname
+  await runMigrations(env.DATABASE_URL, migrationsFolder)
+  app.log.info('Database migrations applied')
+
   const { db, client: dbClient } = createDb(env.DATABASE_URL)
   app.decorate('db', db)
   app.decorate('env', env)
