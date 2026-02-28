@@ -423,6 +423,216 @@ describe('firehose record processing (integration)', () => {
     })
   })
 
+  describe('tombstone: edit-then-delete preserves reply strongRefs', () => {
+    const topicUri = 'at://did:plc:integ-user1/forum.barazo.topic.post/edit-del-topic'
+    const originalCid = 'bafyoriginalcid'
+    const updatedCid = 'bafyupdatedcid'
+
+    it('reply retains original CID reference after topic edit and delete', async () => {
+      // Step 1: Create topic with original CID
+      await handler.handle({
+        id: 70,
+        action: 'create',
+        did: 'did:plc:integ-user1',
+        rev: 'rev1',
+        collection: 'forum.barazo.topic.post',
+        rkey: 'edit-del-topic',
+        record: {
+          title: 'Original Title',
+          content: 'Original content',
+          community: 'did:plc:community',
+          category: 'general',
+          createdAt: '2026-01-15T10:00:00.000Z',
+        },
+        cid: originalCid,
+        live: true,
+      })
+
+      // Step 2: Another user replies, referencing the original CID
+      await handler.handle({
+        id: 71,
+        action: 'create',
+        did: 'did:plc:integ-user2',
+        rev: 'rev1',
+        collection: 'forum.barazo.topic.reply',
+        rkey: 'edit-del-reply',
+        record: {
+          content: 'Reply referencing original CID',
+          root: { uri: topicUri, cid: originalCid },
+          parent: { uri: topicUri, cid: originalCid },
+          community: 'did:plc:community',
+          createdAt: '2026-01-15T11:00:00.000Z',
+        },
+        cid: 'bafyreplyeditdel',
+        live: true,
+      })
+
+      // Step 3: Author edits the topic (CID changes)
+      await handler.handle({
+        id: 72,
+        action: 'update',
+        did: 'did:plc:integ-user1',
+        rev: 'rev2',
+        collection: 'forum.barazo.topic.post',
+        rkey: 'edit-del-topic',
+        record: {
+          title: 'Updated Title',
+          content: 'Updated content',
+          community: 'did:plc:community',
+          category: 'general',
+          createdAt: '2026-01-15T10:00:00.000Z',
+        },
+        cid: updatedCid,
+        live: true,
+      })
+
+      // Step 4: Author deletes the topic
+      await handler.handle({
+        id: 73,
+        action: 'delete',
+        did: 'did:plc:integ-user1',
+        rev: 'rev3',
+        collection: 'forum.barazo.topic.post',
+        rkey: 'edit-del-topic',
+        live: true,
+      })
+
+      // Verify: topic is soft-deleted, not hard-deleted
+      const topic = one(await db.select().from(topics).where(eq(topics.uri, topicUri)))
+      expect(topic.isAuthorDeleted).toBe(true)
+      expect(topic.cid).toBe(updatedCid)
+
+      // Verify: reply still exists with original CID references intact
+      const replyUri = 'at://did:plc:integ-user2/forum.barazo.topic.reply/edit-del-reply'
+      const reply = one(await db.select().from(replies).where(eq(replies.uri, replyUri)))
+      expect(reply.isAuthorDeleted).toBe(false)
+      expect(reply.rootUri).toBe(topicUri)
+      expect(reply.rootCid).toBe(originalCid)
+      expect(reply.parentCid).toBe(originalCid)
+    })
+  })
+
+  describe('tombstone: rapid create-then-delete', () => {
+    it('topic ends up soft-deleted after create followed by immediate delete', async () => {
+      const topicUri = 'at://did:plc:integ-user1/forum.barazo.topic.post/rapid-topic'
+
+      // Create then immediately delete (simulates rapid firehose events)
+      await handler.handle({
+        id: 80,
+        action: 'create',
+        did: 'did:plc:integ-user1',
+        rev: 'rev1',
+        collection: 'forum.barazo.topic.post',
+        rkey: 'rapid-topic',
+        record: {
+          title: 'Ephemeral Topic',
+          content: 'Gone before you know it',
+          community: 'did:plc:community',
+          category: 'general',
+          createdAt: '2026-01-15T10:00:00.000Z',
+        },
+        cid: 'bafyrapid1',
+        live: true,
+      })
+
+      await handler.handle({
+        id: 81,
+        action: 'delete',
+        did: 'did:plc:integ-user1',
+        rev: 'rev2',
+        collection: 'forum.barazo.topic.post',
+        rkey: 'rapid-topic',
+        live: true,
+      })
+
+      // Topic row should exist but be soft-deleted
+      const topic = one(await db.select().from(topics).where(eq(topics.uri, topicUri)))
+      expect(topic.isAuthorDeleted).toBe(true)
+    })
+
+    it('replies survive when topic is rapidly created and deleted', async () => {
+      const topicUri = 'at://did:plc:integ-user1/forum.barazo.topic.post/rapid-topic2'
+
+      // Create topic
+      await handler.handle({
+        id: 82,
+        action: 'create',
+        did: 'did:plc:integ-user1',
+        rev: 'rev1',
+        collection: 'forum.barazo.topic.post',
+        rkey: 'rapid-topic2',
+        record: {
+          title: 'Another Ephemeral Topic',
+          content: 'Will be deleted quickly',
+          community: 'did:plc:community',
+          category: 'general',
+          createdAt: '2026-01-15T10:00:00.000Z',
+        },
+        cid: 'bafyrapid2',
+        live: true,
+      })
+
+      // Another user replies before deletion
+      await handler.handle({
+        id: 83,
+        action: 'create',
+        did: 'did:plc:integ-user2',
+        rev: 'rev1',
+        collection: 'forum.barazo.topic.reply',
+        rkey: 'rapid-reply1',
+        record: {
+          content: 'Quick reply before deletion',
+          root: { uri: topicUri, cid: 'bafyrapid2' },
+          parent: { uri: topicUri, cid: 'bafyrapid2' },
+          community: 'did:plc:community',
+          createdAt: '2026-01-15T10:00:01.000Z',
+        },
+        cid: 'bafyrapidreply1',
+        live: true,
+      })
+
+      // Rapid delete of the topic
+      await handler.handle({
+        id: 84,
+        action: 'delete',
+        did: 'did:plc:integ-user1',
+        rev: 'rev2',
+        collection: 'forum.barazo.topic.post',
+        rkey: 'rapid-topic2',
+        live: true,
+      })
+
+      // Topic is soft-deleted
+      const topic = one(await db.select().from(topics).where(eq(topics.uri, topicUri)))
+      expect(topic.isAuthorDeleted).toBe(true)
+
+      // Reply is preserved (belongs to another user)
+      const replyUri = 'at://did:plc:integ-user2/forum.barazo.topic.reply/rapid-reply1'
+      const reply = one(await db.select().from(replies).where(eq(replies.uri, replyUri)))
+      expect(reply.isAuthorDeleted).toBe(false)
+      expect(reply.content).toBe('Quick reply before deletion')
+    })
+
+    it('delete before create is handled gracefully (out-of-order events)', async () => {
+      // Firehose can deliver events out of order; delete arriving before create
+      // should not throw
+      await handler.handle({
+        id: 85,
+        action: 'delete',
+        did: 'did:plc:integ-user1',
+        rev: 'rev2',
+        collection: 'forum.barazo.topic.post',
+        rkey: 'ooo-topic',
+        live: true,
+      })
+
+      // Topic doesn't exist, so the update should be a no-op (0 rows affected)
+      const topicUri = 'at://did:plc:integ-user1/forum.barazo.topic.post/ooo-topic'
+      const result = await db.select().from(topics).where(eq(topics.uri, topicUri))
+      expect(result).toHaveLength(0)
+    })
+  })
+
   describe('unsupported and invalid records', () => {
     it('skips unsupported collections', async () => {
       const event: RecordEvent = {
