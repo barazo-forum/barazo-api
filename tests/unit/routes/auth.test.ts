@@ -5,6 +5,7 @@ import type { FastifyInstance } from 'fastify'
 import type { SessionService, SessionWithToken, Session } from '../../../src/auth/session.js'
 import type { Env } from '../../../src/config/env.js'
 import { authRoutes } from '../../../src/routes/auth.js'
+import { users } from '../../../src/db/schema/users.js'
 import type { HandleResolver } from '../../../src/lib/handle-resolver.js'
 import {
   BARAZO_BASE_SCOPES,
@@ -312,6 +313,32 @@ describe('auth routes', () => {
       expect(response.statusCode).toBe(400)
       const body = response.json<{ error: string }>()
       expect(body.error).toBe('Invalid callback parameters')
+    })
+
+    it('upserts user row in database on successful callback', async () => {
+      const mockSession = makeMockSessionWithToken()
+      const mockOAuthSession = { did: TEST_DID }
+
+      callbackFn.mockResolvedValueOnce({
+        session: mockOAuthSession,
+        state: 'some-state',
+      })
+      resolveFn.mockResolvedValueOnce(TEST_HANDLE)
+      createSessionFn.mockResolvedValueOnce(mockSession)
+
+      await app.inject({
+        method: 'GET',
+        url: '/api/auth/callback?iss=https://pds.example.com&code=test-code&state=test-state',
+      })
+
+      // Verify user row was upserted (insert with onConflictDoUpdate)
+      expect(dbInsertFn).toHaveBeenCalledWith(users)
+      expect(dbValuesFn).toHaveBeenCalledWith(
+        expect.objectContaining({ did: TEST_DID, handle: TEST_HANDLE })
+      )
+      expect(dbOnConflictDoUpdateFn).toHaveBeenCalledWith(
+        expect.objectContaining({ target: users.did })
+      )
     })
 
     it('redirects to frontend with error when OAuth client throws', async () => {

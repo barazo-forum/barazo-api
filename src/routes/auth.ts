@@ -9,6 +9,7 @@ import {
   FALLBACK_SCOPE,
   hasCrossPostScopes,
 } from '../auth/scopes.js'
+import { users } from '../db/schema/users.js'
 import { userPreferences } from '../db/schema/user-preferences.js'
 
 // ---------------------------------------------------------------------------
@@ -130,6 +131,15 @@ export function authRoutes(oauthClient: NodeOAuthClient): FastifyPluginCallback 
           // Resolve handle from DID via AT Protocol identity layer
           // (PLC directory lookup with Valkey cache + DB fallback)
           const handle = await handleResolver.resolve(did)
+
+          // Ensure user row exists (first login creates, subsequent logins update handle)
+          await app.db
+            .insert(users)
+            .values({ did, handle })
+            .onConflictDoUpdate({
+              target: users.did,
+              set: { handle, lastActiveAt: new Date() },
+            })
 
           const session = await sessionService.createSession(did, handle)
 
