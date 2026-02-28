@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, boolean, integer, index } from 'drizzle-orm/pg-core'
+import { pgTable, text, timestamp, boolean, integer, index, jsonb } from 'drizzle-orm/pg-core'
 import { sql } from 'drizzle-orm'
 
 export const users = pgTable(
@@ -25,6 +25,11 @@ export const users = pgTable(
       .default('safe'),
     /** Account creation date resolved from PLC directory on first encounter. */
     accountCreatedAt: timestamp('account_created_at', { withTimezone: true }),
+    /** AT Protocol labels from the Bluesky AppView (self-applied and moderator-applied). */
+    atprotoLabels: jsonb('atproto_labels')
+      .$type<Array<{ val: string; src: string; neg: boolean; cts: string }>>()
+      .notNull()
+      .default([]),
   },
   (table) => [
     index('users_role_elevated_idx')
