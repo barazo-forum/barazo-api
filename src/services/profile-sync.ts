@@ -14,6 +14,10 @@ export interface ProfileData {
   avatarUrl: string | null
   bannerUrl: string | null
   bio: string | null
+  followersCount: number
+  followsCount: number
+  atprotoPostsCount: number
+  hasBlueskyProfile: boolean
 }
 
 export interface ProfileSyncService {
@@ -26,6 +30,10 @@ const NULL_PROFILE: ProfileData = {
   avatarUrl: null,
   bannerUrl: null,
   bio: null,
+  followersCount: 0,
+  followsCount: 0,
+  atprotoPostsCount: 0,
+  hasBlueskyProfile: false,
 }
 
 // ---------------------------------------------------------------------------
@@ -42,6 +50,9 @@ interface AgentLike {
       avatar?: string
       banner?: string
       description?: string
+      followersCount?: number
+      followsCount?: number
+      postsCount?: number
     }
   }>
 }
@@ -88,6 +99,10 @@ export function createProfileSyncService(
           avatarUrl: response.data.avatar ?? null,
           bannerUrl: response.data.banner ?? null,
           bio: response.data.description ?? null,
+          followersCount: response.data.followersCount ?? 0,
+          followsCount: response.data.followsCount ?? 0,
+          atprotoPostsCount: response.data.postsCount ?? 0,
+          hasBlueskyProfile: true,
         }
       } catch (err: unknown) {
         logger.debug({ did, err }, 'profile sync failed: could not fetch profile from public API')
@@ -103,6 +118,10 @@ export function createProfileSyncService(
             avatarUrl: profileData.avatarUrl,
             bannerUrl: profileData.bannerUrl,
             bio: profileData.bio,
+            followersCount: profileData.followersCount,
+            followsCount: profileData.followsCount,
+            atprotoPostsCount: profileData.atprotoPostsCount,
+            hasBlueskyProfile: profileData.hasBlueskyProfile,
             lastActiveAt: new Date(),
           })
           .where(eq(users.did, did))
