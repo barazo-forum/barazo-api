@@ -1,0 +1,1 @@
+ALTER TABLE "users" ADD COLUMN "atproto_labels" jsonb DEFAULT '[]'::jsonb NOT NULL;
