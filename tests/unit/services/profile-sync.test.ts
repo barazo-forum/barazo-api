@@ -3,7 +3,6 @@ import { createProfileSyncService } from '../../../src/services/profile-sync.js'
 import type { ProfileSyncService } from '../../../src/services/profile-sync.js'
 import type { Logger } from '../../../src/lib/logger.js'
 import type { Database } from '../../../src/db/index.js'
-import type { NodeOAuthClient } from '@atproto/oauth-client-node'
 
 // ---------------------------------------------------------------------------
 // Mock logger
@@ -26,12 +25,6 @@ function createMockLogger(): Logger {
 // ---------------------------------------------------------------------------
 // Mock helpers
 // ---------------------------------------------------------------------------
-
-function createMockOAuthClient(overrides?: { restore?: ReturnType<typeof vi.fn> }) {
-  return {
-    restore: overrides?.restore ?? vi.fn(),
-  } as unknown as NodeOAuthClient
-}
 
 function createMockDb(overrides?: { whereReturn?: ReturnType<typeof vi.fn> }) {
   const whereFn = overrides?.whereReturn ?? vi.fn().mockResolvedValue(undefined)
@@ -83,21 +76,15 @@ const MOCK_MINIMAL_PROFILE_RESPONSE = {
 describe('ProfileSyncService', () => {
   let service: ProfileSyncService
   let mockLogger: Logger
-  let mockOAuthClient: NodeOAuthClient
   let mockDb: ReturnType<typeof createMockDb>
   let mockGetProfile: ReturnType<typeof vi.fn>
-  let mockRestore: ReturnType<typeof vi.fn>
 
   beforeEach(() => {
     mockLogger = createMockLogger()
     mockGetProfile = vi.fn().mockResolvedValue(MOCK_PROFILE_RESPONSE)
-
-    // Mock session object that Agent constructor can use
-    mockRestore = vi.fn().mockResolvedValue({})
-    mockOAuthClient = createMockOAuthClient({ restore: mockRestore })
     mockDb = createMockDb()
 
-    service = createProfileSyncService(mockOAuthClient, mockDb, mockLogger, {
+    service = createProfileSyncService(mockDb, mockLogger, {
       createAgent: () => ({
         getProfile: mockGetProfile,
       }),
@@ -119,12 +106,6 @@ describe('ProfileSyncService', () => {
         'https://cdn.bsky.app/img/banner/plain/did:plc:testuser123456789012/bafkreixyz@jpeg',
       bio: 'Exploring the decentralized web.',
     })
-  })
-
-  it('restores OAuth session for the given DID', async () => {
-    await service.syncProfile(TEST_DID)
-
-    expect(mockRestore).toHaveBeenCalledWith(TEST_DID)
   })
 
   it('calls getProfile with the user DID', async () => {
@@ -157,35 +138,6 @@ describe('ProfileSyncService', () => {
   })
 
   // -------------------------------------------------------------------------
-  // OAuth restore failure
-  // -------------------------------------------------------------------------
-
-  it('returns null values when OAuth session restore fails', async () => {
-    mockRestore.mockRejectedValue(new Error('No stored session'))
-
-    const result = await service.syncProfile(TEST_DID)
-
-    expect(result).toStrictEqual({
-      displayName: null,
-      avatarUrl: null,
-      bannerUrl: null,
-      bio: null,
-    })
-  })
-
-  it('logs at debug level when OAuth session restore fails', async () => {
-    mockRestore.mockRejectedValue(new Error('No stored session'))
-
-    await service.syncProfile(TEST_DID)
-
-    const debugFn = mockLogger.debug as ReturnType<typeof vi.fn>
-    expect(debugFn).toHaveBeenCalledWith(
-      expect.objectContaining({ did: TEST_DID }) as Record<string, unknown>,
-      expect.stringContaining('profile sync failed') as string
-    )
-  })
-
-  // -------------------------------------------------------------------------
   // getProfile failure
   // -------------------------------------------------------------------------
 
@@ -202,6 +154,18 @@ describe('ProfileSyncService', () => {
     })
   })
 
+  it('logs at debug level when getProfile fails', async () => {
+    mockGetProfile.mockRejectedValue(new Error('Network timeout'))
+
+    await service.syncProfile(TEST_DID)
+
+    const debugFn = mockLogger.debug as ReturnType<typeof vi.fn>
+    expect(debugFn).toHaveBeenCalledWith(
+      expect.objectContaining({ did: TEST_DID }) as Record<string, unknown>,
+      expect.stringContaining('profile sync failed') as string
+    )
+  })
+
   // -------------------------------------------------------------------------
   // DB update failure
   // -------------------------------------------------------------------------
@@ -211,7 +175,7 @@ describe('ProfileSyncService', () => {
       whereReturn: vi.fn().mockRejectedValue(new Error('DB connection lost')),
     })
 
-    service = createProfileSyncService(mockOAuthClient, mockDb, mockLogger, {
+    service = createProfileSyncService(mockDb, mockLogger, {
       createAgent: () => ({
         getProfile: mockGetProfile,
       }),
@@ -234,7 +198,7 @@ describe('ProfileSyncService', () => {
       whereReturn: vi.fn().mockRejectedValue(new Error('DB connection lost')),
     })
 
-    service = createProfileSyncService(mockOAuthClient, mockDb, mockLogger, {
+    service = createProfileSyncService(mockDb, mockLogger, {
       createAgent: () => ({
         getProfile: mockGetProfile,
       }),

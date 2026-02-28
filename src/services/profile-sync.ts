@@ -1,6 +1,5 @@
 import { Agent } from '@atproto/api'
 import { eq } from 'drizzle-orm'
-import type { NodeOAuthClient } from '@atproto/oauth-client-node'
 import type { Logger } from '../lib/logger.js'
 import type { Database } from '../db/index.js'
 import { users } from '../db/schema/users.js'
@@ -9,7 +8,7 @@ import { users } from '../db/schema/users.js'
 // Types
 // ---------------------------------------------------------------------------
 
-/** Profile data extracted from the user's PDS. */
+/** Profile data fetched from the Bluesky public API. */
 export interface ProfileData {
   displayName: string | null
   avatarUrl: string | null
@@ -30,8 +29,11 @@ const NULL_PROFILE: ProfileData = {
 }
 
 // ---------------------------------------------------------------------------
-// Agent factory (injectable for testing)
+// Public API agent factory (injectable for testing)
 // ---------------------------------------------------------------------------
+
+/** Bluesky public AppView API -- no auth required for profile reads. */
+const BSKY_PUBLIC_API = 'https://public.api.bsky.app'
 
 interface AgentLike {
   getProfile(params: { actor: string }): Promise<{
@@ -45,12 +47,12 @@ interface AgentLike {
 }
 
 interface AgentFactory {
-  createAgent(session: unknown): AgentLike
+  createAgent(): AgentLike
 }
 
 const defaultAgentFactory: AgentFactory = {
-  createAgent(session: unknown): AgentLike {
-    return new Agent(session as ConstructorParameters<typeof Agent>[0])
+  createAgent(): AgentLike {
+    return new Agent(new URL(BSKY_PUBLIC_API))
   },
 }
 
@@ -60,34 +62,26 @@ const defaultAgentFactory: AgentFactory = {
 
 /**
  * Create a profile sync service that fetches a user's AT Protocol profile
- * from their PDS at login time and updates the local users table.
+ * via the Bluesky public API at login time and updates the local users table.
  *
- * @param oauthClient - AT Protocol OAuth client for session restore
+ * Uses the public AppView API (no auth required) so profile sync works
+ * regardless of which OAuth scopes the user granted.
+ *
  * @param db - Drizzle database instance
  * @param logger - Pino logger
  * @param agentFactory - Optional factory for creating Agent instances (testing)
  */
 export function createProfileSyncService(
-  oauthClient: NodeOAuthClient,
   db: Database,
   logger: Logger,
   agentFactory: AgentFactory = defaultAgentFactory
 ): ProfileSyncService {
   return {
     async syncProfile(did: string): Promise<ProfileData> {
-      // 1. Restore OAuth session and create agent
-      let agent: AgentLike
-      try {
-        const session = await oauthClient.restore(did)
-        agent = agentFactory.createAgent(session)
-      } catch (err: unknown) {
-        logger.debug({ did, err }, 'profile sync failed: could not restore OAuth session')
-        return NULL_PROFILE
-      }
-
-      // 2. Fetch profile from PDS
+      // 1. Fetch profile from Bluesky public API (no auth needed)
       let profileData: ProfileData
       try {
+        const agent = agentFactory.createAgent()
         const response = await agent.getProfile({ actor: did })
         profileData = {
           displayName: response.data.displayName ?? null,
@@ -96,11 +90,11 @@ export function createProfileSyncService(
           bio: response.data.description ?? null,
         }
       } catch (err: unknown) {
-        logger.debug({ did, err }, 'profile sync failed: could not fetch profile from PDS')
+        logger.debug({ did, err }, 'profile sync failed: could not fetch profile from public API')
         return NULL_PROFILE
       }
 
-      // 3. Best-effort DB update
+      // 2. Best-effort DB update
       try {
         await db
           .update(users)

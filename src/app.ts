@@ -216,8 +216,8 @@ export async function buildApp(env: Env) {
   const handleResolver = createHandleResolver(cache, db, app.log)
   app.decorate('handleResolver', handleResolver)
 
-  // Profile sync (fetches AT Protocol profile from PDS at login)
-  const profileSync = createProfileSyncService(oauthClient, db, app.log)
+  // Profile sync (fetches AT Protocol profile from Bluesky public API at login)
+  const profileSync = createProfileSyncService(db, app.log)
   app.decorate('profileSync', profileSync)
 
   // PLC DID service + Setup service
