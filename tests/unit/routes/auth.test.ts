@@ -386,6 +386,44 @@ describe('auth routes', () => {
       expect(refreshCookie?.value).toBe(TEST_SID)
     })
 
+    it('includes displayName and avatarUrl from users table', async () => {
+      const mockSession = makeMockSessionWithToken()
+      refreshSessionFn.mockResolvedValueOnce(mockSession)
+      // First select: users table → profile data
+      dbWhereFn.mockResolvedValueOnce([
+        { displayName: 'Alice Wonderland', avatarUrl: 'https://cdn.bsky.app/avatar.jpg' },
+      ])
+      // Second select: userPreferences table
+      dbWhereFn.mockResolvedValueOnce([])
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/api/auth/refresh',
+        cookies: { barazo_refresh: TEST_SID },
+      })
+
+      expect(response.statusCode).toBe(200)
+      const body = response.json<{ displayName: string | null; avatarUrl: string | null }>()
+      expect(body.displayName).toBe('Alice Wonderland')
+      expect(body.avatarUrl).toBe('https://cdn.bsky.app/avatar.jpg')
+    })
+
+    it('returns null displayName and avatarUrl when user row not found', async () => {
+      const mockSession = makeMockSessionWithToken()
+      refreshSessionFn.mockResolvedValueOnce(mockSession)
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/api/auth/refresh',
+        cookies: { barazo_refresh: TEST_SID },
+      })
+
+      expect(response.statusCode).toBe(200)
+      const body = response.json<{ displayName: string | null; avatarUrl: string | null }>()
+      expect(body.displayName).toBeNull()
+      expect(body.avatarUrl).toBeNull()
+    })
+
     it('returns 401 when no cookie', async () => {
       const response = await app.inject({
         method: 'POST',
@@ -479,6 +517,28 @@ describe('auth routes', () => {
       expect(body.handle).toBe(TEST_HANDLE)
 
       expect(validateAccessTokenFn).toHaveBeenCalledWith(TEST_ACCESS_TOKEN)
+    })
+
+    it('includes displayName and avatarUrl from users table', async () => {
+      const mockSession = makeMockSession()
+      validateAccessTokenFn.mockResolvedValueOnce(mockSession)
+      // First select: users table → profile data
+      dbWhereFn.mockResolvedValueOnce([
+        { displayName: 'Alice Wonderland', avatarUrl: 'https://cdn.bsky.app/avatar.jpg' },
+      ])
+      // Second select: userPreferences table
+      dbWhereFn.mockResolvedValueOnce([])
+
+      const response = await app.inject({
+        method: 'GET',
+        url: '/api/auth/me',
+        headers: { authorization: `Bearer ${TEST_ACCESS_TOKEN}` },
+      })
+
+      expect(response.statusCode).toBe(200)
+      const body = response.json<{ displayName: string | null; avatarUrl: string | null }>()
+      expect(body.displayName).toBe('Alice Wonderland')
+      expect(body.avatarUrl).toBe('https://cdn.bsky.app/avatar.jpg')
     })
 
     it('returns 401 for missing Authorization header', async () => {
@@ -658,6 +718,9 @@ describe('auth routes', () => {
     it('/me returns crossPostScopesGranted from user preferences', async () => {
       const mockSession = makeMockSession()
       validateAccessTokenFn.mockResolvedValueOnce(mockSession)
+      // First select: users table (profile data)
+      dbWhereFn.mockResolvedValueOnce([])
+      // Second select: userPreferences table
       dbWhereFn.mockResolvedValueOnce([{ crossPostScopesGranted: true }])
 
       const response = await app.inject({
@@ -690,6 +753,9 @@ describe('auth routes', () => {
     it('/refresh returns crossPostScopesGranted', async () => {
       const mockSession = makeMockSessionWithToken()
       refreshSessionFn.mockResolvedValueOnce(mockSession)
+      // First select: users table (profile data)
+      dbWhereFn.mockResolvedValueOnce([])
+      // Second select: userPreferences table
       dbWhereFn.mockResolvedValueOnce([{ crossPostScopesGranted: true }])
 
       const response = await app.inject({

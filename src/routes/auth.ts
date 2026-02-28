@@ -261,6 +261,12 @@ export function authRoutes(oauthClient: NodeOAuthClient): FastifyPluginCallback 
           maxAge: sessionTtl,
         })
 
+        // Fetch profile data (displayName, avatarUrl) from users table
+        const userRows = await app.db
+          .select({ displayName: users.displayName, avatarUrl: users.avatarUrl })
+          .from(users)
+          .where(eq(users.did, session.did))
+
         // Query cross-post scope status from user preferences
         const prefRows = await app.db
           .select({ crossPostScopesGranted: userPreferences.crossPostScopesGranted })
@@ -272,6 +278,8 @@ export function authRoutes(oauthClient: NodeOAuthClient): FastifyPluginCallback 
           expiresAt: session.accessTokenExpiresAt,
           did: session.did,
           handle: session.handle,
+          displayName: userRows[0]?.displayName ?? null,
+          avatarUrl: userRows[0]?.avatarUrl ?? null,
           crossPostScopesGranted: prefRows[0]?.crossPostScopesGranted ?? false,
         })
       } catch (err: unknown) {
@@ -321,6 +329,12 @@ export function authRoutes(oauthClient: NodeOAuthClient): FastifyPluginCallback 
           return await reply.status(401).send({ error: 'Invalid or expired token' })
         }
 
+        // Fetch profile data (displayName, avatarUrl) from users table
+        const meUserRows = await app.db
+          .select({ displayName: users.displayName, avatarUrl: users.avatarUrl })
+          .from(users)
+          .where(eq(users.did, session.did))
+
         // Query cross-post scope status from user preferences
         const mePrefRows = await app.db
           .select({ crossPostScopesGranted: userPreferences.crossPostScopesGranted })
@@ -330,6 +344,8 @@ export function authRoutes(oauthClient: NodeOAuthClient): FastifyPluginCallback 
         return await reply.status(200).send({
           did: session.did,
           handle: session.handle,
+          displayName: meUserRows[0]?.displayName ?? null,
+          avatarUrl: meUserRows[0]?.avatarUrl ?? null,
           crossPostScopesGranted: mePrefRows[0]?.crossPostScopesGranted ?? false,
         })
       } catch (err: unknown) {
