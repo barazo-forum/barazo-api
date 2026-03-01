@@ -130,6 +130,32 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
 
+  schema-check:
+    name: Schema Drift Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: pnpm/action-setup@41ff72655975bd51cab0327fa583b6e92b6d3061 # v4
+      - uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6.2.0
+        with:
+          node-version: 24
+          cache: 'pnpm'
+      - name: Clone and build barazo-lexicons
+        run: |
+          git clone --depth 1 https://github.com/barazo-forum/barazo-lexicons.git ../barazo-lexicons
+          cd ../barazo-lexicons && pnpm install --ignore-scripts && pnpm run build
+      - run: pnpm install --frozen-lockfile
+      - name: Check for uncommitted schema changes
+        run: |
+          pnpm db:generate --name=ci-check
+          if [ -n "$(git status --porcelain drizzle/)" ]; then
+            echo "::error::Schema changes detected but no migration committed."
+            echo "Run 'pnpm db:generate' locally and commit the result."
+            git diff drizzle/
+            exit 1
+          fi
+          echo "Schema is in sync with migrations."
+
   security:
     name: Security Scan
     runs-on: ubuntu-latest
