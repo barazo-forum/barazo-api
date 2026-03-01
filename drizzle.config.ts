@@ -34,6 +34,9 @@ export default defineConfig({
   ],
   out: './drizzle',
   dialect: 'postgresql',
+  entities: {
+    roles: true,
+  },
   dbCredentials: {
     url: process.env['DATABASE_URL'] ?? 'postgresql://barazo:barazo_dev@localhost:5432/barazo',
   },

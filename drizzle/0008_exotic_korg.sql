@@ -1,1 +1,0 @@
-ALTER TABLE "community_settings" ADD COLUMN "reaction_set" jsonb DEFAULT '["like"]'::jsonb NOT NULL;

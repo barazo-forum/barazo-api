@@ -1,1 +1,0 @@
-ALTER TABLE "community_settings" ADD COLUMN "admin_did" text;

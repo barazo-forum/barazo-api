@@ -1,1 +1,0 @@
-ALTER TABLE "users" ADD COLUMN "maturity_pref" text DEFAULT 'safe' NOT NULL;
