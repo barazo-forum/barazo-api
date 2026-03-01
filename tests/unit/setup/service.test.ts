@@ -33,8 +33,17 @@ function createMockDb() {
     values: valuesFn,
   })
 
+  // Update chain: db.update().set().where() -> Promise<unknown[]>
+  const whereUpdateFn = vi.fn<() => Promise<unknown[]>>().mockResolvedValue([])
+  const setFn = vi.fn<() => { where: typeof whereUpdateFn }>().mockReturnValue({
+    where: whereUpdateFn,
+  })
+  const updateFn = vi.fn<() => { set: typeof setFn }>().mockReturnValue({
+    set: setFn,
+  })
+
   return {
-    db: { select: selectFn, insert: insertFn },
+    db: { select: selectFn, insert: insertFn, update: updateFn },
     mocks: {
       selectFn,
       fromFn,
@@ -43,6 +52,9 @@ function createMockDb() {
       valuesFn,
       onConflictDoUpdateFn,
       returningFn,
+      updateFn,
+      setFn,
+      whereUpdateFn,
     },
   }
 }
@@ -255,6 +267,33 @@ describe('SetupService', () => {
       })
 
       expect(mockPlcDidService.generateDid).not.toHaveBeenCalled()
+    })
+
+    it('promotes initializing user to admin role in users table', async () => {
+      mocks.returningFn.mockResolvedValueOnce([
+        { communityName: 'Test Forum', communityDid: null },
+      ])
+
+      const result = await service.initialize({
+        did: TEST_DID,
+        communityName: 'Test Forum',
+      })
+
+      expect(result).toStrictEqual({
+        initialized: true,
+        adminDid: TEST_DID,
+        communityName: 'Test Forum',
+      })
+      expect(mocks.updateFn).toHaveBeenCalledOnce()
+    })
+
+    it('does not promote user when community is already initialized', async () => {
+      mocks.returningFn.mockResolvedValueOnce([])
+
+      const result = await service.initialize({ did: TEST_DID })
+
+      expect(result).toStrictEqual({ alreadyInitialized: true })
+      expect(mocks.updateFn).not.toHaveBeenCalled()
     })
   })
 

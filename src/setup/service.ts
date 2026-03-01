@@ -1,5 +1,6 @@
 import { eq, sql } from 'drizzle-orm'
 import { communitySettings } from '../db/schema/community-settings.js'
+import { users } from '../db/schema/users.js'
 import type { Database } from '../db/index.js'
 import { encrypt } from '../lib/encryption.js'
 import type { Logger } from '../lib/logger.js'
@@ -181,6 +182,10 @@ export function createSetupService(
         logger.warn({ did }, 'Setup initialize attempted on already-initialized community')
         return { alreadyInitialized: true }
       }
+
+      // Promote the initializing user to admin in the users table
+      await db.update(users).set({ role: 'admin' }).where(eq(users.did, did))
+      logger.info({ did }, 'User promoted to admin role')
 
       const finalName = row.communityName
       logger.info({ did, communityName: finalName }, 'Community initialized')
