@@ -913,6 +913,28 @@ export function profileRoutes(): FastifyPluginCallback {
           blockedDids: row.blockedDids ?? [],
         }))
 
+        // Always include the current community so the settings page shows it
+        // even if the user has never saved per-community preferences.
+        // No membership record is created — this is purely ephemeral.
+        const currentCommunityDid = request.communityDid
+        if (
+          currentCommunityDid &&
+          !communities.some((c) => c.communityDid === currentCommunityDid)
+        ) {
+          const nameRows = await db
+            .select({ communityName: communitySettings.communityName })
+            .from(communitySettings)
+            .where(eq(communitySettings.communityDid, currentCommunityDid))
+
+          communities.push({
+            communityDid: currentCommunityDid,
+            communityName: nameRows[0]?.communityName ?? currentCommunityDid,
+            maturityLevel: 'inherit',
+            mutedWords: [],
+            blockedDids: [],
+          })
+        }
+
         return reply.status(200).send({ communities })
       }
     )

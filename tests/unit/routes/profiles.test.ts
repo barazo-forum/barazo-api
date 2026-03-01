@@ -184,7 +184,10 @@ function createPassthroughAuthMiddleware(): AuthMiddleware {
 // Helper: build app with mocked deps
 // ---------------------------------------------------------------------------
 
-async function buildTestApp(user?: RequestUser): Promise<FastifyInstance> {
+async function buildTestApp(
+  user?: RequestUser,
+  options?: { communityDid?: string }
+): Promise<FastifyInstance> {
   const app = Fastify({ logger: false })
 
   app.decorate('db', mockDb as never)
@@ -206,6 +209,14 @@ async function buildTestApp(user?: RequestUser): Promise<FastifyInstance> {
     getTrustScore: vi.fn().mockResolvedValue(1.0),
   } as never)
   app.decorateRequest('user', undefined as RequestUser | undefined)
+  app.decorateRequest('communityDid', undefined as string | undefined)
+
+  if (options?.communityDid) {
+    app.addHook('onRequest', (request, _reply, done) => {
+      request.communityDid = options.communityDid
+      done()
+    })
+  }
 
   // Override the logger so we can capture log calls
   app.log.info = mockLogger.info
@@ -1965,6 +1976,100 @@ describe('profile routes', () => {
       expect(response.statusCode).toBe(200)
       const body = response.json<{ communities: { communityName: string }[] }>()
       expect(body.communities[0].communityName).toBe(COMMUNITY_DID)
+    })
+
+    it('includes current community with defaults when user has no overrides', async () => {
+      const appWithCommunity = await buildTestApp(testUser(), {
+        communityDid: COMMUNITY_DID,
+      })
+
+      // 1st select: preferences query returns empty (no overrides saved)
+      selectChain.where.mockResolvedValueOnce([])
+      // 2nd select: communitySettings lookup for current community name
+      selectChain.where.mockResolvedValueOnce([{ communityName: 'Staging Community' }])
+
+      const response = await appWithCommunity.inject({
+        method: 'GET',
+        url: '/api/users/me/preferences/communities',
+        headers: { authorization: 'Bearer test-token' },
+      })
+
+      expect(response.statusCode).toBe(200)
+      const body = response.json<{
+        communities: {
+          communityDid: string
+          communityName: string
+          maturityLevel: string
+          mutedWords: string[]
+          blockedDids: string[]
+        }[]
+      }>()
+      expect(body.communities).toHaveLength(1)
+      expect(body.communities[0].communityDid).toBe(COMMUNITY_DID)
+      expect(body.communities[0].communityName).toBe('Staging Community')
+      expect(body.communities[0].maturityLevel).toBe('inherit')
+      expect(body.communities[0].mutedWords).toEqual([])
+      expect(body.communities[0].blockedDids).toEqual([])
+
+      await appWithCommunity.close()
+    })
+
+    it('does not duplicate current community when overrides already exist for it', async () => {
+      const appWithCommunity = await buildTestApp(testUser(), {
+        communityDid: COMMUNITY_DID,
+      })
+
+      // preferences query returns existing override for the same community
+      selectChain.where.mockResolvedValueOnce([
+        {
+          communityDid: COMMUNITY_DID,
+          maturityOverride: 'mature',
+          mutedWords: ['spam'],
+          blockedDids: [],
+          communityName: 'Staging Community',
+        },
+      ])
+
+      const response = await appWithCommunity.inject({
+        method: 'GET',
+        url: '/api/users/me/preferences/communities',
+        headers: { authorization: 'Bearer test-token' },
+      })
+
+      expect(response.statusCode).toBe(200)
+      const body = response.json<{
+        communities: { communityDid: string }[]
+      }>()
+      expect(body.communities).toHaveLength(1)
+      expect(body.communities[0].communityDid).toBe(COMMUNITY_DID)
+
+      await appWithCommunity.close()
+    })
+
+    it('falls back to communityDid for current community name when not in communitySettings', async () => {
+      const appWithCommunity = await buildTestApp(testUser(), {
+        communityDid: COMMUNITY_DID,
+      })
+
+      // 1st select: no overrides
+      selectChain.where.mockResolvedValueOnce([])
+      // 2nd select: communitySettings lookup returns empty
+      selectChain.where.mockResolvedValueOnce([])
+
+      const response = await appWithCommunity.inject({
+        method: 'GET',
+        url: '/api/users/me/preferences/communities',
+        headers: { authorization: 'Bearer test-token' },
+      })
+
+      expect(response.statusCode).toBe(200)
+      const body = response.json<{
+        communities: { communityDid: string; communityName: string }[]
+      }>()
+      expect(body.communities).toHaveLength(1)
+      expect(body.communities[0].communityName).toBe(COMMUNITY_DID)
+
+      await appWithCommunity.close()
     })
 
     it('returns 401 when not authenticated', async () => {
