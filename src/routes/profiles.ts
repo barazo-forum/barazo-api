@@ -43,7 +43,7 @@ const profileJsonSchema = {
     followsCount: { type: 'number' as const },
     atprotoPostsCount: { type: 'number' as const },
     hasBlueskyProfile: { type: 'boolean' as const },
-    accountCreatedAt: { type: ['string', 'null'] as const, format: 'date-time' as const },
+    accountCreatedAt: { type: ['string', 'null'] as const },
     communityCount: { type: 'number' as const },
     activity: {
       type: 'object' as const,
