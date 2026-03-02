@@ -108,7 +108,7 @@ function serializeReply(row: typeof replies.$inferSelect) {
   const placeholderContent = row.isModDeleted
     ? '[Removed by moderator]'
     : row.isAuthorDeleted
-      ? ''
+      ? '[Deleted by author]'
       : row.content
 
   return {
