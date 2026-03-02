@@ -80,6 +80,8 @@ const replyJsonSchema = {
     cid: { type: 'string' as const },
     depth: { type: 'integer' as const },
     reactionCount: { type: 'integer' as const },
+    isAuthorDeleted: { type: 'boolean' as const },
+    isModDeleted: { type: 'boolean' as const },
     isMuted: { type: 'boolean' as const },
     isMutedWord: { type: 'boolean' as const },
     ozoneLabel: { type: ['string', 'null'] as const },
@@ -125,6 +127,7 @@ function serializeReply(row: typeof replies.$inferSelect) {
     depth,
     reactionCount: row.reactionCount,
     isAuthorDeleted: row.isAuthorDeleted,
+    isModDeleted: row.isModDeleted,
     createdAt: row.createdAt.toISOString(),
     indexedAt: row.indexedAt.toISOString(),
   }
@@ -589,7 +592,6 @@ export function replyRoutes(): FastifyPluginCallback {
         const conditions = [
           eq(replies.rootUri, decodedTopicUri),
           eq(replies.moderationStatus, 'approved'),
-          eq(replies.isModDeleted, false),
         ]
 
         // Exclude replies by blocked authors

@@ -2213,6 +2213,54 @@ describe('reply routes', () => {
       expect(body.replies).toHaveLength(1)
       expect(body.replies[0]?.content).toBe('[Removed by moderator]')
     })
+
+    it('includes isModDeleted in serialized response', async () => {
+      selectChain.where.mockResolvedValueOnce([sampleTopicRow()])
+
+      const modDeletedReply = sampleReplyRow({
+        isModDeleted: true,
+        isAuthorDeleted: false,
+      })
+      selectChain.limit.mockResolvedValueOnce([modDeletedReply])
+
+      const encodedTopicUri = encodeURIComponent(TEST_TOPIC_URI)
+      const response = await app.inject({
+        method: 'GET',
+        url: `/api/topics/${encodedTopicUri}/replies`,
+      })
+
+      expect(response.statusCode).toBe(200)
+      const body = response.json<{
+        replies: Array<{ isAuthorDeleted: boolean; isModDeleted: boolean }>
+      }>()
+      expect(body.replies).toHaveLength(1)
+      expect(body.replies[0]?.isModDeleted).toBe(true)
+      expect(body.replies[0]?.isAuthorDeleted).toBe(false)
+    })
+
+    it('includes isAuthorDeleted and isModDeleted as false for normal replies', async () => {
+      selectChain.where.mockResolvedValueOnce([sampleTopicRow()])
+
+      const normalReply = sampleReplyRow({
+        isAuthorDeleted: false,
+        isModDeleted: false,
+      })
+      selectChain.limit.mockResolvedValueOnce([normalReply])
+
+      const encodedTopicUri = encodeURIComponent(TEST_TOPIC_URI)
+      const response = await app.inject({
+        method: 'GET',
+        url: `/api/topics/${encodedTopicUri}/replies`,
+      })
+
+      expect(response.statusCode).toBe(200)
+      const body = response.json<{
+        replies: Array<{ isAuthorDeleted: boolean; isModDeleted: boolean }>
+      }>()
+      expect(body.replies).toHaveLength(1)
+      expect(body.replies[0]?.isModDeleted).toBe(false)
+      expect(body.replies[0]?.isAuthorDeleted).toBe(false)
+    })
   })
 
   describe('PUT /api/replies/:uri (error branches)', () => {
