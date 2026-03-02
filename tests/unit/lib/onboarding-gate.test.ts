@@ -61,7 +61,12 @@ describe('checkOnboardingComplete', () => {
   })
 
   it('returns complete=true when community has no onboarding fields', async () => {
-    queueSelectResults([]) // no mandatory fields
+    queueSelectResults(
+      [], // no mandatory fields
+      [], // no user responses
+      [], // no community fields at all (no admin age field)
+      [{ declaredAge: 18 }] // user has declared age
+    )
 
     const result = await checkOnboardingComplete(mockDb as never, USER_DID, COMMUNITY_DID)
 
@@ -71,7 +76,12 @@ describe('checkOnboardingComplete', () => {
 
   it('returns complete=true when user has completed all mandatory fields', async () => {
     const field = sampleField()
-    queueSelectResults([field], [sampleResponse()])
+    queueSelectResults(
+      [field], // mandatory fields
+      [sampleResponse()], // user responses
+      [], // no community fields with age_confirmation
+      [{ declaredAge: 18 }] // user has declared age
+    )
 
     const result = await checkOnboardingComplete(mockDb as never, USER_DID, COMMUNITY_DID)
 
@@ -81,7 +91,12 @@ describe('checkOnboardingComplete', () => {
 
   it("returns complete=false with missing fields when user hasn't completed mandatory fields", async () => {
     const field = sampleField()
-    queueSelectResults([field], []) // no responses
+    queueSelectResults(
+      [field], // mandatory fields
+      [], // no responses
+      [], // no community fields with age_confirmation
+      [{ declaredAge: 18 }] // user has declared age (age check passes)
+    )
 
     const result = await checkOnboardingComplete(mockDb as never, USER_DID, COMMUNITY_DID)
 
@@ -96,7 +111,12 @@ describe('checkOnboardingComplete', () => {
     const field2 = sampleField({ id: 'field-002', label: 'ToS', fieldType: 'tos_acceptance' })
 
     // Only field-001 answered
-    queueSelectResults([field1, field2], [sampleResponse({ fieldId: 'field-001' })])
+    queueSelectResults(
+      [field1, field2], // mandatory fields
+      [sampleResponse({ fieldId: 'field-001' })], // only one response
+      [], // no community fields with age_confirmation
+      [{ declaredAge: 18 }] // user has declared age
+    )
 
     const result = await checkOnboardingComplete(mockDb as never, USER_DID, COMMUNITY_DID)
 
@@ -107,7 +127,12 @@ describe('checkOnboardingComplete', () => {
 
   it('only checks mandatory fields (ignores optional)', async () => {
     // Only query returns mandatory fields, so optional are not fetched
-    queueSelectResults([], []) // no mandatory fields, no responses
+    queueSelectResults(
+      [], // no mandatory fields
+      [], // no responses
+      [], // no community fields with age_confirmation
+      [{ declaredAge: 18 }] // user has declared age
+    )
 
     const result = await checkOnboardingComplete(mockDb as never, USER_DID, COMMUNITY_DID)
 

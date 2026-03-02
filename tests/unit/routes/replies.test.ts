@@ -66,6 +66,12 @@ import {
   isNewAccount as isNewAccountMock,
 } from '../../../src/lib/anti-spam.js'
 
+// Mock onboarding gate (tested separately in onboarding-gate.test.ts)
+const checkOnboardingCompleteFn = vi.fn().mockResolvedValue({ complete: true, missingFields: [] })
+vi.mock('../../../src/lib/onboarding-gate.js', () => ({
+  checkOnboardingComplete: (...args: unknown[]) => checkOnboardingCompleteFn(...args) as unknown,
+}))
+
 // Import routes AFTER mocking
 import { replyRoutes } from '../../../src/routes/replies.js'
 
@@ -387,8 +393,6 @@ describe('reply routes', () => {
     it('creates a threaded reply (with parentUri) and returns 201', async () => {
       // First select: look up topic
       selectChain.where.mockResolvedValueOnce([sampleTopicRow()])
-      // Onboarding gate: no mandatory fields
-      selectChain.where.mockResolvedValueOnce([])
       // Second select: look up parent reply
       selectChain.where.mockResolvedValueOnce([
         sampleReplyRow({
@@ -1492,18 +1496,11 @@ describe('reply routes', () => {
     it('returns 403 when onboarding is incomplete', async () => {
       // Topic lookup
       selectChain.where.mockResolvedValueOnce([sampleTopicRow()])
-      // Onboarding: mandatory fields exist
-      selectChain.where.mockResolvedValueOnce([
-        {
-          id: 'field1',
-          label: 'Accept Rules',
-          fieldType: 'checkbox',
-          isMandatory: true,
-          communityDid: 'did:plc:community123',
-        },
-      ])
-      // Onboarding: user responses (none)
-      selectChain.where.mockResolvedValueOnce([])
+      // Override onboarding gate to return incomplete
+      checkOnboardingCompleteFn.mockResolvedValueOnce({
+        complete: false,
+        missingFields: [{ id: 'field1', label: 'Accept Rules', fieldType: 'checkbox' }],
+      })
 
       const encodedTopicUri = encodeURIComponent(TEST_TOPIC_URI)
       const response = await app.inject({
