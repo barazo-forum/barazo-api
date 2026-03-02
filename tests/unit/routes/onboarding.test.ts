@@ -588,7 +588,11 @@ describe('onboarding user routes', () => {
     })
 
     it('returns complete=true when no onboarding fields exist', async () => {
-      queueSelectResults([], []) // fields, responses
+      queueSelectResults(
+        [], // fields
+        [], // responses
+        [{ declaredAge: 18 }] // user preferences (has declared age)
+      )
 
       const response = await app.inject({
         method: 'GET',
@@ -604,7 +608,11 @@ describe('onboarding user routes', () => {
 
     it('returns complete=false when mandatory field not answered', async () => {
       const field = sampleField({ isMandatory: true })
-      queueSelectResults([field], []) // fields, no responses
+      queueSelectResults(
+        [field], // fields
+        [], // no responses
+        [{ declaredAge: 18 }] // user preferences (has declared age)
+      )
 
       const response = await app.inject({
         method: 'GET',
@@ -620,7 +628,11 @@ describe('onboarding user routes', () => {
 
     it('returns complete=true when all mandatory fields answered', async () => {
       const field = sampleField({ isMandatory: true })
-      queueSelectResults([field], [sampleResponse()])
+      queueSelectResults(
+        [field], // fields
+        [sampleResponse()], // responses
+        [{ declaredAge: 18 }] // user preferences (has declared age)
+      )
 
       const response = await app.inject({
         method: 'GET',
@@ -646,7 +658,8 @@ describe('onboarding user routes', () => {
       // Only mandatory field answered
       queueSelectResults(
         [mandatoryField, optionalField],
-        [sampleResponse({ fieldId: 'field-001' })]
+        [sampleResponse({ fieldId: 'field-001' })],
+        [{ declaredAge: 18 }] // user preferences (has declared age)
       )
 
       const response = await app.inject({

@@ -29,6 +29,12 @@ vi.mock('../../../src/lib/pds-client.js', () => ({
   }),
 }))
 
+// Mock onboarding gate (tested separately in onboarding-gate.test.ts)
+const checkOnboardingCompleteFn = vi.fn().mockResolvedValue({ complete: true, missingFields: [] })
+vi.mock('../../../src/lib/onboarding-gate.js', () => ({
+  checkOnboardingComplete: (...args: unknown[]) => checkOnboardingCompleteFn(...args) as unknown,
+}))
+
 // Import routes AFTER mocking
 import { voteRoutes } from '../../../src/routes/votes.js'
 
@@ -222,8 +228,6 @@ describe('vote routes', () => {
     })
 
     it('creates a vote on a topic and returns 201', async () => {
-      // 0. Onboarding gate: no mandatory fields
-      selectChain.where.mockResolvedValueOnce([])
       // 1. Subject existence check -> topic found
       selectChain.where.mockResolvedValueOnce([{ uri: TEST_TOPIC_URI }])
       // 2. Insert returning
@@ -265,8 +269,6 @@ describe('vote routes', () => {
     })
 
     it('creates a vote on a reply and returns 201', async () => {
-      // 0. Onboarding gate: no mandatory fields
-      selectChain.where.mockResolvedValueOnce([])
       // 1. Subject existence check -> reply found
       selectChain.where.mockResolvedValueOnce([{ uri: TEST_REPLY_URI }])
       // 2. Insert returning
@@ -296,8 +298,6 @@ describe('vote routes', () => {
       isTrackedFn.mockResolvedValue(false)
       trackRepoFn.mockResolvedValue(undefined)
 
-      // 0. Onboarding gate: no mandatory fields
-      selectChain.where.mockResolvedValueOnce([])
       selectChain.where.mockResolvedValueOnce([{ uri: TEST_TOPIC_URI }])
       insertChain.returning.mockResolvedValueOnce([sampleVoteRow()])
 
@@ -360,9 +360,6 @@ describe('vote routes', () => {
     })
 
     it('returns 400 for invalid direction', async () => {
-      // 0. Onboarding gate: no mandatory fields
-      selectChain.where.mockResolvedValueOnce([])
-
       const response = await app.inject({
         method: 'POST',
         url: '/api/votes',
@@ -389,8 +386,6 @@ describe('vote routes', () => {
     })
 
     it('returns 404 when subject does not exist', async () => {
-      // 0. Onboarding gate: no mandatory fields
-      selectChain.where.mockResolvedValueOnce([])
       // Subject not found
       selectChain.where.mockResolvedValueOnce([])
 
@@ -409,9 +404,6 @@ describe('vote routes', () => {
     })
 
     it('returns 404 when subject URI has unknown collection', async () => {
-      // 0. Onboarding gate: no mandatory fields
-      selectChain.where.mockResolvedValueOnce([])
-
       const response = await app.inject({
         method: 'POST',
         url: '/api/votes',
@@ -427,8 +419,6 @@ describe('vote routes', () => {
     })
 
     it('returns 409 when duplicate vote (unique constraint)', async () => {
-      // 0. Onboarding gate: no mandatory fields
-      selectChain.where.mockResolvedValueOnce([])
       selectChain.where.mockResolvedValueOnce([{ uri: TEST_TOPIC_URI }])
       // onConflictDoNothing -> returning() returns empty array
       insertChain.returning.mockResolvedValueOnce([])
@@ -448,8 +438,6 @@ describe('vote routes', () => {
     })
 
     it('returns 502 when PDS write fails', async () => {
-      // 0. Onboarding gate: no mandatory fields
-      selectChain.where.mockResolvedValueOnce([])
       selectChain.where.mockResolvedValueOnce([{ uri: TEST_TOPIC_URI }])
       createRecordFn.mockRejectedValueOnce(new Error('PDS unreachable'))
 

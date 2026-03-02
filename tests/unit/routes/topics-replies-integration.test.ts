@@ -59,6 +59,11 @@ vi.mock('../../../src/lib/anti-spam.js', () => ({
   runAntiSpamChecks: vi.fn().mockResolvedValue({ held: false, reasons: [] }),
 }))
 
+// Mock onboarding gate (tested separately in onboarding-gate.test.ts)
+vi.mock('../../../src/lib/onboarding-gate.js', () => ({
+  checkOnboardingComplete: vi.fn().mockResolvedValue({ complete: true, missingFields: [] }),
+}))
+
 // Import routes AFTER mocking
 import { topicRoutes } from '../../../src/routes/topics.js'
 import { replyRoutes } from '../../../src/routes/replies.js'
@@ -637,8 +642,6 @@ describe('topics + replies cross-endpoint integration', () => {
 
       // Topic lookup succeeds
       selectChain.where.mockResolvedValueOnce([sampleTopicRow()])
-      // Onboarding gate: no mandatory fields
-      selectChain.where.mockResolvedValueOnce([])
       // Parent reply lookup succeeds
       selectChain.where.mockResolvedValueOnce([
         sampleReplyRow({
