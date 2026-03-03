@@ -317,6 +317,7 @@ export function replyRoutes(): FastifyPluginCallback {
         let parentRefUri = topic.uri
         let parentRefCid = topic.cid
 
+        let depth = 1
         if (parentUri) {
           // Look up the parent reply
           const parentReplyRows = await db.select().from(replies).where(eq(replies.uri, parentUri))
@@ -327,6 +328,7 @@ export function replyRoutes(): FastifyPluginCallback {
           }
           parentRefUri = parentReply.uri
           parentRefCid = parentReply.cid
+          depth = parentReply.depth + 1
         }
 
         const now = new Date().toISOString()
@@ -378,6 +380,7 @@ export function replyRoutes(): FastifyPluginCallback {
               cid: pdsResult.cid,
               labels: labels ?? null,
               reactionCount: 0,
+              depth,
               moderationStatus: contentModerationStatus,
               createdAt: new Date(now),
               indexedAt: new Date(),

@@ -49,6 +49,16 @@ export class ReplyIndexer {
     const createdAt = live ? clampCreatedAt(clientCreatedAt) : clientCreatedAt
 
     await this.db.transaction(async (tx) => {
+      // Compute depth: direct reply to topic = 1, nested = parent_depth + 1
+      let depth = 1
+      if (parent.uri !== root.uri) {
+        const parentRows = await tx
+          .select({ depth: replies.depth })
+          .from(replies)
+          .where(eq(replies.uri, parent.uri))
+        depth = parentRows[0] ? parentRows[0].depth + 1 : 1
+      }
+
       await tx
         .insert(replies)
         .values({
@@ -66,6 +76,7 @@ export class ReplyIndexer {
           labels: record.labels ?? null,
           createdAt,
           trustStatus,
+          depth,
         })
         .onConflictDoNothing()
 
