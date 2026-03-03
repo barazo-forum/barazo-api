@@ -32,6 +32,7 @@ const onboardingFieldJsonSchema = {
     description: { type: ['string', 'null'] as const },
     isMandatory: { type: 'boolean' as const },
     sortOrder: { type: 'integer' as const },
+    source: { type: 'string' as const, enum: ['platform', 'admin'] },
     config: { type: ['object', 'null'] as const },
     createdAt: { type: 'string' as const, format: 'date-time' as const },
     updatedAt: { type: 'string' as const, format: 'date-time' as const },
@@ -75,6 +76,7 @@ function serializeField(row: typeof communityOnboardingFields.$inferSelect) {
     description: row.description ?? null,
     isMandatory: row.isMandatory,
     sortOrder: row.sortOrder,
+    source: row.source,
     config: row.config ?? null,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
@@ -87,7 +89,7 @@ function serializeField(row: typeof communityOnboardingFields.$inferSelect) {
 
 export function onboardingRoutes(): FastifyPluginCallback {
   return (app, _opts, done) => {
-    const { db, authMiddleware } = app
+    const { db, env, authMiddleware } = app
     const requireAdmin = app.requireAdmin
 
     // =====================================================================
@@ -108,8 +110,11 @@ export function onboardingRoutes(): FastifyPluginCallback {
           security: [{ bearerAuth: [] }],
           response: {
             200: {
-              type: 'array' as const,
-              items: onboardingFieldJsonSchema,
+              type: 'object' as const,
+              properties: {
+                fields: { type: 'array' as const, items: onboardingFieldJsonSchema },
+                hostingMode: { type: 'string' as const, enum: ['saas', 'selfhosted'] },
+              },
             },
             401: errorResponseSchema,
             403: errorResponseSchema,
@@ -125,7 +130,10 @@ export function onboardingRoutes(): FastifyPluginCallback {
           .where(eq(communityOnboardingFields.communityDid, communityDid))
           .orderBy(asc(communityOnboardingFields.sortOrder))
 
-        return reply.status(200).send(fields.map(serializeField))
+        return reply.status(200).send({
+          fields: fields.map(serializeField),
+          hostingMode: env.HOSTING_MODE,
+        })
       }
     )
 
@@ -251,6 +259,22 @@ export function onboardingRoutes(): FastifyPluginCallback {
 
         const communityDid = requireCommunityDid(request)
 
+        // SaaS guard: platform fields cannot be modified in SaaS mode
+        if (env.HOSTING_MODE === 'saas') {
+          const existing = await db
+            .select({ source: communityOnboardingFields.source })
+            .from(communityOnboardingFields)
+            .where(
+              and(
+                eq(communityOnboardingFields.id, request.params.id),
+                eq(communityOnboardingFields.communityDid, communityDid)
+              )
+            )
+          if (existing[0]?.source === 'platform') {
+            throw forbidden('Platform fields cannot be modified in SaaS mode')
+          }
+        }
+
         const dbUpdates: Record<string, unknown> = { updatedAt: new Date() }
         if (updates.label !== undefined) dbUpdates.label = updates.label
         if (updates.description !== undefined) dbUpdates.description = updates.description
@@ -308,6 +332,22 @@ export function onboardingRoutes(): FastifyPluginCallback {
       },
       async (request, reply) => {
         const communityDid = requireCommunityDid(request)
+
+        // SaaS guard: platform fields cannot be deleted in SaaS mode
+        if (env.HOSTING_MODE === 'saas') {
+          const existing = await db
+            .select({ source: communityOnboardingFields.source })
+            .from(communityOnboardingFields)
+            .where(
+              and(
+                eq(communityOnboardingFields.id, request.params.id),
+                eq(communityOnboardingFields.communityDid, communityDid)
+              )
+            )
+          if (existing[0]?.source === 'platform') {
+            throw forbidden('Platform fields cannot be deleted in SaaS mode')
+          }
+        }
 
         const deleted = await db
           .delete(communityOnboardingFields)
