@@ -23,15 +23,18 @@ export const updateSettingsSchema = z.object({
     .string()
     .trim()
     .max(500, 'Community description must be at most 500 characters')
+    .nullable()
     .optional(),
-  communityLogoUrl: z.url('Community logo must be a valid URL').optional(),
+  communityLogoUrl: z.url('Community logo must be a valid URL').nullable().optional(),
   primaryColor: z
     .string()
     .regex(hexColorPattern, 'Primary color must be a valid hex color (e.g., #ff0000)')
+    .nullable()
     .optional(),
   accentColor: z
     .string()
     .regex(hexColorPattern, 'Accent color must be a valid hex color (e.g., #00ff00)')
+    .nullable()
     .optional(),
   jurisdictionCountry: z
     .string()

@@ -217,14 +217,14 @@ export function adminSettingsRoutes(): FastifyPluginCallback {
                 items: { type: 'string', minLength: 1, maxLength: 30 },
                 minItems: 1,
               },
-              communityDescription: { type: 'string', maxLength: 500 },
-              communityLogoUrl: { type: 'string', format: 'uri' },
+              communityDescription: { type: ['string', 'null'], maxLength: 500 },
+              communityLogoUrl: { type: ['string', 'null'], format: 'uri' },
               primaryColor: {
-                type: 'string',
+                type: ['string', 'null'],
                 pattern: '^#(?:[0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$',
               },
               accentColor: {
-                type: 'string',
+                type: ['string', 'null'],
                 pattern: '^#(?:[0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$',
               },
               jurisdictionCountry: { type: ['string', 'null'] },
