@@ -1,6 +1,9 @@
+import { randomUUID } from 'node:crypto'
 import { eq, sql } from 'drizzle-orm'
 import { communitySettings } from '../db/schema/community-settings.js'
+import { communityOnboardingFields } from '../db/schema/onboarding-fields.js'
 import { users } from '../db/schema/users.js'
+import { pages } from '../db/schema/pages.js'
 import type { Database } from '../db/index.js'
 import { encrypt } from '../lib/encryption.js'
 import type { Logger } from '../lib/logger.js'
@@ -187,6 +190,70 @@ export function createSetupService(
       await db.update(users).set({ role: 'admin' }).where(eq(users.did, did))
       logger.info({ did }, 'User promoted to admin role')
 
+      // Seed platform onboarding fields
+      await db
+        .insert(communityOnboardingFields)
+        .values({
+          id: 'platform:age_confirmation',
+          communityDid,
+          fieldType: 'age_confirmation',
+          label: 'Age Declaration',
+          description:
+            'Please select your age bracket. This determines which content is available to you.',
+          isMandatory: true,
+          sortOrder: -1,
+          source: 'platform',
+          config: null,
+        })
+        .onConflictDoNothing()
+      logger.info({ communityDid }, 'Platform onboarding fields seeded')
+
+      // Seed default pages (Terms of Service, Privacy Policy, Cookie Policy)
+      const now = new Date()
+      const pageDefaults = [
+        {
+          id: `page-${randomUUID()}`,
+          slug: 'terms-of-service',
+          title: 'Terms of service',
+          content: TERMS_OF_SERVICE_CONTENT,
+          status: 'published' as const,
+          metaDescription: 'Terms and conditions for using this forum community.',
+          parentId: null,
+          sortOrder: 0,
+          communityDid,
+          createdAt: now,
+          updatedAt: now,
+        },
+        {
+          id: `page-${randomUUID()}`,
+          slug: 'privacy-policy',
+          title: 'Privacy policy',
+          content: PRIVACY_POLICY_CONTENT,
+          status: 'published' as const,
+          metaDescription: 'How we collect, use, and protect your personal data.',
+          parentId: null,
+          sortOrder: 1,
+          communityDid,
+          createdAt: now,
+          updatedAt: now,
+        },
+        {
+          id: `page-${randomUUID()}`,
+          slug: 'cookie-policy',
+          title: 'Cookie policy',
+          content: COOKIE_POLICY_CONTENT,
+          status: 'published' as const,
+          metaDescription: 'Information about the cookies used on this forum.',
+          parentId: null,
+          sortOrder: 2,
+          communityDid,
+          createdAt: now,
+          updatedAt: now,
+        },
+      ]
+      await db.insert(pages).values(pageDefaults)
+      logger.info({ communityDid, pageCount: pageDefaults.length }, 'Default pages seeded')
+
       const finalName = row.communityName
       logger.info({ did, communityName: finalName }, 'Community initialized')
 
@@ -209,3 +276,192 @@ export function createSetupService(
 
   return { getStatus, initialize }
 }
+
+// ---------------------------------------------------------------------------
+// Default page content (markdown)
+// ---------------------------------------------------------------------------
+
+const TERMS_OF_SERVICE_CONTENT = `## Acceptance of terms
+
+By accessing or using Barazo, you agree to be bound by these Terms of Service. If you do not agree to these terms, you may not use the service. Barazo reserves the right to update these terms at any time, with notice provided through the platform.
+
+## Eligibility
+
+You must be at least 16 years old to use Barazo (in accordance with the Dutch implementation of GDPR, UAVG). By using the service, you confirm that you meet this age requirement. Access to mature content may require additional age verification as required by applicable law.
+
+## Account and authentication
+
+Barazo uses the AT Protocol for authentication. You log in using your existing AT Protocol identity (e.g., a Bluesky account). You are responsible for maintaining the security of your AT Protocol account. Barazo does not store your password.
+
+## Content and conduct
+
+You retain ownership of content you post on Barazo. By posting, you grant Barazo a license to display, index, and distribute your content as part of the forum service and via the AT Protocol.
+
+You agree not to post content that:
+
+- Violates applicable laws or regulations.
+- Infringes on the intellectual property rights of others.
+- Contains spam, malware, or deceptive content.
+- Harasses, threatens, or promotes violence against individuals or groups.
+- Contains child sexual abuse material (CSAM).
+
+Community administrators may enforce additional content policies specific to their community. Repeated violations may result in content removal, account restrictions, or bans.
+
+## Content maturity ratings
+
+Communities and categories may be rated for content maturity (Safe for Work, Mature, or Adult). You are responsible for accurately labeling your content. Communities may require age verification to access mature content. New accounts default to safe-mode with mature content hidden.
+
+## Cross-posting
+
+Barazo may cross-post your content to connected platforms (such as Bluesky or Frontpage) when you enable this feature. Cross-posting is optional and can be controlled in your settings. Cross-posted content is subject to the terms of the destination platform.
+
+## Moderation and labels
+
+Your account may be labeled by independent moderation services (such as Bluesky's Ozone). Labels affect posting limits and content visibility. You cannot delete labels applied by labeler services, but you can dispute inaccuracies by contacting us or the labeler service. Community administrators may also apply local moderation overrides.
+
+## AI-generated summaries
+
+Barazo may generate AI-powered summaries of discussion threads. These summaries are anonymized derivative works that do not contain personal data (no usernames or verbatim quotes). AI summaries may persist after individual content is deleted, as they are regenerated from remaining content. Community administrators can disable summary preservation.
+
+## AT Protocol and federation
+
+Barazo is built on the AT Protocol, which is a federated, open network. Content you post may be indexed by other services on the AT Protocol network. Barazo cannot control how third-party services handle your data once it is published via the protocol.
+
+## Termination
+
+Barazo may suspend or terminate your access if you violate these terms. You may stop using the service at any time. Deleting your AT Protocol account or content will trigger removal of indexed data from Barazo (see our Privacy Policy for details).
+
+## Limitation of liability
+
+Barazo is provided "as is" without warranties of any kind. We are not liable for any damages arising from your use of the service, including but not limited to loss of data, service interruptions, or actions taken by community moderators or administrators.
+
+## Governing law
+
+These terms are governed by the laws of the Netherlands. Any disputes arising from these terms will be subject to the exclusive jurisdiction of the courts of the Netherlands.
+
+*These terms were last updated on February 2026.*`
+
+const PRIVACY_POLICY_CONTENT = `## Overview
+
+Barazo is committed to protecting your privacy. This policy explains what personal data we collect, why we collect it, how long we keep it, and what rights you have. Barazo is operated from the Netherlands and complies with the General Data Protection Regulation (GDPR).
+
+## What we collect
+
+When you use Barazo, we process the following data:
+
+- **AT Protocol identifiers** -- your DID (decentralized identifier) and handle, used to identify your account.
+- **Profile information** -- display name and profile data retrieved from your AT Protocol PDS.
+- **Content** -- posts, replies, and reactions you create on the forum, indexed from the AT Protocol firehose.
+- **IP addresses** -- collected for API rate limiting and security purposes.
+- **Authentication cookie** -- a single HTTP-only, Secure, SameSite=Strict refresh token cookie used to maintain your session. Access tokens are held in memory only and never stored in cookies or browser storage.
+- **Moderation records** -- actions taken by moderators on your content or account.
+- **Age declaration** -- stored in the forum database only (deliberately kept off your PDS to avoid broadcasting age data on a public network).
+- **Per-community preferences** -- notification settings and content maturity overrides, stored locally in the forum database (not on your PDS) to protect your browsing patterns.
+
+## What we do not collect
+
+- We do not collect or store your password (authentication is handled via AT Protocol OAuth).
+- We do not collect email addresses unless provided by a community admin for billing.
+- We do not collect payment card details (processed by our payment provider).
+- We do not use tracking cookies or analytics that profile your behavior.
+- We do not use device fingerprinting.
+- We do not load third-party trackers, pixels, or analytics scripts.
+
+## Legal basis
+
+We process your data under the following legal bases (GDPR Art. 6):
+
+- **Contract performance** -- processing necessary to provide the forum service you signed up for.
+- **Legitimate interest** -- indexing public AT Protocol content, spam prevention, platform security, content moderation, and AI-generated discussion summaries.
+
+## Data storage and transfers
+
+Our servers are hosted in the European Union (Hetzner, Germany). We use the following sub-processors:
+
+- Hetzner (EU) -- hosting infrastructure.
+- Bunny.net (EU, Slovenia) -- content delivery network.
+- Stripe (EU-US Data Privacy Framework certified) -- payment processing.
+
+A full sub-processor list is maintained at **barazo.forum/legal/sub-processors**.
+
+## Data retention and deletion
+
+Your indexed data is retained while the source exists on your AT Protocol PDS. When you delete content or your account via the AT Protocol, we process the deletion event immediately:
+
+- Your post is removed from public view and replaced with a "deleted by author" notice.
+- Your personal data (DID, handle, AT Protocol URI) is stripped from the database record.
+- The anonymized content (with no link to your identity) may be retained to preserve community knowledge and enable AI-generated discussion summaries. This anonymized data falls outside GDPR scope (Recital 26) because it can no longer identify you.
+
+You may request full content deletion (including anonymized content) by contacting us directly, independent of AT Protocol signals. We respond to deletion requests within one month (GDPR Art. 12(3)).
+
+Barazo cannot guarantee deletion from external systems such as AT Protocol relays, other AppViews, search engine caches, or web archives. Our reasonable steps include: propagating AT Protocol delete events, submitting Google Search Console removal requests for deleted content URLs, and documenting which systems confirmed deletion.
+
+## AI features
+
+Barazo offers optional AI features including thread summaries, semantic search, and content moderation assistance. Here is how they work:
+
+- **No training on your content.** We do not use member posts to train AI models, and we do not provide member content to others for training.
+- **Local-first processing.** The default AI configuration uses local inference (Ollama) -- your content never leaves the server. Your forum administrator may choose a different AI provider; in that case, content is sent to that provider for processing.
+- **Anonymized summaries.** AI-generated thread summaries are designed to exclude usernames, handles, and verbatim quotes. Summaries capture the discussion's substance, not who said what. Summaries may persist after individual content deletion because they contain no personal data.
+
+## Content labels
+
+We subscribe to content labeling services (such as Bluesky's Ozone) for spam detection and content moderation. Labels applied to your account may affect posting limits and content visibility. Labels are stored by the labeler service, not on your PDS. You can dispute labels by contacting us.
+
+## Your rights
+
+Under the GDPR, you have the right to:
+
+- Access the personal data we hold about you.
+- Rectify inaccurate data.
+- Request erasure of your data (right to be forgotten).
+- Object to processing based on legitimate interest.
+- Data portability (built into the AT Protocol).
+- Lodge a complaint with the Dutch Data Protection Authority (Autoriteit Persoonsgegevens).
+
+To exercise these rights, contact us through our [GitHub issue tracker](https://github.com/barazo-forum/barazo-workspace/issues) or via the contact details provided by your community administrator.
+
+## Data breach notification
+
+In the event of a data breach, we will notify the Dutch Data Protection Authority within 72 hours (GDPR Art. 33). For high-risk breaches, we will notify affected users without undue delay via AT Protocol notifications and public announcements.
+
+*This policy was last updated on February 2026.*`
+
+const COOKIE_POLICY_CONTENT = `## Overview
+
+Barazo uses a minimal number of cookies. We do not use tracking cookies, advertising cookies, or third-party analytics cookies. This page explains the cookies we do use and why.
+
+## Cookies we use
+
+Barazo uses a single essential cookie:
+
+| Cookie | Purpose | Duration | Type |
+|--------|---------|----------|------|
+| Refresh token | Keeps you logged in across page reloads by enabling silent access token renewal. | Session | Essential |
+
+## Technical details
+
+The refresh token cookie has the following security properties:
+
+- **HTTP-only** -- the cookie is not accessible to JavaScript, preventing cross-site scripting (XSS) attacks.
+- **Secure** -- the cookie is only sent over HTTPS connections.
+- **SameSite=Strict** -- the cookie is not sent with cross-site requests, preventing cross-site request forgery (CSRF) attacks.
+
+Access tokens (used to authenticate API requests) are held in memory only and are never stored in cookies, localStorage, or sessionStorage.
+
+## What we do not use
+
+- No tracking or advertising cookies.
+- No third-party analytics (Google Analytics, etc.).
+- No social media tracking pixels.
+- No fingerprinting or behavioral profiling.
+
+## Cookie consent
+
+Because we only use a single essential cookie required for the service to function, a cookie consent banner is not required under the ePrivacy Directive (EU Directive 2002/58/EC, Art. 5(3)). Essential cookies that are strictly necessary for the service requested by the user are exempt from the consent requirement.
+
+## Theme preference
+
+Your light/dark mode preference is stored in localStorage (not a cookie). This is a client-side preference that is never sent to our servers.
+
+*This policy was last updated on February 2026.*`

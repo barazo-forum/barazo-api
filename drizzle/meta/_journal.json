@@ -8,6 +8,34 @@
       "when": 1772367640029,
       "tag": "0000_baseline",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1772555130464,
+      "tag": "0001_add_favicon_url",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1772610945005,
+      "tag": "0002_perfect_the_captain",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1772556676000,
+      "tag": "0003_backfill-platform-age-field",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1772616692948,
+      "tag": "0004_add_pages_table",
+      "breakpoints": true
     }
   ]
 }
