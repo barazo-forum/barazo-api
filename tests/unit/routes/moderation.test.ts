@@ -2368,12 +2368,12 @@ describe('moderation routes', () => {
       }>()
       expect(body.autoBlockReportCount).toBe(8)
       expect(body.warnThreshold).toBe(3) // default
-      expect(body.firstPostQueueCount).toBe(3) // default
+      expect(body.firstPostQueueCount).toBe(0) // default
       expect(body.newAccountDays).toBe(7) // default
       expect(body.newAccountWriteRatePerMin).toBe(3) // default
       expect(body.establishedWriteRatePerMin).toBe(10) // default
-      expect(body.linkHoldEnabled).toBe(true) // default
-      expect(body.topicCreationDelayEnabled).toBe(true) // default
+      expect(body.linkHoldEnabled).toBe(false) // default
+      expect(body.topicCreationDelayEnabled).toBe(false) // default
       expect(body.burstPostCount).toBe(5) // default
       expect(body.burstWindowMinutes).toBe(10) // default
       expect(body.trustedPostThreshold).toBe(10) // default

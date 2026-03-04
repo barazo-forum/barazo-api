@@ -477,9 +477,9 @@ describe('loadAntiSpamSettings', () => {
       'did:plc:community1'
     )
 
-    expect(settings.firstPostQueueCount).toBe(3)
+    expect(settings.firstPostQueueCount).toBe(0)
     expect(settings.newAccountDays).toBe(7)
-    expect(settings.linkHoldEnabled).toBe(true)
+    expect(settings.linkHoldEnabled).toBe(false)
     expect(settings.burstPostCount).toBe(5)
   })
 

@@ -38,12 +38,12 @@ export interface AntiSpamCheckResult {
 
 const DEFAULTS: AntiSpamSettings = {
   wordFilter: [],
-  firstPostQueueCount: 3,
+  firstPostQueueCount: 0,
   newAccountDays: 7,
   newAccountWriteRatePerMin: 3,
   establishedWriteRatePerMin: 10,
-  linkHoldEnabled: true,
-  topicCreationDelayEnabled: true,
+  linkHoldEnabled: false,
+  topicCreationDelayEnabled: false,
   burstPostCount: 5,
   burstWindowMinutes: 10,
   trustedPostThreshold: 10,

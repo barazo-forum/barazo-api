@@ -1,0 +1,1 @@
+ALTER TABLE "community_settings" ALTER COLUMN "moderation_thresholds" SET DEFAULT '{"autoBlockReportCount":5,"warnThreshold":3,"firstPostQueueCount":0,"newAccountDays":7,"newAccountWriteRatePerMin":3,"establishedWriteRatePerMin":10,"linkHoldEnabled":false,"topicCreationDelayEnabled":false,"burstPostCount":5,"burstWindowMinutes":10,"trustedPostThreshold":10}'::jsonb;
