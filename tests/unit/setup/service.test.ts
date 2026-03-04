@@ -310,8 +310,8 @@ describe('SetupService', () => {
 
       await service.initialize({ did: TEST_DID, communityDid: TEST_COMMUNITY_DID })
 
-      // The insert should be called twice: once for community settings, once for onboarding field
-      expect(mocks.insertFn).toHaveBeenCalledTimes(2)
+      // The insert should be called three times: community settings, onboarding field, pages
+      expect(mocks.insertFn).toHaveBeenCalledTimes(3)
 
       // The second insert's values call should contain the platform age field
       const secondValuesCall = mocks.valuesFn.mock.calls[1]?.[0] as Record<string, unknown>
@@ -469,6 +469,99 @@ describe('SetupService', () => {
         }) as Record<string, unknown>,
         'Generating PLC DID during community setup'
       )
+    })
+  })
+
+  // =========================================================================
+  // initialize (page seeding)
+  // =========================================================================
+
+  describe('initialize() page seeding', () => {
+    it('seeds default pages after admin promotion', async () => {
+      mocks.returningFn.mockResolvedValueOnce([
+        { communityName: DEFAULT_COMMUNITY_NAME, communityDid: TEST_COMMUNITY_DID },
+      ])
+
+      await service.initialize({
+        communityDid: TEST_COMMUNITY_DID,
+        did: TEST_DID,
+      })
+
+      // insert is called three times: community settings, onboarding field, pages
+      expect(mocks.insertFn).toHaveBeenCalledTimes(3)
+    })
+
+    it('seeds exactly 3 default pages with correct slugs', async () => {
+      mocks.returningFn.mockResolvedValueOnce([
+        { communityName: DEFAULT_COMMUNITY_NAME, communityDid: TEST_COMMUNITY_DID },
+      ])
+
+      // Capture the values passed to the third insert call (pages)
+      let capturedPageValues: Array<{ slug: string; status: string; communityDid: string }> = []
+      mocks.valuesFn.mockImplementation((vals: unknown) => {
+        if (
+          Array.isArray(vals) &&
+          vals.length > 0 &&
+          'slug' in (vals[0] as Record<string, unknown>)
+        ) {
+          capturedPageValues = vals as typeof capturedPageValues
+        }
+        return {
+          onConflictDoUpdate: mocks.onConflictDoUpdateFn,
+          onConflictDoNothing: mocks.onConflictDoNothingFn,
+        }
+      })
+
+      await service.initialize({
+        communityDid: TEST_COMMUNITY_DID,
+        did: TEST_DID,
+      })
+
+      expect(capturedPageValues).toHaveLength(3)
+      const slugs = capturedPageValues.map((v) => v.slug)
+      expect(slugs).toContain('terms-of-service')
+      expect(slugs).toContain('privacy-policy')
+      expect(slugs).toContain('cookie-policy')
+
+      for (const page of capturedPageValues) {
+        expect(page.status).toBe('published')
+        expect(page.communityDid).toBe(TEST_COMMUNITY_DID)
+      }
+    })
+
+    it('does not seed pages when community is already initialized', async () => {
+      mocks.returningFn.mockResolvedValueOnce([])
+
+      const result = await service.initialize({
+        communityDid: TEST_COMMUNITY_DID,
+        did: TEST_DID,
+      })
+
+      expect(result).toStrictEqual({ alreadyInitialized: true })
+      // Only 1 insert call (the upsert), no pages insert
+      expect(mocks.insertFn).toHaveBeenCalledTimes(1)
+    })
+
+    it('logs page seeding info', async () => {
+      mocks.returningFn.mockResolvedValueOnce([
+        { communityName: DEFAULT_COMMUNITY_NAME, communityDid: TEST_COMMUNITY_DID },
+      ])
+
+      await service.initialize({
+        communityDid: TEST_COMMUNITY_DID,
+        did: TEST_DID,
+      })
+
+      const infoFn = mockLogger.info as ReturnType<typeof vi.fn>
+      const logCalls = infoFn.mock.calls as Array<[Record<string, unknown>, string]>
+      const seedLog = logCalls.find(
+        ([_ctx, msg]) => typeof msg === 'string' && msg.includes('Default pages seeded')
+      )
+      expect(seedLog).toBeDefined()
+      if (seedLog) {
+        expect(seedLog[0]).toHaveProperty('communityDid', TEST_COMMUNITY_DID)
+        expect(seedLog[0]).toHaveProperty('pageCount', 3)
+      }
     })
   })
 
