@@ -468,4 +468,148 @@ describe('admin design routes', () => {
       expect(response.statusCode).toBe(400)
     })
   })
+
+  // =========================================================================
+  // POST /api/admin/design/header-logo
+  // =========================================================================
+
+  describe('POST /api/admin/design/header-logo', () => {
+    let app: FastifyInstance
+    let mockStorage: StorageService
+
+    beforeAll(async () => {
+      mockStorage = createMockStorage()
+      ;(mockStorage.store as ReturnType<typeof vi.fn>).mockResolvedValue(
+        'http://localhost:3000/uploads/header-logos/test.webp'
+      )
+      app = await buildTestApp(testUser(), mockStorage)
+    })
+
+    afterAll(async () => {
+      await app.close()
+    })
+
+    beforeEach(() => {
+      vi.clearAllMocks()
+      resetAllDbMocks()
+      ;(mockStorage.store as ReturnType<typeof vi.fn>).mockResolvedValue(
+        'http://localhost:3000/uploads/header-logos/test.webp'
+      )
+    })
+
+    it('uploads header logo and returns URL', async () => {
+      const imageData = Buffer.from('fake-png-data')
+      const { body, contentType } = createMultipartPayload('header.png', 'image/png', imageData)
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/api/admin/design/header-logo',
+        headers: {
+          authorization: 'Bearer test-token',
+          'content-type': contentType,
+        },
+        body,
+      })
+
+      expect(response.statusCode).toBe(200)
+      const result = response.json<{ url: string }>()
+      expect(result.url).toBe('http://localhost:3000/uploads/header-logos/test.webp')
+      // eslint-disable-next-line @typescript-eslint/unbound-method
+      expect(mockStorage.store).toHaveBeenCalledOnce()
+      expect(mockDb.update).toHaveBeenCalledOnce()
+    })
+
+    it('resizes header logo to 600x120 with fit inside', async () => {
+      const imageData = Buffer.from('fake-png-data')
+      const { body, contentType } = createMultipartPayload('header.png', 'image/png', imageData)
+
+      await app.inject({
+        method: 'POST',
+        url: '/api/admin/design/header-logo',
+        headers: {
+          authorization: 'Bearer test-token',
+          'content-type': contentType,
+        },
+        body,
+      })
+
+      expect(mockSharpInstance.resize).toHaveBeenCalledWith(600, 120, {
+        fit: 'inside',
+        withoutEnlargement: true,
+      })
+      expect(mockSharpInstance.webp).toHaveBeenCalledWith({ quality: 85 })
+    })
+
+    it('stores with header-logos prefix', async () => {
+      const imageData = Buffer.from('fake-png-data')
+      const { body, contentType } = createMultipartPayload('header.png', 'image/png', imageData)
+
+      await app.inject({
+        method: 'POST',
+        url: '/api/admin/design/header-logo',
+        headers: {
+          authorization: 'Bearer test-token',
+          'content-type': contentType,
+        },
+        body,
+      })
+
+      // eslint-disable-next-line @typescript-eslint/unbound-method
+      expect(mockStorage.store).toHaveBeenCalledWith(
+        expect.any(Buffer),
+        'image/webp',
+        'header-logos'
+      )
+    })
+
+    it('returns 401 when not authenticated', async () => {
+      const noAuthApp = await buildTestApp(undefined)
+      const imageData = Buffer.from('fake-png-data')
+      const { body, contentType } = createMultipartPayload('header.png', 'image/png', imageData)
+
+      const response = await noAuthApp.inject({
+        method: 'POST',
+        url: '/api/admin/design/header-logo',
+        headers: { 'content-type': contentType },
+        body,
+      })
+
+      expect(response.statusCode).toBe(401)
+      await noAuthApp.close()
+    })
+
+    it('returns 400 when no file is uploaded', async () => {
+      const response = await app.inject({
+        method: 'POST',
+        url: '/api/admin/design/header-logo',
+        headers: {
+          authorization: 'Bearer test-token',
+          'content-type': 'multipart/form-data; boundary=----EmptyBoundary',
+        },
+        body: '------EmptyBoundary--\r\n',
+      })
+
+      expect(response.statusCode).toBe(400)
+    })
+
+    it('returns 400 for invalid MIME type', async () => {
+      const { body, contentType } = createMultipartPayload(
+        'doc.txt',
+        'text/plain',
+        Buffer.from('not-an-image')
+      )
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/api/admin/design/header-logo',
+        headers: {
+          authorization: 'Bearer test-token',
+          'content-type': contentType,
+        },
+        body,
+      })
+
+      expect(response.statusCode).toBe(400)
+    })
+  })
 })

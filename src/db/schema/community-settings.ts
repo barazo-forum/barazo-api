@@ -56,6 +56,8 @@ export const communitySettings = pgTable(
     rotationKey: text('rotation_key'),
     communityLogoUrl: text('community_logo_url'),
     faviconUrl: text('favicon_url'),
+    headerLogoUrl: text('header_logo_url'),
+    showCommunityName: boolean('show_community_name').notNull().default(true),
     primaryColor: text('primary_color'),
     accentColor: text('accent_color'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),

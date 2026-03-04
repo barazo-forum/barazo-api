@@ -23,6 +23,8 @@ const settingsJsonSchema = {
     communityDescription: { type: ['string', 'null'] as const },
     communityLogoUrl: { type: ['string', 'null'] as const },
     faviconUrl: { type: ['string', 'null'] as const },
+    headerLogoUrl: { type: ['string', 'null'] as const },
+    showCommunityName: { type: 'boolean' as const },
     primaryColor: { type: ['string', 'null'] as const },
     accentColor: { type: ['string', 'null'] as const },
     jurisdictionCountry: { type: ['string', 'null'] as const },
@@ -89,6 +91,8 @@ function serializeSettings(row: typeof communitySettings.$inferSelect) {
     communityDescription: row.communityDescription ?? null,
     communityLogoUrl: row.communityLogoUrl ?? null,
     faviconUrl: row.faviconUrl ?? null,
+    headerLogoUrl: row.headerLogoUrl ?? null,
+    showCommunityName: row.showCommunityName,
     primaryColor: row.primaryColor ?? null,
     accentColor: row.accentColor ?? null,
     jurisdictionCountry: row.jurisdictionCountry ?? null,
@@ -136,6 +140,8 @@ export function adminSettingsRoutes(): FastifyPluginCallback {
                 communityDescription: { type: ['string', 'null'] as const },
                 communityLogoUrl: { type: ['string', 'null'] as const },
                 faviconUrl: { type: ['string', 'null'] as const },
+                headerLogoUrl: { type: ['string', 'null'] as const },
+                showCommunityName: { type: 'boolean' as const },
                 maxReplyDepth: { type: 'integer' as const },
               },
             },
@@ -162,6 +168,8 @@ export function adminSettingsRoutes(): FastifyPluginCallback {
           communityDescription: row.communityDescription ?? null,
           communityLogoUrl: row.communityLogoUrl ?? null,
           faviconUrl: row.faviconUrl ?? null,
+          headerLogoUrl: row.headerLogoUrl ?? null,
+          showCommunityName: row.showCommunityName,
           maxReplyDepth: row.maxReplyDepth,
         })
       }
@@ -228,6 +236,8 @@ export function adminSettingsRoutes(): FastifyPluginCallback {
               communityDescription: { type: ['string', 'null'], maxLength: 500 },
               communityLogoUrl: { type: ['string', 'null'], format: 'uri' },
               faviconUrl: { type: ['string', 'null'], format: 'uri' },
+              headerLogoUrl: { type: ['string', 'null'], format: 'uri' },
+              showCommunityName: { type: 'boolean' },
               primaryColor: {
                 type: ['string', 'null'],
                 pattern: '^#(?:[0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$',
@@ -269,6 +279,8 @@ export function adminSettingsRoutes(): FastifyPluginCallback {
           updates.communityDescription === undefined &&
           updates.communityLogoUrl === undefined &&
           updates.faviconUrl === undefined &&
+          updates.headerLogoUrl === undefined &&
+          updates.showCommunityName === undefined &&
           updates.primaryColor === undefined &&
           updates.accentColor === undefined &&
           updates.jurisdictionCountry === undefined &&
@@ -352,6 +364,12 @@ export function adminSettingsRoutes(): FastifyPluginCallback {
         }
         if (updates.faviconUrl !== undefined) {
           dbUpdates.faviconUrl = updates.faviconUrl
+        }
+        if (updates.headerLogoUrl !== undefined) {
+          dbUpdates.headerLogoUrl = updates.headerLogoUrl
+        }
+        if (updates.showCommunityName !== undefined) {
+          dbUpdates.showCommunityName = updates.showCommunityName
         }
         if (updates.primaryColor !== undefined) {
           dbUpdates.primaryColor = updates.primaryColor

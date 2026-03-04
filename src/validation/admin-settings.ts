@@ -27,6 +27,8 @@ export const updateSettingsSchema = z.object({
     .optional(),
   communityLogoUrl: z.url('Community logo must be a valid URL').nullable().optional(),
   faviconUrl: z.url('Favicon must be a valid URL').nullable().optional(),
+  headerLogoUrl: z.url('Header logo must be a valid URL').nullable().optional(),
+  showCommunityName: z.boolean().optional(),
   primaryColor: z
     .string()
     .regex(hexColorPattern, 'Primary color must be a valid hex color (e.g., #ff0000)')
@@ -76,6 +78,8 @@ export const settingsResponseSchema = z.object({
   communityDescription: z.string().nullable(),
   communityLogoUrl: z.string().nullable(),
   faviconUrl: z.string().nullable(),
+  headerLogoUrl: z.string().nullable(),
+  showCommunityName: z.boolean(),
   primaryColor: z.string().nullable(),
   accentColor: z.string().nullable(),
   jurisdictionCountry: z.string().nullable(),

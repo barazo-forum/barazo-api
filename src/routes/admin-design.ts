@@ -9,6 +9,7 @@ const ALLOWED_MIMES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/g
 
 const LOGO_SIZE = { width: 512, height: 512 }
 const FAVICON_SIZE = { width: 256, height: 256 }
+const HEADER_LOGO_MAX = { width: 600, height: 120 }
 
 // ---------------------------------------------------------------------------
 // OpenAPI JSON Schema definitions
@@ -133,6 +134,60 @@ export function adminDesignRoutes(): FastifyPluginCallback {
         await db
           .update(communitySettings)
           .set({ faviconUrl: url, updatedAt: new Date() })
+          .where(eq(communitySettings.communityDid, communityDid))
+
+        return reply.status(200).send({ url })
+      }
+    )
+
+    // -----------------------------------------------------------------
+    // POST /api/admin/design/header-logo
+    // -----------------------------------------------------------------
+
+    app.post(
+      '/api/admin/design/header-logo',
+      {
+        preHandler: [requireAdmin],
+        schema: {
+          tags: ['Admin', 'Design'],
+          summary: 'Upload community header logo',
+          security: [{ bearerAuth: [] }],
+          consumes: ['multipart/form-data'],
+          response: {
+            200: uploadResponseJsonSchema,
+            400: errorResponseSchema,
+            401: errorResponseSchema,
+            403: errorResponseSchema,
+          },
+        },
+      },
+      async (request, reply) => {
+        const communityDid = requireCommunityDid(request)
+
+        const file = await request.file()
+        if (!file) throw badRequest('No file uploaded')
+        if (!ALLOWED_MIMES.has(file.mimetype)) {
+          throw badRequest('File must be JPEG, PNG, WebP, or GIF')
+        }
+
+        const buffer = await file.toBuffer()
+        if (buffer.length > maxSize) {
+          throw badRequest(`File too large (max ${String(Math.round(maxSize / 1024 / 1024))}MB)`)
+        }
+
+        const processed = await sharp(buffer)
+          .resize(HEADER_LOGO_MAX.width, HEADER_LOGO_MAX.height, {
+            fit: 'inside',
+            withoutEnlargement: true,
+          })
+          .webp({ quality: 85 })
+          .toBuffer()
+
+        const url = await storage.store(processed, 'image/webp', 'header-logos')
+
+        await db
+          .update(communitySettings)
+          .set({ headerLogoUrl: url, updatedAt: new Date() })
           .where(eq(communitySettings.communityDid, communityDid))
 
         return reply.status(200).send({ url })

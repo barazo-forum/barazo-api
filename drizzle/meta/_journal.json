@@ -43,6 +43,13 @@
       "when": 1772623579346,
       "tag": "0005_threading-schema",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1772624609912,
+      "tag": "0006_add_header_logo",
+      "breakpoints": true
     }
   ]
 }
