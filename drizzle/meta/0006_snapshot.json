@@ -1,6 +1,6 @@
 {
-  "id": "fb61c80e-ea91-48e9-8d9c-7beaf93d08f1",
-  "prevId": "5f8531c6-1108-4540-8776-0cb9de6ab736",
+  "id": "ddab621d-79c2-450e-a5ea-c9ba69e2e35c",
+  "prevId": "9015e774-1584-45d9-a654-9cf4437fa526",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -616,6 +616,13 @@
           "notNull": true,
           "default": 0
         },
+        "depth": {
+          "name": "depth",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
@@ -775,6 +782,27 @@
             },
             {
               "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "replies_root_uri_depth_idx": {
+          "name": "replies_root_uri_depth_idx",
+          "columns": [
+            {
+              "expression": "root_uri",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "depth",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -1188,6 +1216,13 @@
           "notNull": true,
           "default": 16
         },
+        "max_reply_depth": {
+          "name": "max_reply_depth",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 9999
+        },
         "require_login_for_mature": {
           "name": "require_login_for_mature",
           "type": "boolean",
@@ -1236,6 +1271,19 @@
           "type": "text",
           "primaryKey": false,
           "notNull": false
+        },
+        "header_logo_url": {
+          "name": "header_logo_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "show_community_name": {
+          "name": "show_community_name",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
         },
         "primary_color": {
           "name": "primary_color",
