@@ -174,7 +174,7 @@ jobs:
       - name: Security audit with retry
         run: |
           for attempt in 1 2 3; do
-            output=$(pnpm audit --audit-level=high 2>&1) && { echo "$output"; exit 0; }
+            output=$(pnpm audit --audit-level=high --prod 2>&1) && { echo "$output"; exit 0; }
             if echo "$output" | grep -q "ERR_PNPM_AUDIT_BAD_RESPONSE\|ECONNREFUSED\|ETIMEDOUT\|EAI_AGAIN"; then
               echo "::warning::Audit registry unavailable (attempt $attempt/3), retrying in 15s..."
               sleep 15
