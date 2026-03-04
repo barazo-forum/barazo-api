@@ -29,6 +29,7 @@ import { setupRoutes } from './routes/setup.js'
 import { topicRoutes } from './routes/topics.js'
 import { replyRoutes } from './routes/replies.js'
 import { categoryRoutes } from './routes/categories.js'
+import { pageRoutes } from './routes/pages.js'
 import { adminSettingsRoutes } from './routes/admin-settings.js'
 import { reactionRoutes } from './routes/reactions.js'
 import { voteRoutes } from './routes/votes.js'
@@ -323,6 +324,7 @@ export async function buildApp(env: Env) {
   await app.register(topicRoutes())
   await app.register(replyRoutes())
   await app.register(categoryRoutes())
+  await app.register(pageRoutes())
   await app.register(adminSettingsRoutes())
   await app.register(reactionRoutes())
   await app.register(voteRoutes())
