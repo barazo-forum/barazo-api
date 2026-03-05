@@ -33,6 +33,7 @@ import { communitySettings } from '../db/schema/community-settings.js'
 import { checkOnboardingComplete } from '../lib/onboarding-gate.js'
 import { createNotificationService } from '../services/notification.js'
 import { extractRkey } from '../lib/at-uri.js'
+import { resolveHandleToDid } from '../lib/resolve-handle-to-did.js'
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -233,6 +234,7 @@ export function topicRoutes(): FastifyPluginCallback {
                 rkey: { type: 'string' },
                 title: { type: 'string' },
                 category: { type: 'string' },
+                authorHandle: { type: 'string' },
                 moderationStatus: { type: 'string', enum: ['approved', 'held', 'rejected'] },
                 createdAt: { type: 'string', format: 'date-time' },
               },
@@ -448,6 +450,7 @@ export function topicRoutes(): FastifyPluginCallback {
             crossPostService
               .crossPostTopic({
                 did: user.did,
+                handle: user.handle,
                 topicUri: pdsResult.uri,
                 title,
                 content,
@@ -479,6 +482,7 @@ export function topicRoutes(): FastifyPluginCallback {
             rkey,
             title,
             category,
+            authorHandle: user.handle,
             moderationStatus: contentModerationStatus,
             createdAt: now,
           })
@@ -843,6 +847,81 @@ export function topicRoutes(): FastifyPluginCallback {
             avatarUrl: null,
           },
         })
+      }
+    )
+
+    // -------------------------------------------------------------------
+    // GET /api/topics/by-author-rkey/:handle/:rkey (public, optionalAuth)
+    // -------------------------------------------------------------------
+
+    app.get(
+      '/api/topics/by-author-rkey/:handle/:rkey',
+      {
+        preHandler: [authMiddleware.optionalAuth],
+        schema: {
+          tags: ['Topics'],
+          summary: 'Get a single topic by author handle and rkey',
+          params: {
+            type: 'object',
+            required: ['handle', 'rkey'],
+            properties: {
+              handle: { type: 'string' },
+              rkey: { type: 'string' },
+            },
+          },
+          response: {
+            200: topicJsonSchema,
+            403: errorResponseSchema,
+            404: errorResponseSchema,
+          },
+        },
+      },
+      async (request, reply) => {
+        const { handle, rkey } = request.params as { handle: string; rkey: string }
+
+        const did = await resolveHandleToDid(handle, db, app.log)
+        if (!did) {
+          throw notFound('User not found')
+        }
+
+        const rows = await db
+          .select()
+          .from(topics)
+          .where(and(eq(topics.authorDid, did), eq(topics.rkey, rkey)))
+
+        const row = rows[0]
+        if (!row) {
+          throw notFound('Topic not found')
+        }
+
+        const communityDid = requireCommunityDid(request)
+        const catRows = await db
+          .select({ maturityRating: categories.maturityRating })
+          .from(categories)
+          .where(and(eq(categories.slug, row.category), eq(categories.communityDid, communityDid)))
+        const categoryRating = catRows[0]?.maturityRating ?? 'safe'
+
+        let userProfile: MaturityUser | undefined
+        if (request.user) {
+          const userRows = await db
+            .select({ declaredAge: users.declaredAge, maturityPref: users.maturityPref })
+            .from(users)
+            .where(eq(users.did, request.user.did))
+          userProfile = userRows[0] ?? undefined
+        }
+
+        const authorRkeySettingsRows = await db
+          .select({ ageThreshold: communitySettings.ageThreshold })
+          .from(communitySettings)
+          .where(eq(communitySettings.communityDid, communityDid))
+        const authorRkeyAgeThreshold = authorRkeySettingsRows[0]?.ageThreshold ?? 16
+
+        const maxMaturity = resolveMaxMaturity(userProfile, authorRkeyAgeThreshold)
+        if (!maturityAllows(maxMaturity, categoryRating)) {
+          throw forbidden('Content restricted by maturity settings')
+        }
+
+        return reply.status(200).send(serializeTopic(row, categoryRating))
       }
     )
 

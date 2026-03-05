@@ -55,6 +55,7 @@ export const topics = pgTable(
       table.category,
       table.lastActivityAt
     ),
+    index('topics_author_did_rkey_idx').on(table.authorDid, table.rkey),
     pgPolicy('tenant_isolation', {
       as: 'permissive',
       to: appRole,

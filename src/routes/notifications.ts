@@ -1,8 +1,12 @@
-import { eq, and, sql, desc } from 'drizzle-orm'
+import { eq, and, sql, desc, inArray } from 'drizzle-orm'
 import type { FastifyPluginCallback } from 'fastify'
 import { badRequest, errorResponseSchema } from '../lib/api-errors.js'
 import { notificationQuerySchema, markReadSchema } from '../validation/notifications.js'
 import { notifications } from '../db/schema/notifications.js'
+import { users } from '../db/schema/users.js'
+import { topics } from '../db/schema/topics.js'
+import { replies } from '../db/schema/replies.js'
+import { getCollectionFromUri } from '../lib/at-uri.js'
 
 // ---------------------------------------------------------------------------
 // OpenAPI JSON Schema definitions
@@ -15,6 +19,11 @@ const notificationJsonSchema = {
     type: { type: 'string' as const },
     subjectUri: { type: 'string' as const },
     actorDid: { type: 'string' as const },
+    actorHandle: { type: ['string', 'null'] as const },
+    subjectTitle: { type: ['string', 'null'] as const },
+    subjectAuthorDid: { type: ['string', 'null'] as const },
+    subjectAuthorHandle: { type: ['string', 'null'] as const },
+    message: { type: ['string', 'null'] as const },
     communityDid: { type: 'string' as const },
     read: { type: 'boolean' as const },
     createdAt: { type: 'string' as const, format: 'date-time' as const },
@@ -38,6 +47,35 @@ function serializeNotification(row: typeof notifications.$inferSelect) {
     communityDid: row.communityDid,
     read: row.read,
     createdAt: row.createdAt.toISOString(),
+  }
+}
+
+/**
+ * Build a human-readable notification message.
+ */
+function buildNotificationMessage(
+  type: string,
+  actorHandle: string | null,
+  subjectTitle: string | null
+): string | null {
+  const actor = actorHandle ?? 'Someone'
+  const subject = subjectTitle ? `"${subjectTitle}"` : 'your content'
+
+  switch (type) {
+    case 'reply':
+      return `${actor} replied to ${subject}`
+    case 'reaction':
+      return `${actor} reacted to ${subject}`
+    case 'mention':
+      return `${actor} mentioned you in ${subject}`
+    case 'mod_action':
+      return `A moderator took action on ${subject}`
+    case 'cross_post_failed':
+      return `Cross-post failed for ${subject}`
+    case 'cross_post_revoked':
+      return `Cross-post authorization was revoked`
+    default:
+      return null
   }
 }
 
@@ -165,6 +203,113 @@ export function notificationRoutes(): FastifyPluginCallback {
         const resultRows = hasMore ? rows.slice(0, limit) : rows
         const serialized = resultRows.map(serializeNotification)
 
+        // Batch-resolve actor handles
+        const actorDids = [...new Set(serialized.map((n) => n.actorDid))]
+        const actorHandleMap = new Map<string, string>()
+        if (actorDids.length > 0) {
+          const actorRows = await db
+            .select({ did: users.did, handle: users.handle })
+            .from(users)
+            .where(inArray(users.did, actorDids))
+          for (const row of actorRows) {
+            actorHandleMap.set(row.did, row.handle)
+          }
+        }
+
+        // Batch-resolve subject titles and authors from topics and replies
+        const subjectUris = [...new Set(serialized.map((n) => n.subjectUri))]
+        const topicUris = subjectUris.filter(
+          (uri) => getCollectionFromUri(uri) === 'forum.barazo.topic.post'
+        )
+        const replyUris = subjectUris.filter(
+          (uri) => getCollectionFromUri(uri) === 'forum.barazo.topic.reply'
+        )
+
+        const subjectMap = new Map<
+          string,
+          { title: string | null; authorDid: string; authorHandle: string | null }
+        >()
+
+        if (topicUris.length > 0) {
+          const topicRows = await db
+            .select({
+              uri: topics.uri,
+              title: topics.title,
+              authorDid: topics.authorDid,
+            })
+            .from(topics)
+            .where(inArray(topics.uri, topicUris))
+          for (const row of topicRows) {
+            subjectMap.set(row.uri, {
+              title: row.title,
+              authorDid: row.authorDid,
+              authorHandle: null,
+            })
+          }
+        }
+
+        if (replyUris.length > 0) {
+          // For replies, look up the root topic title
+          const replyRows = await db
+            .select({
+              uri: replies.uri,
+              authorDid: replies.authorDid,
+              rootUri: replies.rootUri,
+            })
+            .from(replies)
+            .where(inArray(replies.uri, replyUris))
+
+          // Get root topic titles for replies
+          const rootUris = [...new Set(replyRows.map((r) => r.rootUri))]
+          const rootTitleMap = new Map<string, string>()
+          if (rootUris.length > 0) {
+            const rootRows = await db
+              .select({ uri: topics.uri, title: topics.title })
+              .from(topics)
+              .where(inArray(topics.uri, rootUris))
+            for (const row of rootRows) {
+              rootTitleMap.set(row.uri, row.title)
+            }
+          }
+
+          for (const row of replyRows) {
+            subjectMap.set(row.uri, {
+              title: rootTitleMap.get(row.rootUri) ?? null,
+              authorDid: row.authorDid,
+              authorHandle: null,
+            })
+          }
+        }
+
+        // Resolve author handles for subjects
+        const subjectAuthorDids = [
+          ...new Set([...subjectMap.values()].map((s) => s.authorDid)),
+        ]
+        if (subjectAuthorDids.length > 0) {
+          const authorRows = await db
+            .select({ did: users.did, handle: users.handle })
+            .from(users)
+            .where(inArray(users.did, subjectAuthorDids))
+          const handleMap = new Map(authorRows.map((r) => [r.did, r.handle]))
+          for (const [, subject] of subjectMap) {
+            subject.authorHandle = handleMap.get(subject.authorDid) ?? null
+          }
+        }
+
+        // Enrich notifications
+        const enriched = serialized.map((n) => {
+          const actorHandle = actorHandleMap.get(n.actorDid) ?? null
+          const subject = subjectMap.get(n.subjectUri)
+          return {
+            ...n,
+            actorHandle,
+            subjectTitle: subject?.title ?? null,
+            subjectAuthorDid: subject?.authorDid ?? null,
+            subjectAuthorHandle: subject?.authorHandle ?? null,
+            message: buildNotificationMessage(n.type, actorHandle, subject?.title ?? null),
+          }
+        })
+
         // Get total count for the user
         const countResult = await db
           .select({ count: sql<number>`count(*)::int` })
@@ -182,7 +327,7 @@ export function notificationRoutes(): FastifyPluginCallback {
         }
 
         return reply.status(200).send({
-          notifications: serialized,
+          notifications: enriched,
           cursor: nextCursor,
           total,
         })

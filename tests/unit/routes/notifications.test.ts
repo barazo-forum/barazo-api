@@ -68,6 +68,18 @@ function resetAllDbMocks(): void {
   })
 }
 
+/**
+ * Mock the enrichment queries that run after fetching notification rows.
+ * These resolve actor handles and subject titles. Since mocked topic queries
+ * return empty arrays, no subject author handle query is triggered.
+ * Call this after `selectChain.limit.mockResolvedValueOnce(rows)` when
+ * `rows` is non-empty (i.e., there are notifications to enrich).
+ */
+function mockEnrichmentQueries(): void {
+  selectChain.where.mockResolvedValueOnce([]) // actor handles (users table)
+  selectChain.where.mockResolvedValueOnce([]) // topic subjects (topics table)
+}
+
 // ---------------------------------------------------------------------------
 // Auth middleware mocks
 // ---------------------------------------------------------------------------
@@ -261,6 +273,7 @@ describe('notification routes', () => {
       }
       selectChain.where.mockReturnValueOnce(chainableThenable)
       selectChain.limit.mockResolvedValueOnce([unreadNotification, readNotification])
+      mockEnrichmentQueries()
       selectChain.where.mockResolvedValueOnce([{ count: 2 }])
 
       const response = await app.inject({
@@ -301,6 +314,7 @@ describe('notification routes', () => {
       }
       selectChain.where.mockReturnValueOnce(chainableThenable)
       selectChain.limit.mockResolvedValueOnce(rows)
+      mockEnrichmentQueries()
       selectChain.where.mockResolvedValueOnce([{ count: 50 }])
 
       const response = await app.inject({
@@ -332,6 +346,7 @@ describe('notification routes', () => {
       }
       selectChain.where.mockReturnValueOnce(chainableThenable)
       selectChain.limit.mockResolvedValueOnce(rows)
+      mockEnrichmentQueries()
       selectChain.where.mockResolvedValueOnce([{ count: 1 }])
 
       const response = await app.inject({
@@ -360,6 +375,7 @@ describe('notification routes', () => {
       }
       selectChain.where.mockReturnValueOnce(chainableThenable)
       selectChain.limit.mockResolvedValueOnce([sampleNotificationRow()])
+      mockEnrichmentQueries()
       selectChain.where.mockResolvedValueOnce([{ count: 1 }])
 
       const response = await app.inject({
@@ -423,6 +439,7 @@ describe('notification routes', () => {
       }
       selectChain.where.mockReturnValueOnce(chainableThenable)
       selectChain.limit.mockResolvedValueOnce([unreadRow])
+      mockEnrichmentQueries()
       selectChain.where.mockResolvedValueOnce([{ count: 1 }])
 
       const response = await app.inject({
@@ -454,6 +471,7 @@ describe('notification routes', () => {
       }
       selectChain.where.mockReturnValueOnce(chainableThenable)
       selectChain.limit.mockResolvedValueOnce([unreadRow, readRow])
+      mockEnrichmentQueries()
       selectChain.where.mockResolvedValueOnce([{ count: 2 }])
 
       const response = await app.inject({
@@ -484,6 +502,7 @@ describe('notification routes', () => {
       }
       selectChain.where.mockReturnValueOnce(chainableThenable)
       selectChain.limit.mockResolvedValueOnce([unreadRow, readRow])
+      mockEnrichmentQueries()
       selectChain.where.mockResolvedValueOnce([{ count: 2 }])
 
       const response = await app.inject({
@@ -522,6 +541,7 @@ describe('notification routes', () => {
       }
       selectChain.where.mockReturnValueOnce(chainableThenable)
       selectChain.limit.mockResolvedValueOnce([row])
+      mockEnrichmentQueries()
       selectChain.where.mockResolvedValueOnce([{ count: 10 }])
 
       const response = await app.inject({
@@ -559,6 +579,7 @@ describe('notification routes', () => {
       }
       selectChain.where.mockReturnValueOnce(chainableThenable)
       selectChain.limit.mockResolvedValueOnce([row])
+      mockEnrichmentQueries()
       selectChain.where.mockResolvedValueOnce([{ count: 5 }])
 
       const response = await app.inject({
@@ -776,6 +797,7 @@ describe('notification routes', () => {
       }
       selectChain.where.mockReturnValueOnce(chainableThenable)
       selectChain.limit.mockResolvedValueOnce(rows)
+      mockEnrichmentQueries()
       selectChain.where.mockResolvedValueOnce([{ count: 25 }])
 
       const response = await app.inject({
@@ -811,6 +833,7 @@ describe('notification routes', () => {
       }
       selectChain.where.mockReturnValueOnce(chainableThenable)
       selectChain.limit.mockResolvedValueOnce(rows)
+      mockEnrichmentQueries()
       selectChain.where.mockResolvedValueOnce([{ count: 5 }])
 
       const response = await app.inject({
@@ -847,6 +870,7 @@ describe('notification routes', () => {
       }
       selectChain.where.mockReturnValueOnce(chainableThenable)
       selectChain.limit.mockResolvedValueOnce([row])
+      mockEnrichmentQueries()
       selectChain.where.mockResolvedValueOnce([{ count: 5 }])
 
       const response = await app.inject({
@@ -891,6 +915,7 @@ describe('notification routes', () => {
       }
       selectChain.where.mockReturnValueOnce(chainableThenable)
       selectChain.limit.mockResolvedValueOnce(rows)
+      mockEnrichmentQueries()
       selectChain.where.mockResolvedValueOnce([{ count: 100 }])
 
       const response = await app.inject({

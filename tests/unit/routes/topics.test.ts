@@ -62,6 +62,12 @@ vi.mock('../../../src/services/notification.js', () => ({
   }),
 }))
 
+// Mock handle-to-DID resolver
+const resolveHandleToDidFn = vi.fn<(handle: string) => Promise<string | null>>()
+vi.mock('../../../src/lib/resolve-handle-to-did.js', () => ({
+  resolveHandleToDid: (...args: unknown[]) => resolveHandleToDidFn(args[0] as string),
+}))
+
 // Mock anti-spam module (tested separately in anti-spam.test.ts)
 const loadAntiSpamSettingsFn = vi.fn().mockResolvedValue({
   wordFilter: [],
@@ -322,9 +328,10 @@ describe('topic routes', () => {
       })
 
       expect(response.statusCode).toBe(201)
-      const body = response.json<{ uri: string; cid: string }>()
+      const body = response.json<{ uri: string; cid: string; authorHandle: string }>()
       expect(body.uri).toBe(TEST_URI)
       expect(body.cid).toBe(TEST_CID)
+      expect(body.authorHandle).toBe(TEST_HANDLE)
 
       // Should have called PDS createRecord
       expect(createRecordFn).toHaveBeenCalledOnce()
@@ -1203,6 +1210,91 @@ describe('topic routes', () => {
 
       expect(response.statusCode).toBe(200)
 
+      await noAuthApp.close()
+    })
+  })
+
+  // =========================================================================
+  // GET /api/topics/by-author-rkey/:handle/:rkey
+  // =========================================================================
+
+  describe('GET /api/topics/by-author-rkey/:handle/:rkey', () => {
+    let app: FastifyInstance
+
+    beforeAll(async () => {
+      app = await buildTestApp(testUser())
+    })
+
+    afterAll(async () => {
+      await app.close()
+    })
+
+    beforeEach(() => {
+      vi.clearAllMocks()
+      resetAllDbMocks()
+    })
+
+    it('returns a topic by author handle and rkey', async () => {
+      resolveHandleToDidFn.mockResolvedValueOnce(TEST_DID)
+      const row = sampleTopicRow()
+      // 1. select().from(topics).where(authorDid, rkey) -> find topic
+      selectChain.where.mockResolvedValueOnce([row])
+      // 2. select(maturityRating).from(categories).where() -> category lookup
+      selectChain.where.mockResolvedValueOnce([{ maturityRating: 'safe' }])
+      // 3. select(declaredAge, maturityPref).from(users).where() -> user profile
+      selectChain.where.mockResolvedValueOnce([{ declaredAge: null, maturityPref: 'safe' }])
+      // 4. select(ageThreshold).from(communitySettings).where() -> age threshold
+      selectChain.where.mockResolvedValueOnce([{ ageThreshold: 16 }])
+
+      const response = await app.inject({
+        method: 'GET',
+        url: `/api/topics/by-author-rkey/${TEST_HANDLE}/${TEST_RKEY}`,
+      })
+
+      expect(response.statusCode).toBe(200)
+      const body = response.json<{ uri: string; title: string }>()
+      expect(body.uri).toBe(TEST_URI)
+      expect(body.title).toBe('Test Topic Title')
+    })
+
+    it('returns 404 when handle cannot be resolved', async () => {
+      resolveHandleToDidFn.mockResolvedValueOnce(null)
+
+      const response = await app.inject({
+        method: 'GET',
+        url: '/api/topics/by-author-rkey/unknown.handle/abc123',
+      })
+
+      expect(response.statusCode).toBe(404)
+    })
+
+    it('returns 404 when topic not found for author', async () => {
+      resolveHandleToDidFn.mockResolvedValueOnce(TEST_DID)
+      selectChain.where.mockResolvedValueOnce([]) // no topic found
+
+      const response = await app.inject({
+        method: 'GET',
+        url: `/api/topics/by-author-rkey/${TEST_HANDLE}/nonexistent`,
+      })
+
+      expect(response.statusCode).toBe(404)
+    })
+
+    it('returns 403 when maturity blocks access', async () => {
+      const noAuthApp = await buildTestApp(undefined)
+
+      resolveHandleToDidFn.mockResolvedValueOnce(TEST_DID)
+      const row = sampleTopicRow({ category: 'mature-cat' })
+      selectChain.where.mockResolvedValueOnce([row])
+      selectChain.where.mockResolvedValueOnce([{ maturityRating: 'mature' }])
+      selectChain.where.mockResolvedValueOnce([{ ageThreshold: 16 }])
+
+      const response = await noAuthApp.inject({
+        method: 'GET',
+        url: `/api/topics/by-author-rkey/${TEST_HANDLE}/${TEST_RKEY}`,
+      })
+
+      expect(response.statusCode).toBe(403)
       await noAuthApp.close()
     })
   })

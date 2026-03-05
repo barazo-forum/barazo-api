@@ -167,6 +167,7 @@ describe('cross-post service', () => {
 
       await service.crossPostTopic({
         did: TEST_DID,
+        handle: 'test.handle',
         topicUri: TEST_TOPIC_URI,
         title: 'My Topic',
         content: 'Topic content here.',
@@ -218,6 +219,7 @@ describe('cross-post service', () => {
 
       await service.crossPostTopic({
         did: TEST_DID,
+        handle: 'test.handle',
         topicUri: TEST_TOPIC_URI,
         title: 'OG Image Topic',
         content: 'Testing OG image.',
@@ -269,6 +271,7 @@ describe('cross-post service', () => {
 
       await service.crossPostTopic({
         did: TEST_DID,
+        handle: 'test.handle',
         topicUri: TEST_TOPIC_URI,
         title: 'No Thumb Topic',
         content: 'OG image will fail.',
@@ -318,6 +321,7 @@ describe('cross-post service', () => {
 
       await service.crossPostTopic({
         did: TEST_DID,
+        handle: 'test.handle',
         topicUri: TEST_TOPIC_URI,
         title: 'Upload Fail Topic',
         content: 'Blob upload will fail.',
@@ -359,6 +363,7 @@ describe('cross-post service', () => {
 
       await service.crossPostTopic({
         did: TEST_DID,
+        handle: 'test.handle',
         topicUri: TEST_TOPIC_URI,
         title: 'Frontpage Topic',
         content: 'Content for Frontpage.',
@@ -375,7 +380,7 @@ describe('cross-post service', () => {
       expect(did).toBe(TEST_DID)
       expect(collection).toBe('fyi.frontpage.post')
       expect(record.title).toBe('Frontpage Topic')
-      expect(record.url).toBe(`${TEST_PUBLIC_URL}/topics/abc123`)
+      expect(record.url).toBe(`${TEST_PUBLIC_URL}/test.handle/abc123`)
 
       expect(mockDb.insert).toHaveBeenCalledOnce()
     })
@@ -406,6 +411,7 @@ describe('cross-post service', () => {
 
       await service.crossPostTopic({
         did: TEST_DID,
+        handle: 'test.handle',
         topicUri: TEST_TOPIC_URI,
         title: 'Dual Post',
         content: 'Content for both.',
@@ -437,6 +443,7 @@ describe('cross-post service', () => {
 
       await service.crossPostTopic({
         did: TEST_DID,
+        handle: 'test.handle',
         topicUri: TEST_TOPIC_URI,
         title: 'No Cross-Post',
         content: 'Should not go anywhere.',
@@ -469,6 +476,7 @@ describe('cross-post service', () => {
 
       await service.crossPostTopic({
         did: TEST_DID,
+        handle: 'test.handle',
         topicUri: TEST_TOPIC_URI,
         title: 'No Scopes',
         content: 'User has not authorized.',
@@ -501,6 +509,7 @@ describe('cross-post service', () => {
 
       await service.crossPostTopic({
         did: TEST_DID,
+        handle: 'test.handle',
         topicUri: TEST_TOPIC_URI,
         title: 'Will Fail',
         content: 'Bluesky is down.',
@@ -547,6 +556,7 @@ describe('cross-post service', () => {
 
       await service.crossPostTopic({
         did: TEST_DID,
+        handle: 'test.handle',
         topicUri: TEST_TOPIC_URI,
         title: 'FP Fail',
         content: 'Frontpage is down.',
@@ -580,6 +590,7 @@ describe('cross-post service', () => {
 
       await service.crossPostTopic({
         did: TEST_DID,
+        handle: 'test.handle',
         topicUri: TEST_TOPIC_URI,
         title: 'Both Fail',
         content: 'Everything is broken.',
@@ -620,6 +631,7 @@ describe('cross-post service', () => {
 
       await service.crossPostTopic({
         did: TEST_DID,
+        handle: 'test.handle',
         topicUri: TEST_TOPIC_URI,
         title: 'Partial Success',
         content: 'One succeeds, one fails.',
@@ -674,6 +686,7 @@ describe('cross-post service', () => {
 
       await service.crossPostTopic({
         did: TEST_DID,
+        handle: 'test.handle',
         topicUri: TEST_TOPIC_URI,
         title: 'Short Title',
         content: longContent,
@@ -713,6 +726,7 @@ describe('cross-post service', () => {
 
       await service.crossPostTopic({
         did: TEST_DID,
+        handle: 'test.handle',
         topicUri: TEST_TOPIC_URI,
         title: 'URL Test',
         content: 'Content.',
@@ -727,7 +741,7 @@ describe('cross-post service', () => {
       ]
       const embed = record.embed as Record<string, unknown>
       const external = embed.external as Record<string, unknown>
-      expect(external.uri).toBe(`${TEST_PUBLIC_URL}/topics/abc123`)
+      expect(external.uri).toBe(`${TEST_PUBLIC_URL}/test.handle/abc123`)
     })
 
     it('does not generate OG image for Frontpage-only cross-posts', async () => {
@@ -751,6 +765,7 @@ describe('cross-post service', () => {
 
       await service.crossPostTopic({
         did: TEST_DID,
+        handle: 'test.handle',
         topicUri: TEST_TOPIC_URI,
         title: 'FP Only',
         content: 'No OG needed.',

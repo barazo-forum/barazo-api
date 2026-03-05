@@ -32,6 +32,7 @@ import { communitySettings } from '../db/schema/community-settings.js'
 import { checkOnboardingComplete } from '../lib/onboarding-gate.js'
 import { createNotificationService } from '../services/notification.js'
 import { extractRkey } from '../lib/at-uri.js'
+import { resolveHandleToDid } from '../lib/resolve-handle-to-did.js'
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -163,10 +164,11 @@ function decodeCursor(cursor: string): { createdAt: string; uri: string } | null
 /**
  * Reply routes for the Barazo forum.
  *
- * - POST   /api/topics/:topicUri/replies  -- Create a reply
- * - GET    /api/topics/:topicUri/replies   -- List replies for a topic
- * - PUT    /api/replies/:uri               -- Update a reply
- * - DELETE /api/replies/:uri               -- Delete a reply
+ * - POST   /api/topics/:topicUri/replies                 -- Create a reply
+ * - GET    /api/topics/:topicUri/replies                  -- List replies for a topic
+ * - GET    /api/replies/by-author-rkey/:handle/:rkey      -- Get a reply by author handle and rkey
+ * - PUT    /api/replies/:uri                              -- Update a reply
+ * - DELETE /api/replies/:uri                              -- Delete a reply
  */
 export function replyRoutes(): FastifyPluginCallback {
   return (app, _opts, done) => {
@@ -693,6 +695,53 @@ export function replyRoutes(): FastifyPluginCallback {
           replies: annotatedReplies,
           cursor: nextCursor,
         })
+      }
+    )
+
+    // -------------------------------------------------------------------
+    // GET /api/replies/by-author-rkey/:handle/:rkey (public, optionalAuth)
+    // -------------------------------------------------------------------
+
+    app.get(
+      '/api/replies/by-author-rkey/:handle/:rkey',
+      {
+        preHandler: [authMiddleware.optionalAuth],
+        schema: {
+          tags: ['Replies'],
+          summary: 'Get a single reply by author handle and rkey',
+          params: {
+            type: 'object',
+            required: ['handle', 'rkey'],
+            properties: {
+              handle: { type: 'string' },
+              rkey: { type: 'string' },
+            },
+          },
+          response: {
+            200: replyJsonSchema,
+            404: errorResponseSchema,
+          },
+        },
+      },
+      async (request, reply) => {
+        const { handle, rkey } = request.params as { handle: string; rkey: string }
+
+        const did = await resolveHandleToDid(handle, db, app.log)
+        if (!did) {
+          throw notFound('User not found')
+        }
+
+        const rows = await db
+          .select()
+          .from(replies)
+          .where(and(eq(replies.authorDid, did), eq(replies.rkey, rkey)))
+
+        const row = rows[0]
+        if (!row) {
+          throw notFound('Reply not found')
+        }
+
+        return reply.status(200).send(serializeReply(row))
       }
     )
 

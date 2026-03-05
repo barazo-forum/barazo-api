@@ -72,6 +72,12 @@ vi.mock('../../../src/lib/onboarding-gate.js', () => ({
   checkOnboardingComplete: (...args: unknown[]) => checkOnboardingCompleteFn(...args) as unknown,
 }))
 
+// Mock handle-to-DID resolver
+const resolveHandleToDidFn = vi.fn<(handle: string) => Promise<string | null>>()
+vi.mock('../../../src/lib/resolve-handle-to-did.js', () => ({
+  resolveHandleToDid: (...args: unknown[]) => resolveHandleToDidFn(args[0] as string),
+}))
+
 // Import routes AFTER mocking
 import { replyRoutes } from '../../../src/routes/replies.js'
 
@@ -2560,6 +2566,67 @@ describe('reply routes', () => {
       expect(response.statusCode).toBe(401)
       const body = response.json<{ error: string }>()
       expect(body.error).toBe('Authentication required')
+    })
+  })
+
+  // =========================================================================
+  // GET /api/replies/by-author-rkey/:handle/:rkey
+  // =========================================================================
+
+  describe('GET /api/replies/by-author-rkey/:handle/:rkey', () => {
+    let app: FastifyInstance
+
+    beforeAll(async () => {
+      app = await buildTestApp(testUser())
+    })
+
+    afterAll(async () => {
+      await app.close()
+    })
+
+    beforeEach(() => {
+      vi.clearAllMocks()
+      resetAllDbMocks()
+    })
+
+    it('returns a reply by author handle and rkey', async () => {
+      resolveHandleToDidFn.mockResolvedValueOnce(TEST_DID)
+      const row = sampleReplyRow()
+      selectChain.where.mockResolvedValueOnce([row])
+
+      const response = await app.inject({
+        method: 'GET',
+        url: `/api/replies/by-author-rkey/${TEST_HANDLE}/${TEST_REPLY_RKEY}`,
+      })
+
+      expect(response.statusCode).toBe(200)
+      const body = response.json<{ uri: string; rkey: string; content: string }>()
+      expect(body.uri).toBe(TEST_REPLY_URI)
+      expect(body.rkey).toBe(TEST_REPLY_RKEY)
+      expect(body.content).toBe('This is a test reply')
+    })
+
+    it('returns 404 when handle cannot be resolved', async () => {
+      resolveHandleToDidFn.mockResolvedValueOnce(null)
+
+      const response = await app.inject({
+        method: 'GET',
+        url: '/api/replies/by-author-rkey/unknown.handle/reply001',
+      })
+
+      expect(response.statusCode).toBe(404)
+    })
+
+    it('returns 404 when reply not found for author', async () => {
+      resolveHandleToDidFn.mockResolvedValueOnce(TEST_DID)
+      selectChain.where.mockResolvedValueOnce([])
+
+      const response = await app.inject({
+        method: 'GET',
+        url: `/api/replies/by-author-rkey/${TEST_HANDLE}/nonexistent`,
+      })
+
+      expect(response.statusCode).toBe(404)
     })
   })
 })

@@ -1,0 +1,2 @@
+CREATE INDEX "topics_author_did_rkey_idx" ON "topics" USING btree ("author_did","rkey");--> statement-breakpoint
+CREATE INDEX "replies_author_did_rkey_idx" ON "replies" USING btree ("author_did","rkey");

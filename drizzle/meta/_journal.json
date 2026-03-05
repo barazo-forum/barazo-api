@@ -57,6 +57,13 @@
       "when": 1772636063890,
       "tag": "0007_ordinary_mulholland_black",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1772706380033,
+      "tag": "0008_add_author_rkey_indexes",
+      "breakpoints": true
     }
   ]
 }

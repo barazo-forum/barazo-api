@@ -30,6 +30,7 @@ const FRONTPAGE_COLLECTION = 'fyi.frontpage.post'
 
 export interface CrossPostParams {
   did: string
+  handle: string
   topicUri: string
   title: string
   content: string
@@ -79,11 +80,11 @@ function buildBlueskyPostText(title: string, content: string): string {
 }
 
 /**
- * Build the public URL for a topic from its AT URI.
+ * Build the public URL for a topic using AT Protocol-style format.
  */
-function buildTopicUrl(publicUrl: string, topicUri: string): string {
+function buildTopicUrl(publicUrl: string, handle: string, topicUri: string): string {
   const rkey = extractRkey(topicUri)
-  return `${publicUrl}/topics/${rkey}`
+  return `${publicUrl}/${handle}/${rkey}`
 }
 
 // ---------------------------------------------------------------------------
@@ -136,7 +137,7 @@ export function createCrossPostService(
    * to the forum topic and a branded OG image thumbnail.
    */
   async function crossPostToBluesky(params: CrossPostParams, thumb: unknown): Promise<void> {
-    const topicUrl = buildTopicUrl(config.publicUrl, params.topicUri)
+    const topicUrl = buildTopicUrl(config.publicUrl, params.handle, params.topicUri)
     const postText = buildBlueskyPostText(params.title, params.content)
 
     const external: Record<string, unknown> = {
@@ -189,7 +190,7 @@ export function createCrossPostService(
    * (link submission pointing back to the forum topic).
    */
   async function crossPostToFrontpage(params: CrossPostParams): Promise<void> {
-    const topicUrl = buildTopicUrl(config.publicUrl, params.topicUri)
+    const topicUrl = buildTopicUrl(config.publicUrl, params.handle, params.topicUri)
 
     const record: Record<string, unknown> = {
       title: params.title,

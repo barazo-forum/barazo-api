@@ -59,6 +59,7 @@ export const replies = pgTable(
     index('replies_trust_status_idx').on(table.trustStatus),
     index('replies_root_uri_created_at_idx').on(table.rootUri, table.createdAt),
     index('replies_root_uri_depth_idx').on(table.rootUri, table.depth),
+    index('replies_author_did_rkey_idx').on(table.authorDid, table.rkey),
     pgPolicy('tenant_isolation', {
       as: 'permissive',
       to: appRole,
