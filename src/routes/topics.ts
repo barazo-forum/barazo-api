@@ -1,4 +1,4 @@
-import { eq, and, desc, sql, inArray, notInArray, isNotNull, ne, or } from 'drizzle-orm'
+import { eq, and, asc, desc, sql, inArray, notInArray, isNotNull, ne, or } from 'drizzle-orm'
 import { requireCommunityDid } from '../middleware/community-resolver.js'
 import type { FastifyPluginCallback } from 'fastify'
 import { createPdsClient } from '../lib/pds-client.js'
@@ -84,6 +84,10 @@ const topicJsonSchema = {
     isMuted: { type: 'boolean' as const },
     isMutedWord: { type: 'boolean' as const },
     ozoneLabel: { type: ['string', 'null'] as const },
+    isPinned: { type: 'boolean' as const },
+    isLocked: { type: 'boolean' as const },
+    pinnedScope: { type: ['string', 'null'] as const },
+    pinnedAt: { type: ['string', 'null'] as const, format: 'date-time' as const },
     categoryMaturityRating: { type: 'string' as const, enum: ['safe', 'mature', 'adult'] },
     lastActivityAt: { type: 'string' as const, format: 'date-time' as const },
     createdAt: { type: 'string' as const, format: 'date-time' as const },
@@ -123,6 +127,10 @@ function serializeTopic(row: typeof topics.$inferSelect, categoryMaturityRating:
     reactionCount: row.reactionCount,
     isAuthorDeleted: row.isAuthorDeleted,
     isModDeleted: row.isModDeleted,
+    isPinned: row.isPinned,
+    isLocked: row.isLocked,
+    pinnedScope: row.pinnedScope ?? null,
+    pinnedAt: row.pinnedAt?.toISOString() ?? null,
     categoryMaturityRating,
     lastActivityAt: row.lastActivityAt.toISOString(),
     createdAt: row.createdAt.toISOString(),
@@ -707,11 +715,21 @@ export function topicRoutes(): FastifyPluginCallback {
         //   score = (reply_count + reaction_count * 0.3) / (age_in_hours + 2) ^ 1.2
         const popularityScore = sql`(${topics.replyCount} + ${topics.reactionCount} * 0.3) / POWER(EXTRACT(EPOCH FROM (NOW() - ${topics.createdAt})) / 3600.0 + 2, 1.2)`
 
+        // Pinned-first ordering: when browsing a category, both category-pinned
+        // and forum-pinned topics float to the top. On the homepage (no category
+        // filter), only forum-pinned topics get promoted.
+        const pinnedFirst = category
+          ? sql`CASE WHEN ${topics.pinnedScope} IS NOT NULL THEN 0 ELSE 1 END`
+          : sql`CASE WHEN ${topics.pinnedScope} = 'forum' THEN 0 ELSE 1 END`
+
         const rows = await db
           .select()
           .from(topics)
           .where(whereClause)
-          .orderBy(sort === 'popular' ? desc(popularityScore) : desc(topics.lastActivityAt))
+          .orderBy(
+            asc(pinnedFirst),
+            sort === 'popular' ? desc(popularityScore) : desc(topics.lastActivityAt)
+          )
           .limit(fetchLimit)
 
         const hasMore = rows.length > limit

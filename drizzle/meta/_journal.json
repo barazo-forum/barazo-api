@@ -64,6 +64,13 @@
       "when": 1772706380033,
       "tag": "0008_add_author_rkey_indexes",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1772728814082,
+      "tag": "0009_brainy_sunspot",
+      "breakpoints": true
     }
   ]
 }
