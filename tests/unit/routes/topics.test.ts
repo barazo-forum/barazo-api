@@ -225,6 +225,10 @@ function sampleTopicRow(overrides?: Record<string, unknown>) {
     labels: null,
     replyCount: 0,
     reactionCount: 0,
+    isPinned: false,
+    isLocked: false,
+    pinnedScope: null,
+    pinnedAt: null,
     lastActivityAt: new Date(TEST_NOW),
     createdAt: new Date(TEST_NOW),
     indexedAt: new Date(TEST_NOW),
@@ -2722,6 +2726,68 @@ describe('topic routes', () => {
       expect(response.statusCode).toBe(200)
       const body = response.json<{ topics: Array<{ tags: string[] | null }> }>()
       expect(body.topics[0]?.tags).toBeNull()
+    })
+
+    it('includes isPinned, isLocked, pinnedScope, and pinnedAt in response', async () => {
+      setupMaturityMocks(true)
+
+      const pinnedDate = new Date('2026-03-01T12:00:00.000Z')
+      const rows = [
+        sampleTopicRow({
+          isPinned: true,
+          isLocked: true,
+          pinnedScope: 'category',
+          pinnedAt: pinnedDate,
+        }),
+      ]
+      selectChain.limit.mockResolvedValueOnce(rows)
+
+      const response = await app.inject({
+        method: 'GET',
+        url: '/api/topics',
+      })
+
+      expect(response.statusCode).toBe(200)
+      const body = response.json<{
+        topics: Array<{
+          isPinned: boolean
+          isLocked: boolean
+          pinnedScope: string | null
+          pinnedAt: string | null
+        }>
+      }>()
+      expect(body.topics).toHaveLength(1)
+      expect(body.topics[0]?.isPinned).toBe(true)
+      expect(body.topics[0]?.isLocked).toBe(true)
+      expect(body.topics[0]?.pinnedScope).toBe('category')
+      expect(body.topics[0]?.pinnedAt).toBe('2026-03-01T12:00:00.000Z')
+    })
+
+    it('returns null for pinnedScope and pinnedAt when topic is not pinned', async () => {
+      setupMaturityMocks(true)
+
+      const rows = [sampleTopicRow()]
+      selectChain.limit.mockResolvedValueOnce(rows)
+
+      const response = await app.inject({
+        method: 'GET',
+        url: '/api/topics',
+      })
+
+      expect(response.statusCode).toBe(200)
+      const body = response.json<{
+        topics: Array<{
+          isPinned: boolean
+          isLocked: boolean
+          pinnedScope: string | null
+          pinnedAt: string | null
+        }>
+      }>()
+      expect(body.topics).toHaveLength(1)
+      expect(body.topics[0]?.isPinned).toBe(false)
+      expect(body.topics[0]?.isLocked).toBe(false)
+      expect(body.topics[0]?.pinnedScope).toBeNull()
+      expect(body.topics[0]?.pinnedAt).toBeNull()
     })
 
     it('provides fallback author profile when author not found in DB', async () => {
