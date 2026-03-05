@@ -1280,6 +1280,48 @@ describe('topic routes', () => {
       expect(response.statusCode).toBe(404)
     })
 
+    it('enriches author profile in by-author-rkey response', async () => {
+      resolveHandleToDidFn.mockResolvedValueOnce(TEST_DID)
+      const row = sampleTopicRow()
+      // 1. find topic by authorDid + rkey
+      selectChain.where.mockResolvedValueOnce([row])
+      // 2. category maturity rating
+      selectChain.where.mockResolvedValueOnce([{ maturityRating: 'safe' }])
+      // 3. user profile (maturity)
+      selectChain.where.mockResolvedValueOnce([{ declaredAge: null, maturityPref: 'safe' }])
+      // 4. age threshold
+      selectChain.where.mockResolvedValueOnce([{ ageThreshold: 16 }])
+      // 5. resolveAuthors: users table
+      selectChain.where.mockResolvedValueOnce([
+        {
+          did: TEST_DID,
+          handle: TEST_HANDLE,
+          displayName: 'Jay',
+          avatarUrl: 'https://cdn.example.com/jay.jpg',
+          bannerUrl: null,
+          bio: null,
+        },
+      ])
+      // 6. resolveAuthors: community profiles
+      selectChain.where.mockResolvedValueOnce([])
+
+      const response = await app.inject({
+        method: 'GET',
+        url: `/api/topics/by-author-rkey/${TEST_HANDLE}/${TEST_RKEY}`,
+      })
+
+      expect(response.statusCode).toBe(200)
+      const body = response.json<{
+        author: { did: string; handle: string; displayName: string; avatarUrl: string }
+      }>()
+      expect(body.author).toEqual({
+        did: TEST_DID,
+        handle: TEST_HANDLE,
+        displayName: 'Jay',
+        avatarUrl: 'https://cdn.example.com/jay.jpg',
+      })
+    })
+
     it('returns 403 when maturity blocks access', async () => {
       const noAuthApp = await buildTestApp(undefined)
 

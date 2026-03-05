@@ -2617,6 +2617,42 @@ describe('reply routes', () => {
       expect(response.statusCode).toBe(404)
     })
 
+    it('enriches author profile in by-author-rkey response', async () => {
+      resolveHandleToDidFn.mockResolvedValueOnce(TEST_DID)
+      const row = sampleReplyRow()
+      // 1. find reply by authorDid + rkey
+      selectChain.where.mockResolvedValueOnce([row])
+      // 2. resolveAuthors: users table
+      selectChain.where.mockResolvedValueOnce([
+        {
+          did: TEST_DID,
+          handle: TEST_HANDLE,
+          displayName: 'Jay',
+          avatarUrl: 'https://cdn.example.com/jay.jpg',
+          bannerUrl: null,
+          bio: null,
+        },
+      ])
+      // 3. resolveAuthors: community profiles
+      selectChain.where.mockResolvedValueOnce([])
+
+      const response = await app.inject({
+        method: 'GET',
+        url: `/api/replies/by-author-rkey/${TEST_HANDLE}/${TEST_REPLY_RKEY}`,
+      })
+
+      expect(response.statusCode).toBe(200)
+      const body = response.json<{
+        author: { did: string; handle: string; displayName: string; avatarUrl: string }
+      }>()
+      expect(body.author).toEqual({
+        did: TEST_DID,
+        handle: TEST_HANDLE,
+        displayName: 'Jay',
+        avatarUrl: 'https://cdn.example.com/jay.jpg',
+      })
+    })
+
     it('returns 404 when reply not found for author', async () => {
       resolveHandleToDidFn.mockResolvedValueOnce(TEST_DID)
       selectChain.where.mockResolvedValueOnce([])

@@ -741,7 +741,19 @@ export function replyRoutes(): FastifyPluginCallback {
           throw notFound('Reply not found')
         }
 
-        return reply.status(200).send(serializeReply(row))
+        const serialized = serializeReply(row)
+        const communityDid = requireCommunityDid(request)
+        const authorMap = await resolveAuthors([row.authorDid], communityDid, db)
+
+        return reply.status(200).send({
+          ...serialized,
+          author: authorMap.get(row.authorDid) ?? {
+            did: row.authorDid,
+            handle: row.authorDid,
+            displayName: null,
+            avatarUrl: null,
+          },
+        })
       }
     )
 
