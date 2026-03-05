@@ -1,4 +1,13 @@
-import { pgTable, pgPolicy, text, integer, timestamp, jsonb, boolean, index } from 'drizzle-orm/pg-core'
+import {
+  pgTable,
+  pgPolicy,
+  text,
+  integer,
+  timestamp,
+  jsonb,
+  boolean,
+  index,
+} from 'drizzle-orm/pg-core'
 import { sql } from 'drizzle-orm'
 import { appRole } from './roles.js'
 
@@ -24,6 +33,8 @@ export const topics = pgTable(
     indexedAt: timestamp('indexed_at', { withTimezone: true }).notNull().defaultNow(),
     isLocked: boolean('is_locked').notNull().default(false),
     isPinned: boolean('is_pinned').notNull().default(false),
+    pinnedAt: timestamp('pinned_at', { withTimezone: true }),
+    pinnedScope: text('pinned_scope', { enum: ['category', 'forum'] }),
     isModDeleted: boolean('is_mod_deleted').notNull().default(false),
     isAuthorDeleted: boolean('is_author_deleted').notNull().default(false),
     moderationStatus: text('moderation_status', {
@@ -55,6 +66,7 @@ export const topics = pgTable(
       table.category,
       table.lastActivityAt
     ),
+    index('topics_pinned_scope_idx').on(table.pinnedScope),
     index('topics_author_did_rkey_idx').on(table.authorDid, table.rkey),
     pgPolicy('tenant_isolation', {
       as: 'permissive',

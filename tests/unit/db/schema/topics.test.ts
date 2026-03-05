@@ -82,4 +82,16 @@ describe('topics schema', () => {
     expect(columns.isPinned.hasDefault).toBe(true)
     expect(columns.isModDeleted.hasDefault).toBe(true)
   })
+
+  it('has nullable pinnedAt timestamp column', () => {
+    const columnNames = Object.keys(columns)
+    expect(columnNames).toContain('pinnedAt')
+    expect(columns.pinnedAt.notNull).toBe(false)
+  })
+
+  it('has nullable pinnedScope text column', () => {
+    const columnNames = Object.keys(columns)
+    expect(columnNames).toContain('pinnedScope')
+    expect(columns.pinnedScope.notNull).toBe(false)
+  })
 })
