@@ -111,9 +111,11 @@ describe('ProfileSyncService', () => {
     mockDb = createMockDb()
 
     service = createProfileSyncService(mockDb, mockLogger, {
-      createAgent: () => ({
-        getProfile: mockGetProfile,
-      }),
+      agentFactory: {
+        createAgent: () => ({
+          getProfile: mockGetProfile,
+        }),
+      },
     })
   })
 
@@ -251,9 +253,11 @@ describe('ProfileSyncService', () => {
     })
 
     service = createProfileSyncService(mockDb, mockLogger, {
-      createAgent: () => ({
-        getProfile: mockGetProfile,
-      }),
+      agentFactory: {
+        createAgent: () => ({
+          getProfile: mockGetProfile,
+        }),
+      },
     })
 
     const result = await service.syncProfile(TEST_DID)
@@ -287,9 +291,11 @@ describe('ProfileSyncService', () => {
     })
 
     service = createProfileSyncService(mockDb, mockLogger, {
-      createAgent: () => ({
-        getProfile: mockGetProfile,
-      }),
+      agentFactory: {
+        createAgent: () => ({
+          getProfile: mockGetProfile,
+        }),
+      },
     })
 
     await service.syncProfile(TEST_DID)

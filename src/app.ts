@@ -1,3 +1,4 @@
+import { join } from 'node:path'
 import Fastify from 'fastify'
 import helmet from '@fastify/helmet'
 import cors from '@fastify/cors'
@@ -7,7 +8,7 @@ import rateLimit from '@fastify/rate-limit'
 import swagger from '@fastify/swagger'
 import scalarApiReference from '@scalar/fastify-api-reference'
 import * as Sentry from '@sentry/node'
-import type { FastifyError } from 'fastify'
+import type { FastifyError, FastifyPluginCallback } from 'fastify'
 import type { NodeOAuthClient } from '@atproto/oauth-client-node'
 import { sql } from 'drizzle-orm'
 import type { Env } from './config/env.js'
@@ -47,6 +48,10 @@ import { adminSybilRoutes } from './routes/admin-sybil.js'
 import { adminDesignRoutes } from './routes/admin-design.js'
 import { adminPluginRoutes } from './routes/admin-plugins.js'
 import { discoverPlugins, syncPluginsToDb, validateAndFilterPlugins } from './lib/plugins/loader.js'
+import { buildLoadedPlugin, executeHook, getPluginShortName } from './lib/plugins/runtime.js'
+import { createPluginContext, type CacheAdapter } from './lib/plugins/context.js'
+import type { PluginContext } from './lib/plugins/types.js'
+import type { LoadedPlugin } from './lib/plugins/types.js'
 import { createRequireAdmin } from './auth/require-admin.js'
 import { createRequireOperator } from './auth/require-operator.js'
 import { OzoneService } from './services/ozone.js'
@@ -86,6 +91,8 @@ declare module 'fastify' {
     storage: StorageService
     interactionGraphService: InteractionGraphService
     trustGraphService: TrustGraphService
+    loadedPlugins: Map<string, LoadedPlugin>
+    enabledPlugins: Set<string>
   }
 }
 
@@ -122,6 +129,9 @@ export async function buildApp(env: Env) {
   // Plugin discovery and DB sync
   const nodeModulesPath = new URL('../node_modules', import.meta.url).pathname
   const discovered = await discoverPlugins(nodeModulesPath, app.log)
+  const loadedPlugins = new Map<string, LoadedPlugin>()
+  const enabledPlugins = new Set<string>()
+
   if (discovered.length > 0) {
     const validManifests = validateAndFilterPlugins(
       discovered.map((d) => d.manifest),
@@ -129,10 +139,49 @@ export async function buildApp(env: Env) {
       app.log
     )
     app.log.info({ count: validManifests.length }, 'Plugins discovered')
-    await syncPluginsToDb(discovered, db, app.log)
+
+    const syncResult = await syncPluginsToDb(discovered, db, app.log)
+
+    // Build LoadedPlugin objects (resolve hooks, route paths)
+    for (const { manifest, packagePath } of discovered) {
+      const loaded = await buildLoadedPlugin(manifest, packagePath, app.log)
+      loadedPlugins.set(manifest.name, loaded)
+    }
+
+    // Run onInstall for newly discovered plugins
+    for (const newName of syncResult.newPlugins) {
+      const loaded = loadedPlugins.get(newName)
+      if (loaded?.hooks?.onInstall) {
+        const ctx = createPluginContext({
+          pluginName: loaded.name,
+          pluginVersion: loaded.version,
+          permissions: [],
+          settings: {},
+          db,
+          cache: null,
+          oauthClient: null,
+          logger: app.log,
+          communityDid: getCommunityDid(env),
+        })
+        // eslint-disable-next-line @typescript-eslint/unbound-method -- plugin hooks are standalone functions
+        const hookFn = loaded.hooks.onInstall as (...args: unknown[]) => Promise<void>
+        await executeHook('onInstall', hookFn, ctx, app.log, loaded.name)
+      }
+    }
+
+    // Track enabled plugins
+    const enabledRows = (await db.execute(
+      sql`SELECT name FROM plugins WHERE enabled = true`
+    )) as unknown as Array<{ name: string }>
+    for (const row of enabledRows) {
+      enabledPlugins.add(row.name)
+    }
   } else {
     app.log.info('No plugins discovered')
   }
+
+  app.decorate('loadedPlugins', loadedPlugins)
+  app.decorate('enabledPlugins', enabledPlugins)
 
   // Cache
   const cache = createCache(env.VALKEY_URL, app.log)
@@ -239,8 +288,31 @@ export async function buildApp(env: Env) {
   const handleResolver = createHandleResolver(cache, db, app.log)
   app.decorate('handleResolver', handleResolver)
 
+  // Wrap Valkey/ioredis client as CacheAdapter for plugin contexts
+  const pluginCacheAdapter: CacheAdapter = {
+    async get(key: string): Promise<string | null> {
+      return cache.get(key)
+    },
+    async set(key: string, value: string, ttlSeconds?: number): Promise<void> {
+      if (ttlSeconds !== undefined) {
+        await cache.set(key, value, 'EX', ttlSeconds)
+      } else {
+        await cache.set(key, value)
+      }
+    },
+    async del(key: string): Promise<void> {
+      await cache.del(key)
+    },
+  }
+
   // Profile sync (fetches AT Protocol profile from Bluesky public API at login)
-  const profileSync = createProfileSyncService(db, app.log)
+  const profileSync = createProfileSyncService(db, app.log, {
+    loadedPlugins,
+    enabledPlugins,
+    oauthClient,
+    cache: pluginCacheAdapter,
+    communityDid: getCommunityDid(env),
+  })
   app.decorate('profileSync', profileSync)
 
   // PLC DID service + Setup service
@@ -276,6 +348,80 @@ export async function buildApp(env: Env) {
     ozoneService = new OzoneService(db, cache, app.log, env.OZONE_LABELER_URL)
   }
   app.decorate('ozoneService', ozoneService)
+
+  // Register plugin routes under /api/ext/<short-name>/
+  for (const [, loaded] of loadedPlugins) {
+    if (!loaded.routesPath) continue
+
+    const shortName = getPluginShortName(loaded.name)
+    const routesFullPath = join(loaded.packagePath, loaded.routesPath)
+
+    try {
+      const routeModule = (await import(routesFullPath)) as Record<string, unknown>
+
+      // Find the exported Fastify plugin function (convention: first function export)
+      const routeFn = Object.values(routeModule).find((v) => typeof v === 'function') as
+        | FastifyPluginCallback<{ ctx: PluginContext }>
+        | undefined
+
+      if (!routeFn) {
+        app.log.warn({ plugin: loaded.name }, 'No route function export found')
+        continue
+      }
+
+      // Query settings for this plugin from DB
+      const pluginRows = (await db.execute(
+        sql`SELECT id FROM plugins WHERE name = ${loaded.name}`
+      )) as unknown as Array<{ id: string }>
+      const pluginId = pluginRows[0]?.id
+
+      const settingsObj: Record<string, unknown> = {}
+      if (pluginId) {
+        const settingsRows = (await db.execute(
+          sql`SELECT key, value FROM plugin_settings WHERE plugin_id = ${pluginId}`
+        )) as unknown as Array<{ key: string; value: unknown }>
+        for (const s of settingsRows) {
+          settingsObj[s.key] = s.value
+        }
+      }
+
+      // Get permissions from manifest
+      const manifestData = loaded.manifest as { permissions?: { backend?: string[] } }
+      const permissions = manifestData.permissions?.backend ?? []
+
+      const ctx = createPluginContext({
+        pluginName: loaded.name,
+        pluginVersion: loaded.version,
+        permissions,
+        settings: settingsObj,
+        db,
+        cache: pluginCacheAdapter,
+        oauthClient,
+        logger: app.log,
+        communityDid: getCommunityDid(env),
+      })
+
+      // Register in a scoped plugin with enabled-check preHandler
+      await app.register(
+        async function pluginRouteScope(scope) {
+          scope.addHook('preHandler', async (_request, reply) => {
+            if (!app.enabledPlugins.has(loaded.name)) {
+              return reply.status(404).send({ error: 'Plugin not available' })
+            }
+          })
+          await scope.register(routeFn, { ctx })
+        },
+        { prefix: `/api/ext/${shortName}` }
+      )
+
+      app.log.info(
+        { plugin: loaded.name, prefix: `/api/ext/${shortName}` },
+        'Plugin routes registered'
+      )
+    } catch (err: unknown) {
+      app.log.error({ err, plugin: loaded.name }, 'Failed to register plugin routes')
+    }
+  }
 
   // OpenAPI documentation (register before routes so schemas are collected)
   await app.register(swagger, {

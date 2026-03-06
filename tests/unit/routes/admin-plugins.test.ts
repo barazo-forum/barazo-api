@@ -102,6 +102,9 @@ async function buildTestApp(user?: RequestUser): Promise<FastifyInstance> {
   app.decorate('env', mockEnv)
   app.decorate('requireAdmin', requireAdmin as never)
   app.decorate('cache', {} as never)
+  app.decorate('oauthClient', {} as never)
+  app.decorate('loadedPlugins', new Map() as never)
+  app.decorate('enabledPlugins', new Set() as never)
   app.decorateRequest('user', undefined as RequestUser | undefined)
 
   await app.register(adminPluginRoutes())

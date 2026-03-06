@@ -166,8 +166,17 @@ export async function syncPluginsToDb(
   discovered: { manifest: PluginManifest; packagePath: string }[],
   db: DbExecutor,
   logger: Logger
-): Promise<void> {
+): Promise<{ newPlugins: string[] }> {
+  const existingRows = (await db.execute(sql`SELECT name FROM plugins`)) as Array<{
+    name: string
+  }>
+  const existingNames = new Set(existingRows.map((r) => r.name))
+  const newPlugins: string[] = []
+
   for (const { manifest } of discovered) {
+    if (!existingNames.has(manifest.name)) {
+      newPlugins.push(manifest.name)
+    }
     const manifestJson = JSON.stringify(manifest)
 
     // Upsert plugin -- new plugins are inserted as disabled
@@ -206,4 +215,6 @@ export async function syncPluginsToDb(
 
     logger.info({ plugin: manifest.name, version: manifest.version }, 'Synced plugin to database')
   }
+
+  return { newPlugins }
 }

@@ -31,6 +31,7 @@ const BASE_OPTIONS: PluginContextOptions = {
   settings: { maxLength: 200, prefix: '--' },
   db: {},
   cache: null,
+  oauthClient: null,
   logger: makeLogger(),
   communityDid: 'did:plc:testcommunity123',
 }
@@ -128,5 +129,47 @@ describe('createPluginContext', () => {
     createPluginContext({ ...BASE_OPTIONS, logger })
 
     expect(childFn).toHaveBeenCalledWith({ plugin: '@barazo/plugin-signatures' })
+  })
+})
+
+describe('ScopedAtProto', () => {
+  it('provides atproto when pds:read permission is present', () => {
+    const ctx = createPluginContext({
+      ...BASE_OPTIONS,
+      permissions: ['pds:read'],
+      oauthClient: {} as never,
+      logger: makeLogger(),
+    })
+    expect(ctx.atproto).toBeDefined()
+  })
+
+  it('provides atproto when pds:write permission is present', () => {
+    const ctx = createPluginContext({
+      ...BASE_OPTIONS,
+      permissions: ['pds:write'],
+      oauthClient: {} as never,
+      logger: makeLogger(),
+    })
+    expect(ctx.atproto).toBeDefined()
+  })
+
+  it('does not provide atproto without pds permissions', () => {
+    const ctx = createPluginContext({
+      ...BASE_OPTIONS,
+      permissions: ['db:write:plugin_signatures'],
+      oauthClient: null,
+      logger: makeLogger(),
+    })
+    expect(ctx.atproto).toBeUndefined()
+  })
+
+  it('does not provide atproto when no oauthClient even with permissions', () => {
+    const ctx = createPluginContext({
+      ...BASE_OPTIONS,
+      permissions: ['pds:read', 'pds:write'],
+      oauthClient: null,
+      logger: makeLogger(),
+    })
+    expect(ctx.atproto).toBeUndefined()
   })
 })

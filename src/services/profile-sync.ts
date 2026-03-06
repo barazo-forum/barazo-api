@@ -4,6 +4,9 @@ import type { Logger } from '../lib/logger.js'
 import type { Database } from '../db/index.js'
 import { users } from '../db/schema/users.js'
 import { stripControlCharacters } from '../lib/sanitize-text.js'
+import type { LoadedPlugin } from '../lib/plugins/types.js'
+import { executeHook } from '../lib/plugins/runtime.js'
+import { createPluginContext, type CacheAdapter } from '../lib/plugins/context.js'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -73,6 +76,19 @@ const defaultAgentFactory: AgentFactory = {
 }
 
 // ---------------------------------------------------------------------------
+// Factory options
+// ---------------------------------------------------------------------------
+
+export interface ProfileSyncOptions {
+  agentFactory?: AgentFactory
+  loadedPlugins?: Map<string, LoadedPlugin>
+  enabledPlugins?: Set<string>
+  oauthClient?: unknown
+  cache?: CacheAdapter | null
+  communityDid?: string
+}
+
+// ---------------------------------------------------------------------------
 // Factory
 // ---------------------------------------------------------------------------
 
@@ -85,13 +101,21 @@ const defaultAgentFactory: AgentFactory = {
  *
  * @param db - Drizzle database instance
  * @param logger - Pino logger
- * @param agentFactory - Optional factory for creating Agent instances (testing)
+ * @param options - Optional configuration including agent factory and plugin refs
  */
 export function createProfileSyncService(
   db: Database,
   logger: Logger,
-  agentFactory: AgentFactory = defaultAgentFactory
+  options: ProfileSyncOptions = {}
 ): ProfileSyncService {
+  const {
+    agentFactory = defaultAgentFactory,
+    loadedPlugins,
+    enabledPlugins,
+    oauthClient: pluginOauthClient,
+    cache: pluginCache,
+    communityDid: pluginCommunityDid,
+  } = options
   return {
     async syncProfile(did: string): Promise<ProfileData> {
       // 1. Fetch profile from Bluesky public API (no auth needed)
@@ -140,6 +164,41 @@ export function createProfileSyncService(
           .where(eq(users.did, did))
       } catch (err: unknown) {
         logger.warn({ did, err }, 'profile DB update failed: could not persist profile data')
+      }
+
+      // Fire-and-forget plugin onProfileSync hooks
+      if (loadedPlugins && enabledPlugins) {
+        for (const [name, loaded] of loadedPlugins) {
+          if (!enabledPlugins.has(name)) continue
+          if (!loaded.hooks?.onProfileSync) continue
+
+          try {
+            const manifest = loaded.manifest as { permissions?: { backend?: string[] } }
+            const ctx = createPluginContext({
+              pluginName: loaded.name,
+              pluginVersion: loaded.version,
+              permissions: manifest.permissions?.backend ?? [],
+              settings: {},
+              db,
+              cache: pluginCache ?? null,
+              oauthClient: pluginOauthClient ?? null,
+              logger,
+              communityDid: pluginCommunityDid ?? '',
+            })
+            // eslint-disable-next-line @typescript-eslint/unbound-method -- plugin hooks are standalone functions
+            const hookFn = loaded.hooks.onProfileSync as (...args: unknown[]) => Promise<void>
+            void executeHook('onProfileSync', hookFn, ctx, logger, name, did).catch(
+              (err: unknown) => {
+                logger.warn({ err, plugin: name, did }, 'Plugin onProfileSync failed')
+              }
+            )
+          } catch (err: unknown) {
+            logger.warn(
+              { err, plugin: name, did },
+              'Failed to build plugin context for onProfileSync'
+            )
+          }
+        }
       }
 
       return profileData

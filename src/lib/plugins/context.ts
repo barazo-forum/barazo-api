@@ -1,6 +1,14 @@
+import { Agent } from '@atproto/api'
+
 import type { Logger } from '../logger.js'
 
-import type { PluginContext, PluginSettings, ScopedCache, ScopedDatabase } from './types.js'
+import type {
+  PluginContext,
+  PluginSettings,
+  ScopedAtProto,
+  ScopedCache,
+  ScopedDatabase,
+} from './types.js'
 
 /** Adapter interface for the underlying cache (e.g. Valkey/ioredis). */
 export interface CacheAdapter {
@@ -16,6 +24,7 @@ export interface PluginContextOptions {
   settings: Record<string, unknown>
   db: unknown
   cache: CacheAdapter | null
+  oauthClient: unknown // NodeOAuthClient | null — typed as unknown to avoid coupling
   logger: Logger
   communityDid: string
 }
@@ -59,14 +68,82 @@ function createScopedDatabase(db: unknown, _permissions: string[]): ScopedDataba
   }
 }
 
+const BSKY_PUBLIC_API = 'https://public.api.bsky.app'
+
+interface OAuthClientLike {
+  restore(did: string): Promise<unknown>
+}
+
+function createScopedAtProto(
+  oauthClient: OAuthClientLike,
+  logger: Logger,
+  pluginName: string
+): ScopedAtProto {
+  return {
+    async getRecord(did: string, collection: string, rkey: string): Promise<unknown> {
+      try {
+        const agent = new Agent(new URL(BSKY_PUBLIC_API))
+        const response = await agent.com.atproto.repo.getRecord({
+          repo: did,
+          collection,
+          rkey,
+        })
+        return response.data.value
+      } catch (err: unknown) {
+        logger.debug(
+          { err, plugin: pluginName, did, collection, rkey },
+          'ScopedAtProto getRecord failed'
+        )
+        return null
+      }
+    },
+
+    async putRecord(did: string, collection: string, rkey: string, record: unknown): Promise<void> {
+      const session = await oauthClient.restore(did)
+      const agent = new Agent(session as ConstructorParameters<typeof Agent>[0])
+      await agent.com.atproto.repo.putRecord({
+        repo: did,
+        collection,
+        rkey,
+        record: { $type: collection, ...(record as Record<string, unknown>) },
+      })
+    },
+
+    async deleteRecord(did: string, collection: string, rkey: string): Promise<void> {
+      const session = await oauthClient.restore(did)
+      const agent = new Agent(session as ConstructorParameters<typeof Agent>[0])
+      await agent.com.atproto.repo.deleteRecord({
+        repo: did,
+        collection,
+        rkey,
+      })
+    },
+  }
+}
+
 export function createPluginContext(options: PluginContextOptions): PluginContext {
-  const { pluginName, pluginVersion, permissions, settings, db, cache, logger, communityDid } =
-    options
+  const {
+    pluginName,
+    pluginVersion,
+    permissions,
+    settings,
+    db,
+    cache,
+    oauthClient,
+    logger,
+    communityDid,
+  } = options
 
   const hasCachePermission =
     permissions.includes('cache:read') || permissions.includes('cache:write')
 
   const scopedCache = hasCachePermission && cache ? createScopedCache(cache, pluginName) : undefined
+
+  const hasPdsPermission = permissions.includes('pds:read') || permissions.includes('pds:write')
+  const scopedAtProto =
+    hasPdsPermission && oauthClient
+      ? createScopedAtProto(oauthClient as OAuthClientLike, logger, pluginName)
+      : undefined
 
   return {
     pluginName,
@@ -76,5 +153,6 @@ export function createPluginContext(options: PluginContextOptions): PluginContex
     settings: createPluginSettings(settings),
     logger: logger.child({ plugin: pluginName }),
     ...(scopedCache ? { cache: scopedCache } : {}),
+    ...(scopedAtProto ? { atproto: scopedAtProto } : {}),
   } satisfies PluginContext
 }

@@ -5,7 +5,13 @@ import { createRequire } from 'node:module'
 import { promisify } from 'node:util'
 import type { FastifyPluginCallback } from 'fastify'
 import { notFound, badRequest, conflict, errorResponseSchema } from '../lib/api-errors.js'
-import { getRegistryIndex, searchRegistryPlugins, getFeaturedPlugins } from '../lib/plugins/registry.js'
+import {
+  getRegistryIndex,
+  searchRegistryPlugins,
+  getFeaturedPlugins,
+} from '../lib/plugins/registry.js'
+import { executeHook, buildLoadedPlugin } from '../lib/plugins/runtime.js'
+import { createPluginContext } from '../lib/plugins/context.js'
 import { updatePluginSettingsSchema, installPluginSchema } from '../validation/admin-plugins.js'
 import { pluginManifestSchema } from '../validation/plugin-manifest.js'
 import { plugins, pluginSettings } from '../db/schema/plugins.js'
@@ -95,6 +101,21 @@ export function adminPluginRoutes(): FastifyPluginCallback {
   return (app, _opts, done) => {
     const { db } = app
     const requireAdmin = app.requireAdmin
+
+    function buildCtxForPlugin(pluginRow: typeof plugins.$inferSelect) {
+      const manifest = pluginRow.manifestJson as { permissions?: { backend?: string[] } }
+      return createPluginContext({
+        pluginName: pluginRow.name,
+        pluginVersion: pluginRow.version,
+        permissions: manifest.permissions?.backend ?? [],
+        settings: {},
+        db: app.db,
+        cache: null,
+        oauthClient: null,
+        logger: app.log,
+        communityDid: '',
+      })
+    }
 
     // -------------------------------------------------------------------
     // GET /api/plugins (admin only)
@@ -254,6 +275,16 @@ export function adminPluginRoutes(): FastifyPluginCallback {
           throw notFound('Plugin not found after update')
         }
 
+        // Execute onEnable hook
+        const loaded = app.loadedPlugins.get(plugin.name)
+        if (loaded?.hooks?.onEnable) {
+          const ctx = buildCtxForPlugin(updatedPlugin)
+          // eslint-disable-next-line @typescript-eslint/unbound-method -- plugin hooks are standalone functions
+          const hookFn = loaded.hooks.onEnable as (...args: unknown[]) => Promise<void>
+          await executeHook('onEnable', hookFn, ctx, app.log, plugin.name)
+        }
+        app.enabledPlugins.add(plugin.name)
+
         app.log.info(
           {
             event: 'plugin_enabled',
@@ -336,6 +367,16 @@ export function adminPluginRoutes(): FastifyPluginCallback {
         if (!updatedPlugin) {
           throw notFound('Plugin not found after update')
         }
+
+        // Execute onDisable hook
+        const loaded = app.loadedPlugins.get(plugin.name)
+        if (loaded?.hooks?.onDisable) {
+          const ctx = buildCtxForPlugin(updatedPlugin)
+          // eslint-disable-next-line @typescript-eslint/unbound-method -- plugin hooks are standalone functions
+          const hookFn = loaded.hooks.onDisable as (...args: unknown[]) => Promise<void>
+          await executeHook('onDisable', hookFn, ctx, app.log, plugin.name)
+        }
+        app.enabledPlugins.delete(plugin.name)
 
         app.log.info(
           {
@@ -491,7 +532,19 @@ export function adminPluginRoutes(): FastifyPluginCallback {
           )
         }
 
+        // Execute onUninstall hook before DB delete
+        const loaded = app.loadedPlugins.get(plugin.name)
+        if (loaded?.hooks?.onUninstall) {
+          const ctx = buildCtxForPlugin(plugin)
+          // eslint-disable-next-line @typescript-eslint/unbound-method -- plugin hooks are standalone functions
+          const hookFn = loaded.hooks.onUninstall as (...args: unknown[]) => Promise<void>
+          await executeHook('onUninstall', hookFn, ctx, app.log, plugin.name)
+        }
+
         await db.delete(plugins).where(eq(plugins.id, id))
+
+        app.enabledPlugins.delete(plugin.name)
+        app.loadedPlugins.delete(plugin.name)
 
         app.log.info(
           {
@@ -592,6 +645,18 @@ export function adminPluginRoutes(): FastifyPluginCallback {
         const newPlugin = inserted[0]
         if (!newPlugin) {
           throw badRequest('Failed to insert plugin')
+        }
+
+        // Load hooks for newly installed plugin and run onInstall
+        const packageDirPath = packageDir.replace(/\/plugin\.json$/, '')
+        const loadedPlugin = await buildLoadedPlugin(manifest, packageDirPath, app.log)
+        app.loadedPlugins.set(manifest.name, loadedPlugin)
+
+        if (loadedPlugin.hooks?.onInstall) {
+          const ctx = buildCtxForPlugin(newPlugin)
+          // eslint-disable-next-line @typescript-eslint/unbound-method -- plugin hooks are standalone functions
+          const hookFn = loadedPlugin.hooks.onInstall as (...args: unknown[]) => Promise<void>
+          await executeHook('onInstall', hookFn, ctx, app.log, manifest.name)
         }
 
         app.log.info(

@@ -9,8 +9,8 @@ export interface ScopedDatabase {
 /** Scoped AT Protocol operations (only available if plugin has pds:read or pds:write permission). */
 export interface ScopedAtProto {
   getRecord(did: string, collection: string, rkey: string): Promise<unknown>
-  putRecord(collection: string, rkey: string, record: unknown): Promise<void>
-  deleteRecord(collection: string, rkey: string): Promise<void>
+  putRecord(did: string, collection: string, rkey: string, record: unknown): Promise<void>
+  deleteRecord(did: string, collection: string, rkey: string): Promise<void>
 }
 
 /** Scoped Valkey cache -- keys are auto-prefixed with plugin:<name>: */
