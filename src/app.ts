@@ -45,6 +45,8 @@ import { communityProfileRoutes } from './routes/community-profiles.js'
 import { uploadRoutes } from './routes/uploads.js'
 import { adminSybilRoutes } from './routes/admin-sybil.js'
 import { adminDesignRoutes } from './routes/admin-design.js'
+import { adminPluginRoutes } from './routes/admin-plugins.js'
+import { discoverPlugins, syncPluginsToDb, validateAndFilterPlugins } from './lib/plugins/loader.js'
 import { createRequireAdmin } from './auth/require-admin.js'
 import { createRequireOperator } from './auth/require-operator.js'
 import { OzoneService } from './services/ozone.js'
@@ -117,6 +119,21 @@ export async function buildApp(env: Env) {
   app.decorate('db', db)
   app.decorate('env', env)
 
+  // Plugin discovery and DB sync
+  const nodeModulesPath = new URL('../node_modules', import.meta.url).pathname
+  const discovered = await discoverPlugins(nodeModulesPath, app.log)
+  if (discovered.length > 0) {
+    const validManifests = validateAndFilterPlugins(
+      discovered.map((d) => d.manifest),
+      '0.1.0',
+      app.log
+    )
+    app.log.info({ count: validManifests.length }, 'Plugins discovered')
+    await syncPluginsToDb(discovered, db, app.log)
+  } else {
+    app.log.info('No plugins discovered')
+  }
+
   // Cache
   const cache = createCache(env.VALKEY_URL, app.log)
   app.decorate('cache', cache)
@@ -154,7 +171,7 @@ export async function buildApp(env: Env) {
   await app.register(cors, {
     origin: env.CORS_ORIGINS.split(',').map((o) => o.trim()),
     credentials: true,
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
   })
 
@@ -340,6 +357,7 @@ export async function buildApp(env: Env) {
   await app.register(uploadRoutes())
   await app.register(adminSybilRoutes())
   await app.register(adminDesignRoutes())
+  await app.register(adminPluginRoutes())
 
   // OpenAPI spec endpoint (after routes so all schemas are registered)
   app.get('/api/openapi.json', { schema: { hide: true } }, async (_request, reply) => {

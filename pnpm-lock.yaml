@@ -48,9 +48,6 @@ importers:
       '@atproto/tap':
         specifier: 0.2.7
         version: 0.2.7
-      '@barazo-forum/lexicons':
-        specifier: link:../barazo-lexicons
-        version: link:../barazo-lexicons
       '@fastify/cookie':
         specifier: 11.0.2
         version: 11.0.2
@@ -81,6 +78,9 @@ importers:
       '@sentry/node':
         specifier: 10.41.0
         version: 10.41.0
+      '@singi-labs/lexicons':
+        specifier: link:../barazo-lexicons
+        version: link:../barazo-lexicons
       cborg:
         specifier: 4.5.8
         version: 4.5.8

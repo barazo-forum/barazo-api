@@ -71,6 +71,13 @@
       "when": 1772728814082,
       "tag": "0009_brainy_sunspot",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1772759004891,
+      "tag": "0010_mature_madrox",
+      "breakpoints": true
     }
   ]
 }
