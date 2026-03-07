@@ -85,7 +85,7 @@ describe('RecordHandler', () => {
         rkey: 'abc123',
         record: {
           title: 'Test',
-          content: { $type: 'forum.barazo.richtext#markdown', value: 'Content' },
+          content: { $type: 'forum.barazo.richtext#markdown' as const, value: 'Content' },
           community: 'did:plc:community',
           category: 'general',
           publishedAt: '2026-01-01T00:00:00.000Z',
@@ -109,7 +109,7 @@ describe('RecordHandler', () => {
         collection: 'forum.barazo.topic.reply',
         rkey: 'reply1',
         record: {
-          content: { $type: 'forum.barazo.richtext#markdown', value: 'Reply' },
+          content: { $type: 'forum.barazo.richtext#markdown' as const, value: 'Reply' },
           root: { uri: 'at://did:plc:test/forum.barazo.topic.post/t1', cid: 'bafyt' },
           parent: { uri: 'at://did:plc:test/forum.barazo.topic.post/t1', cid: 'bafyt' },
           community: 'did:plc:community',
@@ -157,7 +157,7 @@ describe('RecordHandler', () => {
         rkey: 'abc123',
         record: {
           title: 'Updated',
-          content: { $type: 'forum.barazo.richtext#markdown', value: 'Updated content' },
+          content: { $type: 'forum.barazo.richtext#markdown' as const, value: 'Updated content' },
           community: 'did:plc:community',
           category: 'general',
           publishedAt: '2026-01-01T00:00:00.000Z',
@@ -241,7 +241,7 @@ describe('RecordHandler', () => {
         rkey: 'abc123',
         record: {
           title: 'Test',
-          content: { $type: 'forum.barazo.richtext#markdown', value: 'Content' },
+          content: { $type: 'forum.barazo.richtext#markdown' as const, value: 'Content' },
           community: 'did:plc:community',
           category: 'general',
           publishedAt: '2026-01-01T00:00:00.000Z',
@@ -267,7 +267,7 @@ describe('RecordHandler', () => {
         rkey: 'abc123',
         record: {
           title: 'Test',
-          content: { $type: 'forum.barazo.richtext#markdown', value: 'Content' },
+          content: { $type: 'forum.barazo.richtext#markdown' as const, value: 'Content' },
           community: 'did:plc:community',
           category: 'general',
           publishedAt: '2026-01-01T00:00:00.000Z',
@@ -295,7 +295,7 @@ describe('RecordHandler', () => {
         rkey: 'abc123',
         record: {
           title: 'Test',
-          content: { $type: 'forum.barazo.richtext#markdown', value: 'Content' },
+          content: { $type: 'forum.barazo.richtext#markdown' as const, value: 'Content' },
           community: 'did:plc:community',
           category: 'general',
           publishedAt: '2026-01-01T00:00:00.000Z',
@@ -322,7 +322,7 @@ describe('RecordHandler', () => {
         rkey: 'abc123',
         record: {
           title: 'Test',
-          content: { $type: 'forum.barazo.richtext#markdown', value: 'Content' },
+          content: { $type: 'forum.barazo.richtext#markdown' as const, value: 'Content' },
           community: 'did:plc:community',
           category: 'general',
           publishedAt: '2026-01-01T00:00:00.000Z',
@@ -357,7 +357,7 @@ describe('RecordHandler', () => {
         rkey: 'abc123',
         record: {
           title: 'Test',
-          content: { $type: 'forum.barazo.richtext#markdown', value: 'Content' },
+          content: { $type: 'forum.barazo.richtext#markdown' as const, value: 'Content' },
           community: 'did:plc:community',
           category: 'general',
           publishedAt: '2026-01-01T00:00:00.000Z',
@@ -391,7 +391,7 @@ describe('RecordHandler', () => {
         rkey: 'abc123',
         record: {
           title: 'Test',
-          content: { $type: 'forum.barazo.richtext#markdown', value: 'Content' },
+          content: { $type: 'forum.barazo.richtext#markdown' as const, value: 'Content' },
           community: 'did:plc:community',
           category: 'general',
           publishedAt: '2026-01-01T00:00:00.000Z',
@@ -416,7 +416,7 @@ describe('RecordHandler', () => {
         rkey: 'abc123',
         record: {
           title: 'Updated',
-          content: { $type: 'forum.barazo.richtext#markdown', value: 'Updated content' },
+          content: { $type: 'forum.barazo.richtext#markdown' as const, value: 'Updated content' },
           community: 'did:plc:community',
           category: 'general',
           publishedAt: '2026-01-01T00:00:00.000Z',
@@ -446,7 +446,7 @@ describe('RecordHandler', () => {
         rkey: 'abc123',
         record: {
           title: 'Test',
-          content: { $type: 'forum.barazo.richtext#markdown', value: 'Content' },
+          content: { $type: 'forum.barazo.richtext#markdown' as const, value: 'Content' },
           community: 'did:plc:community',
           category: 'general',
           publishedAt: '2026-01-01T00:00:00.000Z',
@@ -580,7 +580,7 @@ describe('RecordHandler', () => {
         rkey: 'abc123',
         record: {
           title: 'Test',
-          content: { $type: 'forum.barazo.richtext#markdown', value: 'Content' },
+          content: { $type: 'forum.barazo.richtext#markdown' as const, value: 'Content' },
           community: 'did:plc:community',
           category: 'general',
           publishedAt: '2026-01-01T00:00:00.000Z',

@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest'
 import { eq } from 'drizzle-orm'
+
 import { createDb } from '../../../src/db/index.js'
 import type { Database } from '../../../src/db/index.js'
 import { topics } from '../../../src/db/schema/topics.js'
@@ -91,7 +92,7 @@ describe('firehose record processing (integration)', () => {
       record: {
         title: 'Integration Test Topic',
         content: {
-          $type: 'forum.barazo.richtext#markdown',
+          $type: 'forum.barazo.richtext#markdown' as const,
           value: 'This is a test topic for integration testing.',
         },
         community: 'did:plc:community',
@@ -138,7 +139,7 @@ describe('firehose record processing (integration)', () => {
         record: {
           title: 'Updated Topic Title',
           content: {
-            $type: 'forum.barazo.richtext#markdown',
+            $type: 'forum.barazo.richtext#markdown' as const,
             value: 'Updated content for the topic.',
           },
           community: 'did:plc:community',
@@ -204,7 +205,10 @@ describe('firehose record processing (integration)', () => {
         rkey: 'topic1',
         record: {
           title: 'Parent Topic',
-          content: { $type: 'forum.barazo.richtext#markdown', value: 'Topic for reply tests' },
+          content: {
+            $type: 'forum.barazo.richtext#markdown' as const,
+            value: 'Topic for reply tests',
+          },
           community: 'did:plc:community',
           category: 'general',
           publishedAt: '2026-01-15T10:00:00.000Z',
@@ -223,7 +227,7 @@ describe('firehose record processing (integration)', () => {
         collection: 'forum.barazo.topic.reply',
         rkey: 'reply1',
         record: {
-          content: { $type: 'forum.barazo.richtext#markdown', value: 'This is a reply' },
+          content: { $type: 'forum.barazo.richtext#markdown' as const, value: 'This is a reply' },
           root: { uri: topicUri, cid: 'bafytopic1' },
           parent: { uri: topicUri, cid: 'bafytopic1' },
           community: 'did:plc:community',
@@ -261,7 +265,10 @@ describe('firehose record processing (integration)', () => {
           collection: 'forum.barazo.topic.reply',
           rkey: `reply${String(i)}`,
           record: {
-            content: { $type: 'forum.barazo.richtext#markdown', value: `Reply ${String(i)}` },
+            content: {
+              $type: 'forum.barazo.richtext#markdown' as const,
+              value: `Reply ${String(i)}`,
+            },
             root: { uri: topicUri, cid: 'bafytopic1' },
             parent: { uri: topicUri, cid: 'bafytopic1' },
             community: 'did:plc:community',
@@ -291,7 +298,10 @@ describe('firehose record processing (integration)', () => {
         rkey: 'topic1',
         record: {
           title: 'Reactable Topic',
-          content: { $type: 'forum.barazo.richtext#markdown', value: 'Topic for reaction tests' },
+          content: {
+            $type: 'forum.barazo.richtext#markdown' as const,
+            value: 'Topic for reaction tests',
+          },
           community: 'did:plc:community',
           category: 'general',
           publishedAt: '2026-01-15T10:00:00.000Z',
@@ -350,7 +360,7 @@ describe('firehose record processing (integration)', () => {
         rkey: 'idem-topic1',
         record: {
           title: 'Idempotent Topic',
-          content: { $type: 'forum.barazo.richtext#markdown', value: 'Original content' },
+          content: { $type: 'forum.barazo.richtext#markdown' as const, value: 'Original content' },
           community: 'did:plc:community',
           category: 'general',
           publishedAt: '2026-01-15T10:00:00.000Z',
@@ -387,7 +397,7 @@ describe('firehose record processing (integration)', () => {
         rkey: 'idem-topic2',
         record: {
           title: 'Topic for replay test',
-          content: { $type: 'forum.barazo.richtext#markdown', value: 'Content' },
+          content: { $type: 'forum.barazo.richtext#markdown' as const, value: 'Content' },
           community: 'did:plc:community',
           category: 'general',
           publishedAt: '2026-01-15T10:00:00.000Z',
@@ -404,7 +414,7 @@ describe('firehose record processing (integration)', () => {
         collection: 'forum.barazo.topic.reply',
         rkey: 'idem-reply1',
         record: {
-          content: { $type: 'forum.barazo.richtext#markdown', value: 'Replay test reply' },
+          content: { $type: 'forum.barazo.richtext#markdown' as const, value: 'Replay test reply' },
           root: { uri: topicUri, cid: 'bafyidem2' },
           parent: { uri: topicUri, cid: 'bafyidem2' },
           community: 'did:plc:community',
@@ -445,7 +455,7 @@ describe('firehose record processing (integration)', () => {
         rkey: 'edit-del-topic',
         record: {
           title: 'Original Title',
-          content: { $type: 'forum.barazo.richtext#markdown', value: 'Original content' },
+          content: { $type: 'forum.barazo.richtext#markdown' as const, value: 'Original content' },
           community: 'did:plc:community',
           category: 'general',
           publishedAt: '2026-01-15T10:00:00.000Z',
@@ -464,7 +474,7 @@ describe('firehose record processing (integration)', () => {
         rkey: 'edit-del-reply',
         record: {
           content: {
-            $type: 'forum.barazo.richtext#markdown',
+            $type: 'forum.barazo.richtext#markdown' as const,
             value: 'Reply referencing original CID',
           },
           root: { uri: topicUri, cid: originalCid },
@@ -486,7 +496,7 @@ describe('firehose record processing (integration)', () => {
         rkey: 'edit-del-topic',
         record: {
           title: 'Updated Title',
-          content: { $type: 'forum.barazo.richtext#markdown', value: 'Updated content' },
+          content: { $type: 'forum.barazo.richtext#markdown' as const, value: 'Updated content' },
           community: 'did:plc:community',
           category: 'general',
           publishedAt: '2026-01-15T10:00:00.000Z',
@@ -535,7 +545,10 @@ describe('firehose record processing (integration)', () => {
         rkey: 'rapid-topic',
         record: {
           title: 'Ephemeral Topic',
-          content: { $type: 'forum.barazo.richtext#markdown', value: 'Gone before you know it' },
+          content: {
+            $type: 'forum.barazo.richtext#markdown' as const,
+            value: 'Gone before you know it',
+          },
           community: 'did:plc:community',
           category: 'general',
           publishedAt: '2026-01-15T10:00:00.000Z',
@@ -572,7 +585,10 @@ describe('firehose record processing (integration)', () => {
         rkey: 'rapid-topic2',
         record: {
           title: 'Another Ephemeral Topic',
-          content: { $type: 'forum.barazo.richtext#markdown', value: 'Will be deleted quickly' },
+          content: {
+            $type: 'forum.barazo.richtext#markdown' as const,
+            value: 'Will be deleted quickly',
+          },
           community: 'did:plc:community',
           category: 'general',
           publishedAt: '2026-01-15T10:00:00.000Z',
@@ -591,7 +607,7 @@ describe('firehose record processing (integration)', () => {
         rkey: 'rapid-reply1',
         record: {
           content: {
-            $type: 'forum.barazo.richtext#markdown',
+            $type: 'forum.barazo.richtext#markdown' as const,
             value: 'Quick reply before deletion',
           },
           root: { uri: topicUri, cid: 'bafyrapid2' },
