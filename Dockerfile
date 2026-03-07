@@ -47,7 +47,7 @@ COPY barazo-api/ ./barazo-api/
 
 # Build workspace dependencies first, then API
 RUN pnpm --filter @singi-labs/lexicons build && \
-    pnpm --filter @barazo/plugin-signatures build && \
+    pnpm --filter @barazo/plugin-signatures run build:backend && \
     pnpm --filter barazo-api build
 
 # Create standalone production deployment with resolved dependencies.
