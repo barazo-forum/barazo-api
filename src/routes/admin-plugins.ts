@@ -55,6 +55,7 @@ const pluginListJsonSchema = {
 // ---------------------------------------------------------------------------
 
 function serializePlugin(row: typeof plugins.$inferSelect, settings?: Record<string, unknown>) {
+  const manifest = row.manifestJson as ManifestJson | null
   return {
     id: row.id,
     name: row.name,
@@ -65,6 +66,7 @@ function serializePlugin(row: typeof plugins.$inferSelect, settings?: Record<str
     category: row.category,
     enabled: row.enabled,
     manifestJson: row.manifestJson,
+    dependencies: manifest?.dependencies ?? [],
     settings: settings ?? {},
     installedAt: row.installedAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
