@@ -370,6 +370,15 @@ export function modAnnotationRoutes(): FastifyPluginCallback {
           .delete(modNotes)
           .where(and(eq(modNotes.id, id), eq(modNotes.communityDid, communityDid)))
 
+        await db.insert(moderationActions).values({
+          action: 'note_created',
+          targetUri: note.subjectUri,
+          targetDid: note.subjectDid,
+          moderatorDid: user.did,
+          communityDid,
+          reason: `Deleted mod note #${id}`,
+        })
+
         app.log.info(
           { noteId: id, moderatorDid: user.did },
           'Mod note deleted'
