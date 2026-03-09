@@ -376,7 +376,7 @@ export function modAnnotationRoutes(): FastifyPluginCallback {
           targetDid: note.subjectDid,
           moderatorDid: user.did,
           communityDid,
-          reason: `Deleted mod note #${id}`,
+          reason: `Deleted mod note #${String(id)}`,
         })
 
         app.log.info(
