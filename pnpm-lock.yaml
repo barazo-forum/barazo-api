@@ -81,7 +81,7 @@ importers:
       '@sentry/node':
         specifier: 10.41.0
         version: 10.41.0
-      '@singi-labs/lexicons':
+      '@singi-labs/barazo-lexicons':
         specifier: link:../barazo-lexicons
         version: link:../barazo-lexicons
       cborg:
